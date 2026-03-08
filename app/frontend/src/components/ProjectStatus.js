@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl } from '../utils/api';
+import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl } from '../utils/api';
 import './ProjectStatus.css';
 
 function formatDuration(seconds, t) {
@@ -37,13 +37,17 @@ function totalSeconds(sessions) {
 }
 
 // ── Yarn Pill — small display of name + colour ───────────────────────────────
-function YarnPill({ name, colour, imageId }) {
+function YarnPill({ name, colour, imageId, colourId }) {
   const [imgErr, setImgErr] = useState(false);
+  // If we have a colour with an image, show that; otherwise show yarn image
+  const imgSrc = colourId && imageId
+    ? yarnColourImageUrl(imageId, colourId)
+    : imageId ? yarnImageUrl(imageId) : null;
   return (
     <span className="ps-yarn-pill">
-      {imageId && !imgErr ? (
+      {imgSrc && !imgErr ? (
         <img
-          src={yarnImageUrl(imageId)}
+          src={imgSrc}
           alt={name}
           className="ps-yarn-pill-img"
           onError={() => setImgErr(true)}
@@ -59,10 +63,11 @@ function YarnPill({ name, colour, imageId }) {
 
 // ── Yarn Picker Modal ────────────────────────────────────────────────────────
 function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
-  const [yarns, setYarns]     = useState([]);
-  const [search, setSearch]   = useState('');
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+  const [yarns, setYarns]         = useState([]);
+  const [search, setSearch]       = useState('');
+  const [loading, setLoading]     = useState(true);
+  const [selectedYarn, setSelectedYarn] = useState(null);
+  const [selectedColour, setSelectedColour] = useState(null);
 
   useEffect(() => {
     fetchYarns().then(y => { setYarns(y); setLoading(false); }).catch(() => setLoading(false));
@@ -70,9 +75,14 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
 
   const filtered = yarns.filter(y =>
     !search || y.name.toLowerCase().includes(search.toLowerCase()) ||
-    (y.colour && y.colour.toLowerCase().includes(search.toLowerCase())) ||
     (y.wool_type && y.wool_type.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const handleConfirm = () => {
+    onSelect(selectedYarn, selectedColour || null);
+  };
+
+  const colours = selectedYarn?.colours || [];
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -85,7 +95,7 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
           <button className="yp-close" onClick={onClose}><X size={20} /></button>
         </div>
 
-        {/* Search */}
+        {/* Step 1: Search + yarn list */}
         <div className="yp-search-wrap">
           <Search size={15} className="yp-search-icon" />
           <input
@@ -93,11 +103,10 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
             className="yp-search"
             placeholder={`${t('search')}…`}
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setSelectedYarn(null); setSelectedColour(null); }}
           />
         </div>
 
-        {/* Yarn list */}
         <div className="yp-list">
           {loading ? (
             <div className="yp-loading"><div className="yp-spinner" /></div>
@@ -108,12 +117,33 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
               <YarnPickerRow
                 key={yarn.id}
                 yarn={yarn}
-                selected={selected?.id === yarn.id}
-                onSelect={() => setSelected(selected?.id === yarn.id ? null : yarn)}
+                selected={selectedYarn?.id === yarn.id}
+                onSelect={() => {
+                  setSelectedYarn(selectedYarn?.id === yarn.id ? null : yarn);
+                  setSelectedColour(null);
+                }}
               />
             ))
           )}
         </div>
+
+        {/* Step 2: colour picker — shown when a yarn is selected and has colours */}
+        {selectedYarn && colours.length > 0 && (
+          <div className="yp-colour-step">
+            <p className="yp-colour-step-label">{t('selectColourStep')}</p>
+            <div className="yp-colour-grid">
+              {colours.map(c => (
+                <ColourPickerDot
+                  key={c.id}
+                  colour={c}
+                  yarnId={selectedYarn.id}
+                  selected={selectedColour?.id === c.id}
+                  onSelect={() => setSelectedColour(selectedColour?.id === c.id ? null : c)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="yp-footer">
           <button className="yp-btn-skip" onClick={onSkip}>
@@ -121,8 +151,8 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
           </button>
           <button
             className="yp-btn-confirm"
-            onClick={() => onSelect(selected)}
-            disabled={!selected}
+            onClick={handleConfirm}
+            disabled={!selectedYarn}
           >
             <Play size={15} />
             {t('startProject')}
@@ -133,8 +163,29 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
   );
 }
 
+function ColourPickerDot({ colour, yarnId, selected, onSelect }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <button
+      className={`yp-colour-dot ${selected ? 'yp-colour-dot--selected' : ''}`}
+      onClick={onSelect}
+      title={colour.name}
+    >
+      <div className="yp-colour-dot-thumb">
+        {colour.image_path && !imgErr
+          ? <img src={yarnColourImageUrl(yarnId, colour.id)} alt={colour.name} onError={() => setImgErr(true)} />
+          : <span>🎨</span>
+        }
+      </div>
+      <span className="yp-colour-dot-name">{colour.name}</span>
+      {selected && <span className="yp-colour-dot-check">✓</span>}
+    </button>
+  );
+}
+
 function YarnPickerRow({ yarn, selected, onSelect }) {
   const [imgErr, setImgErr] = useState(false);
+  const colourCount = (yarn.colours || []).length;
   return (
     <button
       className={`yp-row ${selected ? 'yp-row--selected' : ''}`}
@@ -150,7 +201,7 @@ function YarnPickerRow({ yarn, selected, onSelect }) {
       <div className="yp-row-info">
         <span className="yp-row-name">{yarn.name}</span>
         <span className="yp-row-sub">
-          {[yarn.colour, yarn.wool_type].filter(Boolean).join(' · ')}
+          {[yarn.wool_type, colourCount > 0 ? `${colourCount} colours` : null].filter(Boolean).join(' · ')}
         </span>
       </div>
       <div className={`yp-row-check ${selected ? 'checked' : ''}`}>
@@ -176,10 +227,10 @@ export default function ProjectStatus({ recipe, onUpdated }) {
 
   const handleStartClick = () => setShowYarnPicker(true);
 
-  const handleYarnSelected = async (yarn) => {
+  const handleYarnSelected = async (yarn, colour) => {
     setShowYarnPicker(false);
     setLoading(true);
-    try { onUpdated(await startProject(recipe.id, yarn?.id || null)); }
+    try { onUpdated(await startProject(recipe.id, yarn?.id || null, colour?.id || null)); }
     catch (e) { alert(e.message); }
     finally { setLoading(false); }
   };
@@ -230,6 +281,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
                 name={activeSession.yarn_name}
                 colour={activeSession.yarn_colour}
                 imageId={activeSession.yarn_id}
+                colourId={activeSession.yarn_colour_id}
               />
             </div>
           )}
@@ -280,6 +332,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
                       name={s.yarn_name}
                       colour={s.yarn_colour}
                       imageId={s.yarn_id}
+                      colourId={s.yarn_colour_id}
                     />
                   </div>
                 )}
@@ -327,7 +380,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
         <YarnPickerModal
           t={t}
           onSelect={handleYarnSelected}
-          onSkip={() => handleYarnSelected(null)}
+          onSkip={() => handleYarnSelected(null, null)}
           onClose={() => setShowYarnPicker(false)}
         />
       )}

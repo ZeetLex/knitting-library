@@ -170,11 +170,11 @@ export function pdfPageUrl(recipeId, filename) {
 }
 
 // Project sessions
-export async function startProject(recipeId, yarnId = null) {
+export async function startProject(recipeId, yarnId = null, yarnColourId = null) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/start`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ yarn_id: yarnId }),
+    body: JSON.stringify({ yarn_id: yarnId, yarn_colour_id: yarnColourId }),
   });
   if (!res.ok) throw new Error('Failed to start project');
   return res.json();
@@ -252,4 +252,41 @@ export async function deleteYarn(id) {
 export function yarnImageUrl(yarnId) {
   const t = getToken();
   return `${API_BASE}/yarns/${yarnId}/image${t ? '?token=' + t : ''}`;
+}
+
+export function yarnColourImageUrl(yarnId, colourId) {
+  const t = getToken();
+  return `${API_BASE}/yarns/${yarnId}/colours/${colourId}/image${t ? '?token=' + t : ''}`;
+}
+
+export async function addYarnColour(yarnId, formData) {
+  const res = await fetch(`${API_BASE}/yarns/${yarnId}/colours`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Failed to add colour');
+  return res.json();
+}
+
+export async function deleteYarnColour(yarnId, colourId) {
+  const res = await fetch(`${API_BASE}/yarns/${yarnId}/colours/${colourId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete colour');
+  return res.json();
+}
+
+export async function scrapeYarnUrl(url) {
+  const res = await fetch(`${API_BASE}/yarns/scrape`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to fetch URL');
+  }
+  return res.json();
 }

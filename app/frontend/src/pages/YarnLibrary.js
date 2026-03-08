@@ -6,17 +6,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Grid2X2, LayoutGrid, Square, Plus, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchYarns, fetchYarnAutocomplete, yarnImageUrl } from '../utils/api';
+import { fetchYarns, fetchYarnAutocomplete, yarnImageUrl, yarnColourImageUrl } from '../utils/api';
 import YarnUploadModal from '../components/YarnUploadModal';
 import './YarnLibrary.css';
 
 const SEARCH_FIELDS = [
   { key: '',         labelKey: 'searchFieldAll'      },
   { key: 'name',     labelKey: 'searchFieldName'     },
-  { key: 'colour',   labelKey: 'searchFieldColour'   },
   { key: 'material', labelKey: 'searchFieldMaterial' },
 ];
-const AUTOCOMPLETE_FIELD = { name: 'name', colour: 'colour', material: 'wool_type' };
+const AUTOCOMPLETE_FIELD = { name: 'name', material: 'wool_type' };
 
 export default function YarnLibrary({ onYarnClick }) {
   const { t } = useApp();
@@ -35,10 +34,8 @@ export default function YarnLibrary({ onYarnClick }) {
   const [suggestions, setSuggestions]   = useState([]);
   const [gridSize, setGridSize]         = useState('medium');
   const [filtersOpen, setFiltersOpen]   = useState(false);
-  const [filterColour, setFilterColour]       = useState('');
   const [filterWoolType, setFilterWoolType]   = useState('');
   const [filterSeller, setFilterSeller]       = useState('');
-  const [allColours, setAllColours]     = useState([]);
   const [allWoolTypes, setAllWoolTypes] = useState([]);
   const [allSellers, setAllSellers]     = useState([]);
   const [uploadOpen, setUploadOpen]     = useState(false);
@@ -47,7 +44,6 @@ export default function YarnLibrary({ onYarnClick }) {
 
   // Load filter option lists
   useEffect(() => {
-    fetchYarnAutocomplete('colour').then(setAllColours).catch(() => {});
     fetchYarnAutocomplete('wool_type').then(setAllWoolTypes).catch(() => {});
     fetchYarnAutocomplete('seller').then(setAllSellers).catch(() => {});
   }, [yarns]); // refresh when yarns change so new values appear immediately
@@ -69,18 +65,18 @@ export default function YarnLibrary({ onYarnClick }) {
   const loadYarns = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      setYarns(await fetchYarns({ search, field: searchField, filterColour, filterWoolType, filterSeller }));
+      setYarns(await fetchYarns({ search, field: searchField, filterWoolType, filterSeller }));
     } catch (e) { setError('Could not load yarns.'); }
     finally { setLoading(false); }
-  }, [search, searchField, filterColour, filterWoolType, filterSeller]);
+  }, [search, searchField, filterWoolType, filterSeller]);
 
   useEffect(() => {
     const timer = setTimeout(loadYarns, 280);
     return () => clearTimeout(timer);
   }, [loadYarns]);
 
-  const clearFilters = () => { setFilterColour(''); setFilterWoolType(''); setFilterSeller(''); setSearch(''); setSearchField(''); };
-  const hasActiveFilters = search || filterColour || filterWoolType || filterSeller;
+  const clearFilters = () => { setFilterWoolType(''); setFilterSeller(''); setSearch(''); setSearchField(''); };
+  const hasActiveFilters = search || filterWoolType || filterSeller;
 
   const countLabel = () => {
     if (yarns.length === 0) return t('yarnCount_zero');
@@ -158,12 +154,12 @@ export default function YarnLibrary({ onYarnClick }) {
 
           {/* Filters button — same as recipe Library */}
           <button
-            className={`filter-btn ${filtersOpen || (hasActiveFilters && (filterColour || filterWoolType || filterSeller)) ? 'active' : ''}`}
+            className={`filter-btn ${filtersOpen || (hasActiveFilters && (filterWoolType || filterSeller)) ? 'active' : ''}`}
             onClick={() => setFiltersOpen(o => !o)}
           >
             <SlidersHorizontal size={18} />
             <span>{t('yarnFilters')}</span>
-            {(filterColour || filterWoolType || filterSeller) && <span className="filter-badge" />}
+            {(filterWoolType || filterSeller) && <span className="filter-badge" />}
           </button>
 
           {/* Grid size switcher — same as recipe Library */}
@@ -185,26 +181,6 @@ export default function YarnLibrary({ onYarnClick }) {
         {filtersOpen && (
           <div className="filter-panel fade-in">
             <div className="filter-panel-inner">
-
-              {allColours.length > 0 && (
-                <div className="filter-group">
-                  <label className="filter-label">{t('filterColour')}</label>
-                  <div className="filter-pills">
-                    <button className={`pill ${!filterColour ? 'pill-active' : ''}`} onClick={() => setFilterColour('')}>
-                      {t('all')}
-                    </button>
-                    {allColours.map(c => (
-                      <button
-                        key={c}
-                        className={`pill ${filterColour === c ? 'pill-active' : ''}`}
-                        onClick={() => setFilterColour(filterColour === c ? '' : c)}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {allWoolTypes.length > 0 && (
                 <div className="filter-group">
@@ -307,6 +283,7 @@ export default function YarnLibrary({ onYarnClick }) {
 
 function YarnCard({ yarn, onClick }) {
   const [imgError, setImgError] = useState(false);
+  const colours = yarn.colours || [];
 
   return (
     <button className="recipe-card yarn-card-item fade-in" onClick={onClick}>
@@ -316,7 +293,6 @@ function YarnCard({ yarn, onClick }) {
         ) : (
           <div className="recipe-card-no-thumb">🧵</div>
         )}
-        {yarn.colour && <span className="yarn-colour-badge">{yarn.colour}</span>}
       </div>
       <div className="recipe-card-info">
         <h3 className="recipe-card-title">{yarn.name}</h3>
@@ -325,7 +301,35 @@ function YarnCard({ yarn, onClick }) {
           {yarn.seller && <span className="recipe-tag">{yarn.seller}</span>}
           {yarn.needles && <span className="recipe-tag">🪡 {yarn.needles}</span>}
         </div>
+        {/* Colour swatch strip */}
+        {colours.length > 0 && (
+          <div className="yarn-card-swatches">
+            {colours.slice(0, 8).map(c => (
+              <ColourDot key={c.id} colour={c} yarnId={yarn.id} />
+            ))}
+            {colours.length > 8 && (
+              <span className="yarn-card-swatches-more">+{colours.length - 8}</span>
+            )}
+          </div>
+        )}
       </div>
     </button>
+  );
+}
+
+function ColourDot({ colour, yarnId }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <div className="yarn-card-swatch-dot" title={colour.name}>
+      {colour.image_path && !imgErr ? (
+        <img
+          src={yarnColourImageUrl(yarnId, colour.id)}
+          alt={colour.name}
+          onError={() => setImgErr(true)}
+        />
+      ) : (
+        <span>🎨</span>
+      )}
+    </div>
   );
 }

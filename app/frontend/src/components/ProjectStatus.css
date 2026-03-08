@@ -552,3 +552,75 @@
 @media (hover: hover) and (pointer: fine) {
   .yp-btn-confirm:not(:disabled):hover { filter: brightness(1.08); }
 }
+
+/* ── Yarn picker colour step ─────────────────────────────────────────────── */
+.yp-colour-step {
+  border-top: 1px solid var(--border);
+  padding: 14px 16px 0;
+}
+
+.yp-colour-step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.yp-colour-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 14px;
+}
+
+.yp-colour-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  cursor: pointer;
+  min-width: 64px;
+  position: relative;
+  transition: border-color 0.15s;
+}
+.yp-colour-dot--selected {
+  border-color: var(--terracotta);
+  background: var(--surface-alt, var(--surface));
+}
+
+.yp-colour-dot-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.yp-colour-dot-thumb img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.yp-colour-dot-name {
+  font-size: 11px;
+  color: var(--text);
+  text-align: center;
+  word-break: break-word;
+  max-width: 60px;
+}
+
+.yp-colour-dot-check {
+  position: absolute;
+  top: 2px; right: 4px;
+  font-size: 11px;
+  color: var(--terracotta);
+  font-weight: 700;
+}

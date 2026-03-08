@@ -186,3 +186,88 @@
 }
 .yum-btn-cancel:disabled,
 .yum-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── URL Import ─────────────────────────────────────────────────────────────── */
+.yum-url-import {
+  padding: 10px 14px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yum-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.yum-url-input-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.yum-url-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.yum-url-input {
+  width: 100%;
+  padding: 8px 10px 8px 32px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  transition: var(--transition);
+  box-sizing: border-box;
+}
+
+.yum-url-input:focus {
+  outline: none;
+  border-color: var(--terracotta);
+}
+
+.yum-url-btn {
+  padding: 8px 16px;
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.yum-url-btn:hover:not(:disabled) { opacity: 0.88; }
+.yum-url-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.yum-url-msg {
+  font-size: 12px;
+  margin: 0;
+}
+.yum-url-msg.error   { color: #e05555; }
+.yum-url-msg.success { color: #3a9e6e; }
+
+/* Spinning loader icon */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

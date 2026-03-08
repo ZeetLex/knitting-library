@@ -5,13 +5,13 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, ImagePlus } from 'lucide-react';
+import { X, Upload, ImagePlus, Link, Loader } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createYarn, updateYarn, yarnImageUrl } from '../utils/api';
+import { createYarn, updateYarn, yarnImageUrl, scrapeYarnUrl } from '../utils/api';
 import './YarnUploadModal.css';
 
 const EMPTY = {
-  name: '', colour: '', wool_type: '', yardage: '', needles: '',
+  name: '', wool_type: '', yardage: '', needles: '',
   tension: '', origin: '', seller: '', price_per_skein: '', product_info: '',
 };
 
@@ -26,6 +26,12 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
   const [error, setError]         = useState('');
   const [dragOver, setDragOver]   = useState(false);
   const fileRef = useRef();
+
+  // URL import state
+  const [urlInput, setUrlInput]     = useState('');
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlError, setUrlError]     = useState('');
+  const [urlSuccess, setUrlSuccess] = useState(false);
 
   // Close on Escape
   useEffect(() => {
@@ -54,7 +60,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
     try {
       const fd = new FormData();
       Object.entries(fields).forEach(([k, v]) => {
-        if (k !== 'id' && k !== 'created_date' && k !== 'image_path') fd.append(k, v);
+        if (k !== 'id' && k !== 'created_date' && k !== 'image_path' && k !== 'colour' && k !== 'colours') fd.append(k, v);
       });
       if (imageFile) fd.append('image', imageFile);
       const result = isEdit ? await updateYarn(editYarn.id, fd) : await createYarn(fd);
@@ -65,6 +71,59 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
       setSaving(false);
     }
   };
+
+  const handleUrlImport = async () => {
+    if (!urlInput.trim()) return;
+    setUrlLoading(true);
+    setUrlError('');
+    setUrlSuccess(false);
+    try {
+      const data = await scrapeYarnUrl(urlInput.trim());
+      // Merge scraped data into fields — only fill empty fields so user edits aren't overwritten
+      setFields(prev => {
+        const merged = { ...prev };
+        const fieldKeys = ['name','wool_type','yardage','needles','tension','origin','seller','price_per_skein','product_info'];
+        fieldKeys.forEach(key => {
+          if (data[key] && !prev[key]) merged[key] = data[key];
+          else if (data[key] && prev[key] === '') merged[key] = data[key];
+        });
+        return merged;
+      });
+      // If the scraper found an image URL and no image has been set yet, fetch and use it
+      if (data.image_url && !imageFile) {
+        try {
+          const imgResp = await fetch(data.image_url);
+          const blob = await imgResp.blob();
+          const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+          const file = new File([blob], `yarn-import.${ext}`, { type: blob.type });
+          handleImage(file);
+        } catch (_) {
+          // Image fetch failed silently — user can add manually
+        }
+      }
+      setUrlSuccess(true);
+    } catch (e) {
+      setUrlError(e.message || 'Could not fetch page');
+    } finally {
+      setUrlLoading(false);
+    }
+  };
+
+  // Clipboard paste — listen anywhere in the modal while it's open
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) { handleImage(file); break; }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -90,7 +149,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
               <div className="yum-image-placeholder">
                 <ImagePlus size={32} />
                 <span>{t('uploadImage')}</span>
-                <span className="yum-image-hint">JPG, PNG, WebP</span>
+                <span className="yum-image-hint">JPG, PNG, WebP · drag & drop · paste</span>
               </div>
             )}
             {imagePreview && (
@@ -105,6 +164,34 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
             />
           </div>
 
+          {/* URL Import */}
+          {!isEdit && (
+            <div className="yum-url-import">
+              <div className="yum-url-row">
+                <div className="yum-url-input-wrap">
+                  <Link size={15} className="yum-url-icon" />
+                  <input
+                    type="url"
+                    className="yum-url-input"
+                    placeholder={t('importFromUrl')}
+                    value={urlInput}
+                    onChange={e => { setUrlInput(e.target.value); setUrlSuccess(false); setUrlError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && handleUrlImport()}
+                  />
+                </div>
+                <button
+                  className="yum-url-btn"
+                  onClick={handleUrlImport}
+                  disabled={urlLoading || !urlInput.trim()}
+                >
+                  {urlLoading ? <Loader size={15} className="spin" /> : t('importBtn')}
+                </button>
+              </div>
+              {urlError   && <p className="yum-url-msg error">{urlError}</p>}
+              {urlSuccess && <p className="yum-url-msg success">{imagePreview ? t('importSuccessWithImage') : t('importSuccess')}</p>}
+            </div>
+          )}
+
           {/* Fields */}
           <div className="yum-fields">
             <div className="yum-row">
@@ -112,14 +199,6 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
                 <input
                   type="text" value={fields.name} placeholder={t('yarnName')}
                   onChange={(e) => set('name', e.target.value)}
-                  className="yum-input"
-                />
-              </Field>
-              <Field label={t('colour')}>
-                <input
-                  type="text" value={fields.colour}
-                  placeholder="e.g. White, Navy Blue"
-                  onChange={(e) => set('colour', e.target.value)}
                   className="yum-input"
                 />
               </Field>

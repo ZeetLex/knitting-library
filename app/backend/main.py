@@ -73,8 +73,18 @@ def init_db():
             started_at  TEXT NOT NULL,
             finished_at TEXT,
             yarn_id     TEXT,
+            yarn_colour_id TEXT,
             FOREIGN KEY (recipe_id) REFERENCES recipes(id),
             FOREIGN KEY (yarn_id)   REFERENCES yarns(id)
+        );
+        CREATE TABLE IF NOT EXISTS yarn_colours (
+            id           TEXT PRIMARY KEY,
+            yarn_id      TEXT NOT NULL,
+            name         TEXT NOT NULL,
+            image_path   TEXT DEFAULT '',
+            price        TEXT DEFAULT '',
+            created_date TEXT NOT NULL,
+            FOREIGN KEY (yarn_id) REFERENCES yarns(id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id               TEXT PRIMARY KEY,
@@ -117,6 +127,25 @@ def init_db():
     if "yarn_id" not in ps_cols:
         conn.execute("ALTER TABLE project_sessions ADD COLUMN yarn_id TEXT")
         print("Migration: added 'yarn_id' column to project_sessions")
+    if "yarn_colour_id" not in ps_cols:
+        conn.execute("ALTER TABLE project_sessions ADD COLUMN yarn_colour_id TEXT")
+        print("Migration: added 'yarn_colour_id' column to project_sessions")
+    # yarn_colours table — safe to create if it doesn't exist yet
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS yarn_colours (
+            id           TEXT PRIMARY KEY,
+            yarn_id      TEXT NOT NULL,
+            name         TEXT NOT NULL,
+            image_path   TEXT DEFAULT '',
+            price        TEXT DEFAULT '',
+            created_date TEXT NOT NULL,
+            FOREIGN KEY (yarn_id) REFERENCES yarns(id)
+        )
+    """)
+    yc_cols = [r["name"] for r in conn.execute("PRAGMA table_info(yarn_colours)").fetchall()]
+    if "price" not in yc_cols:
+        conn.execute("ALTER TABLE yarn_colours ADD COLUMN price TEXT DEFAULT ''")
+        print("Migration: added 'price' column to yarn_colours")
     conn.commit()
     conn.close()
 
@@ -304,7 +333,7 @@ def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags:
         recipe["tags"] = [x["name"] for x in conn.execute("SELECT t.name FROM tags t JOIN recipe_tags rt ON t.id=rt.tag_id WHERE rt.recipe_id=?", (recipe["id"],)).fetchall()]
         # Attach project status
         sessions = conn.execute(
-            "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, y.name as yarn_name, y.colour as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
+            "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id, y.name as yarn_name, yc.name as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id LEFT JOIN yarn_colours yc ON ps.yarn_colour_id = yc.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
             (recipe["id"],)
         ).fetchall()
         recipe["sessions"] = [dict(s) for s in sessions]
@@ -491,11 +520,12 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
     if active:
         conn.close(); raise HTTPException(status_code=400, detail="Project already active")
     yarn_id = body.get("yarn_id") or None
+    yarn_colour_id = body.get("yarn_colour_id") or None
     session_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     conn.execute(
-        "INSERT INTO project_sessions (id, recipe_id, started_at, yarn_id) VALUES (?,?,?,?)",
-        (session_id, recipe_id, now, yarn_id)
+        "INSERT INTO project_sessions (id, recipe_id, started_at, yarn_id, yarn_colour_id) VALUES (?,?,?,?,?)",
+        (session_id, recipe_id, now, yarn_id, yarn_colour_id)
     )
     conn.commit()
     recipe = get_recipe_full(recipe_id, conn); conn.close()
@@ -689,7 +719,7 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
         recipe["images"] = []
     # Project status: derive from sessions
     sessions = conn.execute(
-        "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, y.name as yarn_name, y.colour as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
+        "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id, y.name as yarn_name, yc.name as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id LEFT JOIN yarn_colours yc ON ps.yarn_colour_id = yc.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
         (recipe_id,)
     ).fetchall()
     recipe["sessions"] = [dict(s) for s in sessions]
@@ -710,8 +740,20 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
 YARN_DIR = Path("/data/yarns")
 YARN_DIR.mkdir(parents=True, exist_ok=True)
 
-def yarn_to_dict(row) -> dict:
-    return dict(row)
+def yarn_to_dict(row, conn=None) -> dict:
+    d = dict(row)
+    # Attach colour variants — open a connection if one wasn't passed in
+    close = False
+    if conn is None:
+        conn = get_db(); close = True
+    colours = conn.execute(
+        "SELECT id, name, image_path, price FROM yarn_colours WHERE yarn_id=? ORDER BY created_date ASC",
+        (d["id"],)
+    ).fetchall()
+    d["colours"] = [dict(c) for c in colours]
+    if close:
+        conn.close()
+    return d
 
 @app.get("/api/yarns")
 def list_yarns(
@@ -743,8 +785,9 @@ def list_yarns(
         query += " AND seller = ?"; params.append(filter_seller)
     query += " ORDER BY created_date DESC"
     rows = conn.execute(query, params).fetchall()
+    result = [yarn_to_dict(r, conn) for r in rows]
     conn.close()
-    return [yarn_to_dict(r) for r in rows]
+    return result
 
 @app.get("/api/yarns/autocomplete")
 def yarn_autocomplete(field: str, current_user: dict = Depends(get_current_user)):
@@ -759,18 +802,333 @@ def yarn_autocomplete(field: str, current_user: dict = Depends(get_current_user)
     conn.close()
     return {"values": [r[field] for r in rows]}
 
+@app.get("/api/yarns/autocomplete")
+def yarn_autocomplete(field: str, current_user: dict = Depends(get_current_user)):
+    """Return distinct non-empty values for a given field — powers the search datalist and filter pills."""
+    allowed = {"name", "colour", "wool_type", "origin", "seller"}
+    if field not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid field")
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT DISTINCT {field} FROM yarns WHERE {field} != '' AND {field} IS NOT NULL ORDER BY {field}"
+    ).fetchall()
+    conn.close()
+    return {"values": [r[field] for r in rows]}
+
+
+@app.post("/api/yarns/scrape")
+async def scrape_yarn_url(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch a yarn product page and extract key fields.
+    Strategy 1: Shopify JSON API (garnius.no and most Shopify yarn stores).
+    Strategy 2: HTML scraping (sandnesgarn.no and other static sites).
+    """
+    import httpx
+    from bs4 import BeautifulSoup
+    import re
+    import ipaddress, socket
+    from urllib.parse import urlparse as _urlparse
+
+    url = (body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="No URL provided")
+    if not url.startswith("http"):
+        raise HTTPException(status_code=400, detail="URL must start with http/https")
+
+    # Block private/internal addresses — SSRF protection
+    _parsed = _urlparse(url)
+    _hostname = _parsed.hostname or ""
+    if _hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+        raise HTTPException(status_code=400, detail="URL not allowed")
+    try:
+        _ip = ipaddress.ip_address(socket.gethostbyname(_hostname))
+        if _ip.is_private or _ip.is_loopback or _ip.is_link_local or _ip.is_reserved:
+            raise HTTPException(status_code=400, detail="URL not allowed")
+    except (socket.gaierror, ValueError):
+        pass
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        ),
+        "Accept-Language": "nb-NO,nb;q=0.9,no;q=0.8,en;q=0.7",
+    }
+
+    def clean(s):
+        return re.sub(r"\s+", " ", s).strip() if s else ""
+
+    # Shared label map used by both strategies
+    label_map = {
+        "løpelengde":            "yardage",
+        "run length":            "yardage",
+        "meterage":              "yardage",
+        "yardage":               "yardage",
+        "vekt per nøste":        "yardage",
+        "veiledende pinner":     "needles",
+        "anbefalt pinnestørrelse": "needles",
+        "needle size":           "needles",
+        "recommended needle":    "needles",
+        "pinner":                "needles",
+        "strikkefasthet":        "tension",
+        "gauge":                 "tension",
+        "tension":               "tension",
+        "råvare kommer fra":     "origin",
+        "raw material":          "origin",
+        "opprinnelse":           "origin",
+        "sammensetning":         "wool_type",
+        "composition":           "wool_type",
+        "fiber content":         "wool_type",
+        "material":              "wool_type",
+    }
+
+    def parse_specs_from_soup(spec_soup, result):
+        """Parse key:value spec lines from any BeautifulSoup fragment."""
+        for el in spec_soup.find_all(["li", "dt", "dd", "p", "span", "td", "th"]):
+            t = clean(el.get_text())
+            if ":" in t:
+                k, _, v = t.partition(":")
+                k_lower = k.strip().lower()
+                v_clean = v.strip()
+                for label, field in label_map.items():
+                    if label in k_lower and field not in result and v_clean:
+                        result[field] = v_clean
+                        break
+
+    # ── Strategy 1: Shopify JSON API ─────────────────────────────────────────
+    handle = _parsed.path.strip("/").split("/")[-1].split("?")[0]
+    shopify_url = f"{_parsed.scheme}://{_parsed.netloc}/products/{handle}.json"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+            sj = await client.get(shopify_url, headers=headers)
+        if sj.status_code == 200:
+            data = sj.json().get("product", {})
+            if data.get("title"):
+                result = {}
+                result["name"] = data["title"]
+                if data.get("vendor"):
+                    result["seller"] = data["vendor"]
+                # Parse specs out of the description HTML
+                body_html = data.get("body_html", "")
+                if body_html:
+                    desc_soup = BeautifulSoup(body_html, "html.parser")
+                    parse_specs_from_soup(desc_soup, result)
+                    plain = clean(desc_soup.get_text(" "))
+                    if plain:
+                        result["product_info"] = plain[:1000]
+                # Image — first product image, strip Shopify resize params
+                images = data.get("images", [])
+                if images:
+                    src = images[0].get("src", "")
+                    if src:
+                        result["image_url"] = re.sub(r"\?.*$", "", src)
+                # Price from first variant
+                variants = data.get("variants", [])
+                if variants and variants[0].get("price"):
+                    result["price_per_skein"] = variants[0]["price"]
+                result = {k: v for k, v in result.items() if v}
+                return result
+    except Exception:
+        pass  # Not Shopify or failed — fall through to HTML scraping
+
+    # ── Strategy 2: HTML scraping ────────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Page returned {resp.status_code}")
+        html = resp.text
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch URL: {e}")
+
+    soup = BeautifulSoup(html, "html.parser")
+    result = {}
+
+    def find_text(*selectors):
+        for sel in selectors:
+            el = soup.select_one(sel)
+            if el:
+                return clean(el.get_text())
+        return ""
+
+    # ── Product name ──────────────────────────────────────────────────────────
+    result["name"] = (
+        find_text("h1.page-title", "h1", "[itemprop='name']")
+        or clean(soup.title.get_text()).split("|")[0].split("-")[0]
+    )
+
+    # ── Wool type (subtitle / fibre composition) ──────────────────────────────
+    # Sandnes shows it as a <p> just below the h1, or in a subtitle element
+    subtitle = find_text(".product-subtitle", ".product.attribute.overview p", "h1 + p")
+    if not subtitle:
+        # Fallback: look for lines containing % signs near the product title
+        for tag in soup.find_all(["p", "div", "span"]):
+            t = clean(tag.get_text())
+            if re.search(r"\d+\s*%", t) and len(t) < 120:
+                subtitle = t
+                break
+    result["wool_type"] = subtitle
+
+    # ── Structured spec rows (Sandnes uses a <ul> list of key: value pairs) ──
+    specs = {}
+    # Pattern 1: <li> containing "label: value" text
+    for li in soup.select("ul li, .product-attribute li, .data.item"):
+        text = clean(li.get_text())
+        if ":" in text:
+            parts = text.split(":", 1)
+            key = parts[0].strip().lower()
+            val = parts[1].strip()
+            specs[key] = val
+
+    # Pattern 2: definition list <dt>/<dd>
+    dts = soup.select("dl dt")
+    for dt in dts:
+        dd = dt.find_next_sibling("dd")
+        if dd:
+            specs[clean(dt.get_text()).lower()] = clean(dd.get_text())
+
+    # Map spec labels → fields using the shared label_map defined above
+    for raw_key, val in specs.items():
+        for label, field in label_map.items():
+            if label in raw_key and field not in result:
+                result[field] = val
+                break
+
+    # ── Seller — derive from domain ───────────────────────────────────────────
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc.replace("www.", "")
+    seller_map = {
+        "sandnesgarn.no": "Sandnes Garn",
+        "garnstudio.com":  "Drops",
+        "dropsdesign.com": "Drops",
+        "rowan.com":       "Rowan",
+        "loveknitting.com":"LoveKnitting",
+        "woolwarehouse.co.uk": "Wool Warehouse",
+    }
+    result["seller"] = seller_map.get(domain, domain)
+
+    # ── Price ─────────────────────────────────────────────────────────────────
+    price_el = soup.select_one(
+        ".price, [itemprop='price'], .product-price, .price-wrapper"
+    )
+    if price_el:
+        price_text = clean(price_el.get_text())
+        # Keep only the first price-looking chunk (digits + currency)
+        m = re.search(r"[\d,.]+\s*(kr|nok|€|\$|£|eur|usd|gbp)?", price_text, re.I)
+        if m:
+            result["price_per_skein"] = m.group(0).strip()
+
+    # ── Colour ────────────────────────────────────────────────────────────────
+    colour = ""
+    # Pattern 1: selected swatch label (works when a colour variant URL is used)
+    for sel in [
+        ".swatch-option.selected .swatch-label",
+        ".swatch-option.selected",
+        ".selected-color-label",
+        ".product-option-selected",
+        "[data-option-type='1'].selected",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            colour = clean(el.get_text())
+            if colour:
+                break
+    # Pattern 2: page title contains more than just the product name
+    # e.g. Sandnes title = "Atlas Natural White 1012" vs product name "Atlas"
+    if not colour and result.get("name"):
+        page_title = clean(soup.title.get_text()) if soup.title else ""
+        page_title = re.split(r"\s*[|\-–]\s*", page_title)[0].strip()
+        base_name = result["name"]
+        if page_title.lower().startswith(base_name.lower()) and len(page_title) > len(base_name):
+            colour_candidate = page_title[len(base_name):].strip()
+            if colour_candidate and len(colour_candidate) < 60:
+                colour = colour_candidate
+    # Pattern 3: look for a short text containing a 4-digit colour number
+    if not colour:
+        for tag in soup.find_all(["span", "div", "p", "h2", "h3"]):
+            t = clean(tag.get_text())
+            if re.search(r"\b\d{4}\b", t) and 3 < len(t) < 50 and t != result.get("name", ""):
+                colour = t
+                break
+    if colour:
+        result["colour"] = colour
+
+    # ── Product image ─────────────────────────────────────────────────────────
+    img_url = None
+
+    def get_img_src(el):
+        """Return src, checking data-src and data-original for lazy-loaded images too."""
+        for attr in ["src", "data-src", "data-original", "data-lazy"]:
+            v = el.get(attr, "")
+            if v and not v.endswith(".svg") and not v.startswith("data:"):
+                if v.startswith("//"):
+                    v = "https:" + v
+                return v
+        return None
+
+    # Try CSS selectors first — Sandnes uses alt="main product photo"
+    for sel in [
+        "img[alt='main product photo']",
+        ".gallery-placeholder img",
+        ".product.media img",
+        "[itemprop='image']",
+        ".fotorama__img",
+        "img.product-image-photo",
+        ".product-image img",
+        ".product__image img",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            src = get_img_src(el)
+            if src:
+                img_url = src
+                break
+
+    # Fallback: scan all images for catalog/product path patterns
+    if not img_url:
+        for img in soup.find_all("img"):
+            if "/icons/" in (img.get("src") or "") or "/logo" in (img.get("src") or ""):
+                continue
+            src = get_img_src(img)
+            if src and any(p in src for p in ["/catalog/product", "/products/", "/media/", "/yarn/"]):
+                img_url = src
+                break
+
+    # Last resort: first non-SVG, non-base64 image with a real image extension
+    if not img_url:
+        for img in soup.find_all("img"):
+            src = get_img_src(img)
+            if src and src.startswith("http") and re.search(r"\.(jpe?g|png|webp)", src, re.I):
+                if not any(x in src for x in ["/icons/", "/logo", "/banner", "/sprite"]):
+                    img_url = src
+                    break
+
+    result["image_url"] = img_url
+
+    # ── Strip empty values ────────────────────────────────────────────────────
+    result = {k: v for k, v in result.items() if v}
+
+    return result
+
+
 @app.get("/api/yarns/{yarn_id}")
 def get_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Yarn not found")
+    result = yarn_to_dict(row, conn)
     conn.close()
-    if not row: raise HTTPException(status_code=404, detail="Yarn not found")
-    return yarn_to_dict(row)
+    return result
 
 @app.post("/api/yarns")
 async def create_yarn(
     name: str = Form(...),
-    colour: str = Form(""),
     wool_type: str = Form(""),
     yardage: str = Form(""),
     needles: str = Form(""),
@@ -793,7 +1151,6 @@ async def create_yarn(
             save_path = yarn_dir / f"yarn{ext}"
             with open(save_path, "wb") as f:
                 f.write(data)
-            # Generate thumbnail
             try:
                 from PIL import Image as PILImage
                 img = PILImage.open(save_path)
@@ -805,18 +1162,18 @@ async def create_yarn(
     conn = get_db()
     conn.execute(
         "INSERT INTO yarns (id,name,colour,wool_type,yardage,needles,tension,origin,seller,price_per_skein,product_info,image_path,created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (yarn_id, name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, datetime.utcnow().isoformat())
+        (yarn_id, name, "", wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, datetime.utcnow().isoformat())
     )
     conn.commit()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    result = yarn_to_dict(row, conn)
     conn.close()
-    return yarn_to_dict(row)
+    return result
 
 @app.put("/api/yarns/{yarn_id}")
 async def update_yarn(
     yarn_id: str,
     name: str = Form(...),
-    colour: str = Form(""),
     wool_type: str = Form(""),
     yardage: str = Form(""),
     needles: str = Form(""),
@@ -830,7 +1187,9 @@ async def update_yarn(
 ):
     conn = get_db()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
-    if not row: conn.close(); raise HTTPException(status_code=404, detail="Yarn not found")
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Yarn not found")
     yarn_dir = YARN_DIR / yarn_id
     yarn_dir.mkdir(parents=True, exist_ok=True)
     image_path = row["image_path"]
@@ -839,28 +1198,111 @@ async def update_yarn(
         if ext in [".jpg", ".jpeg", ".png", ".webp"]:
             data = await image.read()
             save_path = yarn_dir / f"yarn{ext}"
-            with open(save_path, "wb") as f: f.write(data)
+            with open(save_path, "wb") as f:
+                f.write(data)
             try:
                 from PIL import Image as PILImage
                 img = PILImage.open(save_path)
                 img.thumbnail((600, 600))
                 img.save(str(yarn_dir / "thumbnail.jpg"), "JPEG", quality=85)
-            except Exception as e: print(f"Yarn thumbnail failed: {e}")
+            except Exception as e:
+                print(f"Yarn thumbnail failed: {e}")
             image_path = f"yarn{ext}"
     conn.execute(
-        "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=?,image_path=? WHERE id=?",
-        (name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, yarn_id)
+        "UPDATE yarns SET name=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=?,image_path=? WHERE id=?",
+        (name, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, yarn_id)
     )
     conn.commit()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    result = yarn_to_dict(row, conn)
     conn.close()
-    return yarn_to_dict(row)
+    return result
+
+# ── Yarn Colour endpoints ─────────────────────────────────────────────────────
+
+@app.get("/api/yarns/{yarn_id}/colours")
+def list_yarn_colours(yarn_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM yarn_colours WHERE yarn_id=? ORDER BY created_date ASC", (yarn_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/yarns/{yarn_id}/colours")
+async def add_yarn_colour(
+    yarn_id: str,
+    name: str = Form(...),
+    price: str = Form(""),
+    image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM yarns WHERE id=?", (yarn_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Yarn not found")
+    colour_id = str(uuid.uuid4())
+    colour_dir = YARN_DIR / yarn_id / "colours" / colour_id
+    colour_dir.mkdir(parents=True, exist_ok=True)
+    image_path = ""
+    if image and image.filename:
+        ext = Path(image.filename.lower()).suffix
+        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            data = await image.read()
+            save_path = colour_dir / f"colour{ext}"
+            with open(save_path, "wb") as f:
+                f.write(data)
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(save_path)
+                img.thumbnail((400, 400))
+                img.save(str(colour_dir / "thumb.jpg"), "JPEG", quality=85)
+            except Exception as e:
+                print(f"Colour thumb failed: {e}")
+            image_path = f"colours/{colour_id}/colour{ext}"
+    conn.execute(
+        "INSERT INTO yarn_colours (id, yarn_id, name, image_path, price, created_date) VALUES (?,?,?,?,?,?)",
+        (colour_id, yarn_id, name, image_path, price, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM yarn_colours WHERE id=?", (colour_id,)).fetchone()
+    conn.close()
+    return dict(row)
+
+@app.delete("/api/yarns/{yarn_id}/colours/{colour_id}")
+def delete_yarn_colour(yarn_id: str, colour_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM yarn_colours WHERE id=? AND yarn_id=?", (colour_id, yarn_id)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Colour not found")
+    conn.execute("DELETE FROM yarn_colours WHERE id=?", (colour_id,))
+    conn.commit()
+    conn.close()
+    # Remove colour image files
+    colour_dir = YARN_DIR / yarn_id / "colours" / colour_id
+    if colour_dir.exists():
+        shutil.rmtree(colour_dir)
+    return {"message": "Colour deleted"}
+
+@app.get("/api/yarns/{yarn_id}/colours/{colour_id}/image")
+def get_yarn_colour_image(yarn_id: str, colour_id: str, request: Request, token: Optional[str] = None):
+    """Serve colour image by colour ID."""
+    verify_token_param(request, token)
+    colour_dir = YARN_DIR / yarn_id / "colours" / colour_id
+    for name in ["thumb.jpg", "colour.jpg", "colour.jpeg", "colour.png", "colour.webp"]:
+        p = colour_dir / name
+        if p.exists():
+            mt = "image/jpeg" if name.endswith((".jpg", ".jpeg")) else "image/png" if name.endswith(".png") else "image/webp"
+            return FileResponse(str(p), media_type=mt)
+    raise HTTPException(status_code=404, detail="No image")
 
 @app.delete("/api/yarns/{yarn_id}")
 def delete_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
     if not conn.execute("SELECT id FROM yarns WHERE id=?", (yarn_id,)).fetchone():
         conn.close(); raise HTTPException(status_code=404, detail="Yarn not found")
+    conn.execute("DELETE FROM yarn_colours WHERE yarn_id=?", (yarn_id,))
     conn.execute("DELETE FROM yarns WHERE id=?", (yarn_id,))
     conn.commit(); conn.close()
     yarn_dir = YARN_DIR / yarn_id

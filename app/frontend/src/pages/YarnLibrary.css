@@ -145,3 +145,38 @@
 .yarn-card-item .recipe-card-thumb {
   aspect-ratio: 4/3;
 }
+
+/* ── Colour swatch strip on yarn cards ────────────────────────────────────── */
+.yarn-card-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.yarn-card-swatch-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  background: var(--surface-alt, var(--surface));
+  flex-shrink: 0;
+}
+.yarn-card-swatch-dot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.yarn-card-swatches-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
