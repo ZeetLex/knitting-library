@@ -166,7 +166,7 @@
 }
 .yv-spec-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 180px) 1fr;
+  grid-template-columns: 24px 140px 1fr;
   align-items: start;
   gap: 10px;
   padding: 10px 14px;
@@ -178,15 +178,13 @@
   .yv-spec-row:hover { background: var(--bg-secondary); }
 }
 @media (max-width: 480px) {
-  .yv-spec-row { grid-template-columns: 20px minmax(0, 130px) 1fr; gap: 6px; padding: 8px 10px; }
+  .yv-spec-row { grid-template-columns: 20px 110px 1fr; gap: 6px; padding: 8px 10px; }
 }
-.yv-spec-icon { font-size: 15px; line-height: 1.5; flex-shrink: 0; }
+.yv-spec-icon { font-size: 15px; line-height: 1.5; }
 .yv-spec-label {
-  font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--text-light); line-height: 1.4;
-  word-break: break-word;
-  hyphens: auto;
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-light); line-height: 1.5;
 }
 .yv-spec-value {
   font-size: 13px; color: var(--text-primary); line-height: 1.5;
