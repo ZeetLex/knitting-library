@@ -77,11 +77,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS yarns (
             id               TEXT PRIMARY KEY,
             name             TEXT NOT NULL,
+            colour           TEXT DEFAULT '',
             wool_type        TEXT DEFAULT '',
             yardage          TEXT DEFAULT '',
             needles          TEXT DEFAULT '',
             tension          TEXT DEFAULT '',
             origin           TEXT DEFAULT '',
+            seller           TEXT DEFAULT '',
+            price_per_skein  TEXT DEFAULT '',
             product_info     TEXT DEFAULT '',
             image_path       TEXT DEFAULT '',
             created_date     TEXT NOT NULL
@@ -96,6 +99,17 @@ def init_db():
             (admin_id, "admin", hash_password("admin"), datetime.utcnow().isoformat())
         )
         print("Default admin created: username=admin password=admin  -- PLEASE CHANGE THIS!")
+    # Migrations — add columns that may not exist in older databases
+    existing_cols = [r["name"] for r in conn.execute("PRAGMA table_info(yarns)").fetchall()]
+    if "colour" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN colour TEXT DEFAULT ''")
+        print("Migration: added 'colour' column to yarns")
+    if "seller" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN seller TEXT DEFAULT ''")
+        print("Migration: added 'seller' column to yarns")
+    if "price_per_skein" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN price_per_skein TEXT DEFAULT ''")
+        print("Migration: added 'price_per_skein' column to yarns")
     conn.commit()
     conn.close()
 
@@ -692,18 +706,50 @@ def yarn_to_dict(row) -> dict:
     return dict(row)
 
 @app.get("/api/yarns")
-def list_yarns(search: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+def list_yarns(
+    search: Optional[str] = None, field: Optional[str] = None,
+    filter_colour: Optional[str] = None,
+    filter_wool_type: Optional[str] = None,
+    filter_seller: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     conn = get_db()
     query = "SELECT * FROM yarns WHERE 1=1"
     params = []
     if search:
         like = f"%{search}%"
-        query += " AND (name LIKE ? OR wool_type LIKE ? OR origin LIKE ? OR product_info LIKE ?)"
-        params.extend([like, like, like, like])
+        if field == "name":
+            query += " AND name LIKE ?"; params.append(like)
+        elif field == "colour":
+            query += " AND colour LIKE ?"; params.append(like)
+        elif field == "material":
+            query += " AND (wool_type LIKE ? OR origin LIKE ?)"; params.extend([like, like])
+        else:
+            query += " AND (name LIKE ? OR colour LIKE ? OR wool_type LIKE ? OR origin LIKE ? OR product_info LIKE ? OR seller LIKE ?)"
+            params.extend([like, like, like, like, like, like])
+    if filter_colour:
+        query += " AND colour = ?"; params.append(filter_colour)
+    if filter_wool_type:
+        query += " AND wool_type = ?"; params.append(filter_wool_type)
+    if filter_seller:
+        query += " AND seller = ?"; params.append(filter_seller)
     query += " ORDER BY created_date DESC"
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [yarn_to_dict(r) for r in rows]
+
+@app.get("/api/yarns/autocomplete")
+def yarn_autocomplete(field: str, current_user: dict = Depends(get_current_user)):
+    """Return distinct non-empty values for a given field — powers the search datalist and filter pills."""
+    allowed = {"name", "colour", "wool_type", "origin", "seller"}
+    if field not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid field")
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT DISTINCT {field} FROM yarns WHERE {field} != '' AND {field} IS NOT NULL ORDER BY {field}"
+    ).fetchall()
+    conn.close()
+    return {"values": [r[field] for r in rows]}
 
 @app.get("/api/yarns/{yarn_id}")
 def get_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
@@ -716,12 +762,15 @@ def get_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
 @app.post("/api/yarns")
 async def create_yarn(
     name: str = Form(...),
+    colour: str = Form(""),
     wool_type: str = Form(""),
     yardage: str = Form(""),
     needles: str = Form(""),
     tension: str = Form(""),
     origin: str = Form(""),
     product_info: str = Form(""),
+    seller: str = Form(""),
+    price_per_skein: str = Form(""),
     image: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
@@ -747,8 +796,8 @@ async def create_yarn(
             image_path = f"yarn{ext}"
     conn = get_db()
     conn.execute(
-        "INSERT INTO yarns (id,name,wool_type,yardage,needles,tension,origin,product_info,image_path,created_date) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (yarn_id, name, wool_type, yardage, needles, tension, origin, product_info, image_path, datetime.utcnow().isoformat())
+        "INSERT INTO yarns (id,name,colour,wool_type,yardage,needles,tension,origin,seller,price_per_skein,product_info,image_path,created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (yarn_id, name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, datetime.utcnow().isoformat())
     )
     conn.commit()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
@@ -759,12 +808,15 @@ async def create_yarn(
 async def update_yarn(
     yarn_id: str,
     name: str = Form(...),
+    colour: str = Form(""),
     wool_type: str = Form(""),
     yardage: str = Form(""),
     needles: str = Form(""),
     tension: str = Form(""),
     origin: str = Form(""),
     product_info: str = Form(""),
+    seller: str = Form(""),
+    price_per_skein: str = Form(""),
     image: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
@@ -788,8 +840,8 @@ async def update_yarn(
             except Exception as e: print(f"Yarn thumbnail failed: {e}")
             image_path = f"yarn{ext}"
     conn.execute(
-        "UPDATE yarns SET name=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,product_info=?,image_path=? WHERE id=?",
-        (name, wool_type, yardage, needles, tension, origin, product_info, image_path, yarn_id)
+        "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=?,image_path=? WHERE id=?",
+        (name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, yarn_id)
     )
     conn.commit()
     row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()

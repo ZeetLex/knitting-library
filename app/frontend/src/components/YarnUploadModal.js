@@ -11,8 +11,8 @@ import { createYarn, updateYarn, yarnImageUrl } from '../utils/api';
 import './YarnUploadModal.css';
 
 const EMPTY = {
-  name: '', wool_type: '', yardage: '', needles: '',
-  tension: '', origin: '', product_info: '',
+  name: '', colour: '', wool_type: '', yardage: '', needles: '',
+  tension: '', origin: '', seller: '', price_per_skein: '', product_info: '',
 };
 
 export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
@@ -107,13 +107,23 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
 
           {/* Fields */}
           <div className="yum-fields">
-            <Field label={t('yarnName')} required>
-              <input
-                type="text" value={fields.name} placeholder={t('yarnName')}
-                onChange={(e) => set('name', e.target.value)}
-                className="yum-input"
-              />
-            </Field>
+            <div className="yum-row">
+              <Field label={t('yarnName')} required>
+                <input
+                  type="text" value={fields.name} placeholder={t('yarnName')}
+                  onChange={(e) => set('name', e.target.value)}
+                  className="yum-input"
+                />
+              </Field>
+              <Field label={t('colour')}>
+                <input
+                  type="text" value={fields.colour}
+                  placeholder="e.g. White, Navy Blue"
+                  onChange={(e) => set('colour', e.target.value)}
+                  className="yum-input"
+                />
+              </Field>
+            </div>
 
             <Field label={t('woolType')}>
               <input
@@ -157,6 +167,25 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
                   type="text" value={fields.origin}
                   placeholder="e.g. Alpaca from Peru, Wool from Australia"
                   onChange={(e) => set('origin', e.target.value)}
+                  className="yum-input"
+                />
+              </Field>
+            </div>
+
+            <div className="yum-row">
+              <Field label={t('seller')}>
+                <input
+                  type="text" value={fields.seller}
+                  placeholder="e.g. Sandnes Garn"
+                  onChange={(e) => set('seller', e.target.value)}
+                  className="yum-input"
+                />
+              </Field>
+              <Field label={t('pricePerSkein')}>
+                <input
+                  type="text" value={fields.price_per_skein}
+                  placeholder="e.g. ca. 100kr"
+                  onChange={(e) => set('price_per_skein', e.target.value)}
                   className="yum-input"
                 />
               </Field>

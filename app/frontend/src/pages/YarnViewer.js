@@ -88,9 +88,14 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
         {/* Details */}
         <div className="yv-details">
           <h1 className="yv-name">{yarn.name}</h1>
-          {yarn.wool_type && <p className="yv-wool-type">{yarn.wool_type}</p>}
 
           <div className="yv-specs">
+            {yarn.colour && (
+              <SpecRow icon="🎨" label={t('colour')} value={yarn.colour} />
+            )}
+            {yarn.wool_type && (
+              <SpecRow icon="🐑" label={t('woolType')} value={yarn.wool_type} />
+            )}
             {yarn.yardage && (
               <SpecRow icon="📏" label={t('yardage')} value={yarn.yardage} />
             )}
@@ -102,6 +107,12 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
             )}
             {yarn.origin && (
               <SpecRow icon="🌍" label={t('origin')} value={yarn.origin} />
+            )}
+            {yarn.seller && (
+              <SpecRow icon="🏪" label={t('seller')} value={yarn.seller} />
+            )}
+            {yarn.price_per_skein && (
+              <SpecRow icon="💰" label={t('pricePerSkein')} value={yarn.price_per_skein} />
             )}
           </div>
 

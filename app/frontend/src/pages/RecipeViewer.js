@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
@@ -16,6 +16,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pdfPages, setPdfPages]     = useState([]);
   const [converting, setConverting] = useState(false);
   const touchStartX = useRef(null);
@@ -216,7 +217,21 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           )}
         </div>
 
-        <aside className="viewer-sidebar">
+        <aside className={`viewer-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
+          {/* Mobile toggle handle */}
+          <button
+            className="sidebar-mobile-toggle"
+            onClick={() => setSidebarOpen(o => !o)}
+            aria-label="Toggle info panel"
+          >
+            <span className="sidebar-toggle-label">
+              {sidebarOpen ? t('hideInfo') : t('showInfo')}
+            </span>
+            {sidebarOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          </button>
+
+          {/* Sidebar content — always visible on desktop, toggleable on mobile */}
+          <div className="sidebar-content">
           <h1 className="viewer-title">{recipe.title}</h1>
           {recipe.description && <p className="viewer-description">{recipe.description}</p>}
 
@@ -249,6 +264,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               { year: 'numeric', month: 'long', day: 'numeric' }
             )}
           </p>
+          </div>{/* end sidebar-content */}
         </aside>
       </div>
 

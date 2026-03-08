@@ -77,12 +77,14 @@
 .viewer-action-btn.danger:hover { border-color: #e05555; color: #e05555; }
 
 /* ── Body Layout ────────────────────────────────────────────────────────────── */
-/* Mobile: stacked column — sidebar first, then content */
+/* Mobile: content fills full screen; sidebar is fixed at bottom */
 .viewer-body {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow-x: hidden;
+  /* Extra bottom padding so content isn't hidden behind the fixed sidebar toggle */
+  padding-bottom: 52px;
 }
 
 /* Desktop: two columns */
@@ -92,6 +94,7 @@
     grid-template-columns: 1fr 280px;
     flex: 1;
     overflow: hidden;
+    padding-bottom: 0;
   }
 }
 
@@ -101,29 +104,91 @@
 
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
 .viewer-sidebar {
-  padding: 14px 12px;
   background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+
+  /* Mobile: fixed to bottom of viewport */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  /* Only show the toggle handle by default — content is hidden */
+  max-height: 52px;
+  transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+}
+
+/* When open, expand to show full content */
+.viewer-sidebar.sidebar-open {
+  max-height: 80dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile toggle button — always visible */
+.sidebar-mobile-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--card-bg);
+  z-index: 1;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-toggle-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--terracotta);
+}
+
+/* Content wrapper — padding lives here */
+.sidebar-content {
+  padding: 16px 16px 80px; /* bottom pad so content clears the toggle */
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border-bottom: 1px solid var(--border);
-  /* On mobile: no set height, just stacks naturally */
-  overflow: hidden;
 }
 
-@media (min-width: 641px) {
-  .viewer-sidebar { padding: 18px 20px; }
-}
-
+/* Desktop: revert to side column — hide the toggle */
 @media (min-width: 769px) {
   .viewer-sidebar {
-    border-bottom: none;
-    border-left: 1px solid var(--border);
-    padding: 24px 20px;
+    position: static;
+    max-height: none;
     overflow-y: auto;
+    border-top: none;
+    border-left: 1px solid var(--border);
+    box-shadow: none;
+    padding: 0;
     order: 1;
+    gap: 0;
+  }
+  .sidebar-mobile-toggle { display: none; }
+  .sidebar-content {
+    padding: 24px 20px;
+    gap: 12px;
   }
 }
+
+@media (min-width: 641px) and (max-width: 768px) {
+  .sidebar-content { padding: 18px 20px 80px; }
+}
+
 
 .viewer-title {
   font-family: 'Playfair Display', serif;

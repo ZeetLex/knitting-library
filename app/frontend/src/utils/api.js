@@ -194,12 +194,23 @@ export async function clearSessions(recipeId) {
 }
 
 // ── Yarn API ──────────────────────────────────────────────────────────────────
-export async function fetchYarns({ search = '' } = {}) {
+export async function fetchYarns({ search = '', field = '', filterColour = '', filterWoolType = '', filterSeller = '' } = {}) {
   const params = new URLSearchParams();
-  if (search) params.set('search', search);
+  if (search)         params.set('search', search);
+  if (field)          params.set('field', field);
+  if (filterColour)   params.set('filter_colour', filterColour);
+  if (filterWoolType) params.set('filter_wool_type', filterWoolType);
+  if (filterSeller)   params.set('filter_seller', filterSeller);
   const res = await fetch(`${API_BASE}/yarns?${params}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load yarns');
   return res.json();
+}
+
+export async function fetchYarnAutocomplete(field) {
+  const res = await fetch(`${API_BASE}/yarns/autocomplete?field=${field}`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.values || [];
 }
 
 export async function fetchYarn(id) {

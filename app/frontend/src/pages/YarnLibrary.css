@@ -1,216 +1,147 @@
 /* ══════════════════════════════════════════════════════════════════════════════
-   Yarn Library Page
+   Yarn Library — extends Library.css shared styles
+   Only yarn-specific overrides are here.
 ══════════════════════════════════════════════════════════════════════════════ */
 
-.yarn-library {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  padding: 0 0 40px;
+/* Allow the field dropdown to escape the sticky controls bar (yarn page only) */
+.yarn-library .library-controls {
+  overflow: visible;
+}
+.yarn-library .library-controls-inner {
+  overflow: visible;
 }
 
-/* ── Toolbar ─────────────────────────────────────────────────────────────── */
-.yarn-toolbar {
-  display: flex;
+/* ── Combined search: field selector + input in one bar ─────────────────── */
+.yarn-search-combined {
+  display: flex !important;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card-bg);
-  flex-wrap: wrap;
-}
-
-.yarn-search-wrap {
-  position: relative;
-  flex: 1;
-  min-width: 180px;
-}
-.yarn-search-icon {
-  position: absolute;
-  left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--text-light);
-  pointer-events: none;
-}
-.yarn-search {
-  width: 100%;
-  padding: 8px 12px 8px 34px;
-  background: var(--bg-secondary);
-  border: 1.5px solid var(--border);
-  border-radius: 100px;
-  color: var(--text-primary);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 16px;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-}
-.yarn-search:focus { outline: none; border-color: var(--terracotta); }
-
-.yarn-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.yarn-grid-btns {
-  display: flex;
-  gap: 2px;
-  background: var(--bg-secondary);
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 2px;
-}
-.yarn-grid-btn {
-  padding: 5px 7px;
-  background: none; border: none; cursor: pointer;
-  color: var(--text-light); border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  transition: var(--transition);
-}
-.yarn-grid-btn.active { background: var(--terracotta); color: white; }
-
-.yarn-add-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 16px;
-  background: var(--terracotta);
-  border: none; border-radius: var(--radius-sm);
-  color: white; font-family: 'DM Sans', sans-serif;
-  font-size: 14px; font-weight: 600;
-  cursor: pointer; white-space: nowrap;
-  transition: var(--transition);
-}
-@media (hover: hover) and (pointer: fine) {
-  .yarn-add-btn:hover { background: var(--terracotta-dark, #b5603c); }
-}
-
-/* ── Meta bar ────────────────────────────────────────────────────────────── */
-.yarn-meta {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.yarn-count {
-  font-size: 12px;
-  color: var(--text-light);
-  font-weight: 500;
-}
-
-/* ── Grid ────────────────────────────────────────────────────────────────── */
-.yarn-grid {
-  display: grid;
-  gap: 16px;
-  padding: 20px 16px;
-}
-.yarn-grid.grid-small  { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
-.yarn-grid.grid-medium { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-.yarn-grid.grid-large  { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-
-@media (max-width: 480px) {
-  .yarn-grid.grid-small  { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
-  .yarn-grid.grid-medium { grid-template-columns: repeat(2, 1fr); }
-  .yarn-grid.grid-large  { grid-template-columns: 1fr; }
-}
-
-/* ── Skeleton ────────────────────────────────────────────────────────────── */
-.yarn-grid-skeleton {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  padding: 20px 16px;
-}
-
-/* ── Empty state ─────────────────────────────────────────────────────────── */
-.yarn-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 80px 20px;
-  color: var(--text-secondary);
-  text-align: center;
-}
-.yarn-empty-icon { font-size: 48px; }
-.yarn-empty-hint { font-size: 13px; color: var(--text-light); }
-
-/* ── Yarn Card ───────────────────────────────────────────────────────────── */
-.yarn-card {
+  padding: 0 !important;
+  overflow: visible;
+  /* Match exact recipe search-input appearance */
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
-  cursor: pointer;
-  text-align: left;
-  padding: 0;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-@media (hover: hover) and (pointer: fine) {
-  .yarn-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 28px rgba(0,0,0,0.15);
-    border-color: var(--terracotta);
-  }
+  height: 40px;
 }
 
-.yarn-card-thumb {
+.yarn-field-selector {
   position: relative;
-  width: 100%;
-  padding-top: 70%;
-  background: var(--bg-secondary);
-  overflow: hidden;
   flex-shrink: 0;
-}
-.yarn-card-thumb img {
-  position: absolute;
-  inset: 0; width: 100%; height: 100%;
-  object-fit: cover;
-}
-.yarn-card-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 36px;
-  color: var(--text-light);
+  /* Must be above filter panel */
+  z-index: 200;
 }
 
-.yarn-card-info {
-  padding: 10px 12px 12px;
+.yarn-field-btn {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
-  flex: 1;
-}
-.yarn-card-title {
+  padding: 0 10px 0 14px;
+  height: 38px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.3;
-  word-break: break-word;
-  margin: 0;
-}
-.yarn-card-sub {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.4;
-}
-.yarn-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
-}
-.yarn-chip {
-  font-size: 10px;
-  color: var(--text-light);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  padding: 2px 7px;
+  cursor: pointer;
   white-space: nowrap;
+  transition: color 0.12s;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.yarn-field-btn:hover { color: var(--terracotta); }
+.yarn-field-btn .rotated { transform: rotate(180deg); transition: transform 0.15s; }
+
+.yarn-field-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.yarn-field-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.22);
+  /* High z-index so it always floats above filter panel */
+  z-index: 300;
+  min-width: 150px;
+  animation: slideUp 0.14s ease;
+}
+
+.yarn-field-option {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.yarn-field-option:hover  { background: var(--bg-secondary); color: var(--text-primary); }
+.yarn-field-option.active { background: rgba(196,113,74,0.12); color: var(--terracotta); font-weight: 600; }
+
+/* Input area — its own relative container so .search-icon positions correctly */
+.yarn-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* .search-icon inside yarn-input-wrap uses Library.css absolute positioning — works correctly */
+.yarn-search-input {
+  padding-left: 36px !important;
+  border: none !important;
+  border-radius: 0 var(--radius) var(--radius) 0 !important;
+  height: 38px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 100%;
+}
+/* Focus ring on the wrapper, not the input */
+.yarn-search-combined:focus-within {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 113, 74, 0.12);
+}
+.yarn-search-input:focus {
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+/* ── Colour badge on yarn card thumbnail ─────────────────────────────────── */
+.yarn-colour-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  background: rgba(0,0,0,0.52);
+  color: white;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  max-width: calc(100% - 12px);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Yarn card thumb uses same ratio as recipe cards ─────────────────────── */
+.yarn-card-item .recipe-card-thumb {
+  aspect-ratio: 4/3;
 }
