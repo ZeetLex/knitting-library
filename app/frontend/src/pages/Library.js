@@ -7,10 +7,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
+import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchCategories, fetchTags } from '../utils/api';
 import './Library.css';
 
 // Grid size options - small shows more cards, large shows fewer but bigger
+const { t } = useApp();
 const GRID_SIZES = {
   small:  { label: 'Small',  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
   medium: { label: 'Medium', icon: <LayoutGrid size={16} />, cols: 'grid-medium' },

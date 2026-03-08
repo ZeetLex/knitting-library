@@ -7,6 +7,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen } from 'lucide-react';
+import { useApp } from '../utils/AppContext';
 import { createRecipe, fetchCategories } from '../utils/api';
 import './UploadModal.css';
 

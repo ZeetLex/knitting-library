@@ -12,6 +12,7 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
   Maximize2, Pencil, Trash2, Tag, FolderOpen, X
 } from 'lucide-react';
+import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl } from '../utils/api';
 import './RecipeViewer.css';
 

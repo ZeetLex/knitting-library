@@ -1,7 +1,7 @@
 /* ─── Upload Modal ────────────────────────────────────────────────────────────── */
 
 .upload-modal {
-  background: white;
+  background: var(--card-bg);
   border-radius: var(--radius);
   width: 100%;
   max-width: 540px;
@@ -17,7 +17,7 @@
   border: 2px dashed var(--border);
   border-radius: var(--radius);
   transition: var(--transition);
-  background: var(--cream);
+  background: var(--bg-primary);
   overflow: hidden;
 }
 

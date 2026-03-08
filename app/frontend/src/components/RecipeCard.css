@@ -1,7 +1,7 @@
 /* ─── Recipe Card ─────────────────────────────────────────────────────────────── */
 
 .recipe-card {
-  background: white;
+  background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -30,7 +30,7 @@
 .recipe-card-thumb {
   position: relative;
   aspect-ratio: 3 / 4;
-  background: var(--cream-dark);
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 
@@ -106,7 +106,7 @@
 }
 
 .recipe-tag {
-  background: var(--cream-dark);
+  background: var(--bg-secondary);
   color: var(--text-secondary);
   font-size: 11px;
   padding: 2px 8px;

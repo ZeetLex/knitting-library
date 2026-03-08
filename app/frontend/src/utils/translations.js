@@ -1,0 +1,239 @@
+/**
+ * translations.js
+ * All text in the app lives here in both English and Norwegian.
+ * To add a new language, add a new key block below.
+ */
+
+const translations = {
+  en: {
+    // App
+    appName: "Knitting Library",
+
+    // Auth
+    login: "Sign In",
+    logout: "Sign Out",
+    username: "Username",
+    password: "Password",
+    signingIn: "Signing in…",
+    loginError: "Incorrect username or password",
+    loginWelcome: "Welcome back",
+    loginSubtitle: "Sign in to your knitting library",
+
+    // Header
+    addRecipe: "Add Recipe",
+
+    // Library
+    searchPlaceholder: "Search recipes, tags…",
+    filters: "Filters",
+    category: "Category",
+    tags: "Tags",
+    all: "All",
+    clearFilters: "Clear all filters",
+    noRecipes: "Your library is empty",
+    noRecipesFiltered: "No recipes match your filters",
+    noRecipesSub: "Upload your first recipe to get started!",
+    noRecipesFilteredSub: "Try clearing some filters",
+    addFirstRecipe: "Add Your First Recipe",
+    clearFiltersBtn: "Clear Filters",
+    recipeCount_zero: "No recipes found",
+    recipeCount_one: "1 recipe",
+    recipeCount_other: "recipes",
+    gridSmall: "Small",
+    gridMedium: "Medium",
+    gridLarge: "Large",
+
+    // Upload
+    addRecipeTitle: "Add Recipe",
+    dropTitle: "Drop your recipe here",
+    dropSub: "PDF, JPG, PNG, or WebP · Single or multiple images",
+    dropClick: "Click to browse files",
+    uploadFolder: "Upload entire folder",
+    recipeNameLabel: "Recipe Name",
+    recipeNamePlaceholder: "e.g. Cozy Cable Socks",
+    notesLabel: "Notes",
+    notesOptional: "optional",
+    notesPlaceholder: "Any notes about this pattern…",
+    categoryLabel: "Category",
+    tagsLabel: "Tags",
+    tagsSeparator: "separate with commas",
+    tagsPlaceholder: "e.g. wool, fingering weight, easy",
+    cancel: "Cancel",
+    addToLibrary: "Add to Library",
+    uploading: "Uploading…",
+    recipeAdded: "Recipe Added!",
+    recipeAddedSub: "Your recipe has been saved to the library.",
+    uploadErrorNoFile: "Please select at least one file.",
+    uploadErrorNoName: "Please enter a recipe name.",
+    uploadErrorFormat: "Only PDF and image files (JPG, PNG, WebP) are supported.",
+    uploadFailed: "Upload failed. Please try again.",
+
+    // Viewer
+    backToLibrary: "Library",
+    editRecipe: "Edit recipe",
+    deleteRecipe: "Delete recipe",
+    openFull: "Open Full",
+    resetZoom: "Reset",
+    categories: "Categories",
+    added: "Added",
+    editRecipeTitle: "Edit Recipe",
+    saveChanges: "Save Changes",
+    saving: "Saving…",
+    deleteConfirmTitle: "Delete Recipe?",
+    deleteConfirmText: "This will permanently delete",
+    deleteConfirmText2: "and all its files. This cannot be undone.",
+    delete: "Delete",
+    noImages: "No images found",
+    pdfPage: "page",
+
+    // Settings
+    settings: "Settings",
+    appearance: "Appearance",
+    darkMode: "Dark Mode",
+    lightMode: "Light Mode",
+    language: "Language",
+    account: "My Account",
+    changePassword: "Change Password",
+    currentPassword: "Current Password",
+    newPassword: "New Password",
+    confirmNewPassword: "Confirm New Password",
+    savePassword: "Save Password",
+    passwordChanged: "Password changed successfully!",
+    passwordMismatch: "New passwords do not match",
+    passwordTooShort: "Password must be at least 4 characters",
+
+    // Admin
+    userManagement: "User Management",
+    users: "Users",
+    addUser: "Add User",
+    admin: "Admin",
+    member: "Member",
+    resetPassword: "Reset Password",
+    newUserPassword: "New password for user",
+    confirmDelete: "Are you sure you want to delete this user?",
+    userDeleted: "User deleted",
+    userAdded: "User added",
+    isAdmin: "Make admin",
+    createUser: "Create User",
+  },
+
+  no: {
+    // App
+    appName: "Strikkebiblioteк",
+
+    // Auth
+    login: "Logg inn",
+    logout: "Logg ut",
+    username: "Brukernavn",
+    password: "Passord",
+    signingIn: "Logger inn…",
+    loginError: "Feil brukernavn eller passord",
+    loginWelcome: "Velkommen tilbake",
+    loginSubtitle: "Logg inn i strikkebiblioteket ditt",
+
+    // Header
+    addRecipe: "Legg til oppskrift",
+
+    // Library
+    searchPlaceholder: "Søk etter oppskrifter, tagger…",
+    filters: "Filtre",
+    category: "Kategori",
+    tags: "Tagger",
+    all: "Alle",
+    clearFilters: "Fjern alle filtre",
+    noRecipes: "Biblioteket ditt er tomt",
+    noRecipesFiltered: "Ingen oppskrifter matcher filtrene",
+    noRecipesSub: "Last opp din første oppskrift for å komme i gang!",
+    noRecipesFilteredSub: "Prøv å fjerne noen filtre",
+    addFirstRecipe: "Legg til første oppskrift",
+    clearFiltersBtn: "Fjern filtre",
+    recipeCount_zero: "Ingen oppskrifter funnet",
+    recipeCount_one: "1 oppskrift",
+    recipeCount_other: "oppskrifter",
+    gridSmall: "Liten",
+    gridMedium: "Medium",
+    gridLarge: "Stor",
+
+    // Upload
+    addRecipeTitle: "Legg til oppskrift",
+    dropTitle: "Slipp oppskriften her",
+    dropSub: "PDF, JPG, PNG eller WebP · Enkeltbilde eller flere bilder",
+    dropClick: "Klikk for å bla gjennom filer",
+    uploadFolder: "Last opp hel mappe",
+    recipeNameLabel: "Oppskriftsnavn",
+    recipeNamePlaceholder: "f.eks. Koselige kabelstrømper",
+    notesLabel: "Notater",
+    notesOptional: "valgfritt",
+    notesPlaceholder: "Notater om dette mønsteret…",
+    categoryLabel: "Kategori",
+    tagsLabel: "Tagger",
+    tagsSeparator: "skill med komma",
+    tagsPlaceholder: "f.eks. ull, strømpegarn, lett",
+    cancel: "Avbryt",
+    addToLibrary: "Legg til i biblioteket",
+    uploading: "Laster opp…",
+    recipeAdded: "Oppskrift lagt til!",
+    recipeAddedSub: "Oppskriften din er lagret i biblioteket.",
+    uploadErrorNoFile: "Velg minst én fil.",
+    uploadErrorNoName: "Skriv inn et oppskriftsnavn.",
+    uploadErrorFormat: "Bare PDF og bildefiler (JPG, PNG, WebP) støttes.",
+    uploadFailed: "Opplasting mislyktes. Prøv igjen.",
+
+    // Viewer
+    backToLibrary: "Bibliotek",
+    editRecipe: "Rediger oppskrift",
+    deleteRecipe: "Slett oppskrift",
+    openFull: "Åpne full",
+    resetZoom: "Tilbakestill",
+    categories: "Kategorier",
+    added: "Lagt til",
+    editRecipeTitle: "Rediger oppskrift",
+    saveChanges: "Lagre endringer",
+    saving: "Lagrer…",
+    deleteConfirmTitle: "Slette oppskrift?",
+    deleteConfirmText: "Dette vil permanent slette",
+    deleteConfirmText2: "og alle filene. Dette kan ikke angres.",
+    delete: "Slett",
+    noImages: "Ingen bilder funnet",
+    pdfPage: "side",
+
+    // Settings
+    settings: "Innstillinger",
+    appearance: "Utseende",
+    darkMode: "Mørk modus",
+    lightMode: "Lys modus",
+    language: "Språk",
+    account: "Min konto",
+    changePassword: "Endre passord",
+    currentPassword: "Nåværende passord",
+    newPassword: "Nytt passord",
+    confirmNewPassword: "Bekreft nytt passord",
+    savePassword: "Lagre passord",
+    passwordChanged: "Passord endret!",
+    passwordMismatch: "De nye passordene stemmer ikke overens",
+    passwordTooShort: "Passordet må ha minst 4 tegn",
+
+    // Admin
+    userManagement: "Brukerhåndtering",
+    users: "Brukere",
+    addUser: "Legg til bruker",
+    admin: "Admin",
+    member: "Medlem",
+    resetPassword: "Tilbakestill passord",
+    newUserPassword: "Nytt passord for bruker",
+    confirmDelete: "Er du sikker på at du vil slette denne brukeren?",
+    userDeleted: "Bruker slettet",
+    userAdded: "Bruker lagt til",
+    isAdmin: "Gjør til admin",
+    createUser: "Opprett bruker",
+  },
+};
+
+export default translations;
+
+/**
+ * Helper hook — use this anywhere in the app to get translated text.
+ * Usage:  const t = useT();  then  t('addRecipe')
+ */
+export function useT(language) {
+  return (key) => translations[language]?.[key] ?? translations.en[key] ?? key;
+}
