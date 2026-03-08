@@ -1,0 +1,203 @@
+/* ─── Category Manager ───────────────────────────────────────────────────────── */
+
+.category-manager {
+  flex-shrink: 0;
+}
+
+/* ── Toggle button ─────────────────────────────────────────────────────────── */
+
+.cm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.cm-toggle:hover {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+}
+
+.category-manager.open .cm-toggle {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.06);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.cm-count {
+  background: var(--bg-secondary);
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 100px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.category-manager.open .cm-count {
+  background: rgba(196, 113, 74, 0.12);
+  color: var(--terracotta);
+}
+
+/* ── Panel ─────────────────────────────────────────────────────────────────── */
+
+.cm-panel {
+  background: var(--card-bg);
+  border: 1.5px solid var(--terracotta);
+  border-top: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) var(--radius-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: slideDown 0.15s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Add row ───────────────────────────────────────────────────────────────── */
+
+.cm-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cm-input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: var(--transition);
+}
+
+.cm-input:focus {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 113, 74, 0.1);
+}
+
+.cm-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 14px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.cm-add-btn:hover:not(:disabled) {
+  background: var(--terracotta-light);
+}
+
+.cm-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Category tags ─────────────────────────────────────────────────────────── */
+
+.cm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cm-empty {
+  font-size: 13px;
+  color: var(--text-light);
+  font-style: italic;
+}
+
+.cm-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: var(--transition);
+}
+
+.cm-tag:hover {
+  border-color: rgba(224, 85, 85, 0.3);
+}
+
+.cm-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-light);
+  border-radius: 50%;
+  padding: 0;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.cm-delete:hover {
+  background: rgba(224, 85, 85, 0.12);
+  color: #e05555;
+}
+
+.cm-error {
+  font-size: 12px;
+  color: #e05555;
+  margin: -4px 0;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .category-manager {
+    padding: 0 16px;
+  }
+
+  .cm-add-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cm-add-btn {
+    justify-content: center;
+  }
+}

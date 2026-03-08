@@ -244,11 +244,18 @@
 
 .library-meta {
   padding: 16px 0 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .recipe-count {
   font-size: 13px;
   color: var(--text-light);
+  padding-top: 8px;
+  flex-shrink: 0;
 }
 
 /* ─── Grid Layouts ────────────────────────────────────────────────────────────── */

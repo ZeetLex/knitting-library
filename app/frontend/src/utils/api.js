@@ -46,6 +46,12 @@ export async function addCategory(name) {
   if (!res.ok) throw new Error('Failed to add category');
   return res.json();
 }
+
+export async function deleteCategory(name) {
+  const res = await fetch(`${API_BASE}/categories/${encodeURIComponent(name)}`, { method:'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to delete category');
+  return res.json();
+}
 export async function fetchUsers() {
   const res = await fetch(`${API_BASE}/admin/users`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load users');

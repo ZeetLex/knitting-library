@@ -58,9 +58,7 @@ def init_db():
             token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_date TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
-        INSERT OR IGNORE INTO categories (name) VALUES
-            ('Socks'),('Sweater'),('Hat'),('Mittens'),('Scarf'),
-            ('Shawl'),('Blanket'),('Cardigan'),('Cowl'),('Other');
+        -- No default categories — users create their own
     """)
     existing = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
     if existing == 0:
@@ -342,6 +340,19 @@ def add_category(data: dict, current_user: dict=Depends(get_current_user)):
     conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
     conn.commit(); conn.close()
     return {"message": f"Category '{name}' added"}
+
+@app.delete("/api/categories/{name}")
+def delete_category(name: str, current_user: dict=Depends(get_current_user)):
+    """Delete a category. Recipes that used it simply lose that category tag."""
+    conn = get_db()
+    row = conn.execute("SELECT id FROM categories WHERE name=?", (name,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Category not found")
+    conn.execute("DELETE FROM recipe_categories WHERE category_id=?", (row["id"],))
+    conn.execute("DELETE FROM categories WHERE id=?", (row["id"],))
+    conn.commit(); conn.close()
+    return {"message": f"Category '{name}' deleted"}
 
 # ── File serving ──────────────────────────────────────────────────────────────
 # Images and PDFs are loaded by the browser directly via <img src> and <iframe>,

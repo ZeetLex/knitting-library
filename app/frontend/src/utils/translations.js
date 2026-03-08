@@ -114,6 +114,14 @@ const translations = {
     userAdded: "User added",
     isAdmin: "Make admin",
     createUser: "Create User",
+
+    // Category manager
+    manageCategories: "Categories",
+    newCategoryPlaceholder: "New category name…",
+    addCategory: "Add",
+    deleteCategoryConfirm: "Delete category",
+    noCategoriesYet: "No categories yet — add one above!",
+    categoryExists: "That category already exists",
   },
 
   no: {
@@ -225,6 +233,14 @@ const translations = {
     userAdded: "Bruker lagt til",
     isAdmin: "Gjør til admin",
     createUser: "Opprett bruker",
+
+    // Category manager
+    manageCategories: "Kategorier",
+    newCategoryPlaceholder: "Ny kategorinavn…",
+    addCategory: "Legg til",
+    deleteCategoryConfirm: "Slett kategori",
+    noCategoriesYet: "Ingen kategorier ennå — legg til en over!",
+    categoryExists: "Den kategorien finnes allerede",
   },
 };
 
