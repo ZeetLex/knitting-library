@@ -2,13 +2,13 @@
 # It creates a production build and serves it with nginx.
 
 # Step 1: Build the React app
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 # Install dependencies first (this layer is cached by Docker)
 COPY package.json ./
-RUN npm install --legacy-peer-deps
+RUN npm install --legacy-peer-deps && npm install ajv@^8.11.0 --legacy-peer-deps
 
 # Copy the rest of the frontend code and build it
 COPY . .
