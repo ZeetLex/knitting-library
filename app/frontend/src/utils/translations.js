@@ -122,6 +122,12 @@ const translations = {
     deleteCategoryConfirm: "Delete category",
     noCategoriesYet: "No categories yet — add one above!",
     categoryExists: "That category already exists",
+    // Data & Export
+    dataSection: "Data",
+    exportTitle: "Export Library",
+    exportDescription: "Download all your recipes and the database as a ZIP file. Use this for backups or moving to a new server.",
+    exportBtn: "Download Export",
+    exporting: "Preparing export…",
   },
 
   no: {
@@ -241,6 +247,12 @@ const translations = {
     deleteCategoryConfirm: "Slett kategori",
     noCategoriesYet: "Ingen kategorier ennå — legg til en over!",
     categoryExists: "Den kategorien finnes allerede",
+    // Data & Export
+    dataSection: "Data",
+    exportTitle: "Eksporter bibliotek",
+    exportDescription: "Last ned alle oppskriftene og databasen som en ZIP-fil. Bruk dette til sikkerhetskopiering eller flytting til en ny server.",
+    exportBtn: "Last ned eksport",
+    exporting: "Forbereder eksport…",
   },
 };
 

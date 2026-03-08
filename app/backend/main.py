@@ -13,8 +13,10 @@ from typing import List, Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import sqlite3
+import io
+import zipfile
 
 app = FastAPI(title="Knitting Recipe Library", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -396,6 +398,40 @@ def get_image(recipe_id: str, filename: str, request: Request, token: Optional[s
 @app.get("/api/health")
 def health():
     return {"status": "ok", "message": "Knitting Library API v2"}
+
+# ── Export ────────────────────────────────────────────────────────────────────
+# Streams a ZIP file containing all recipe files + the database.
+# The ZIP is built in memory so no temp files are left on disk.
+
+@app.get("/api/export")
+def export_library(current_user: dict = Depends(get_current_user)):
+    buf = io.BytesIO()
+
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # 1. Include the SQLite database
+        if DB_PATH.exists():
+            zf.write(str(DB_PATH), arcname="recipes.db")
+
+        # 2. Include every recipe folder under /data/recipes/
+        if DATA_DIR.exists():
+            for recipe_dir in DATA_DIR.iterdir():
+                if recipe_dir.is_dir():
+                    for file in recipe_dir.rglob("*"):
+                        if file.is_file():
+                            # Keep folder structure: recipes/<id>/filename
+                            arcname = "recipes/" + str(file.relative_to(DATA_DIR))
+                            zf.write(str(file), arcname=arcname)
+
+    buf.seek(0)
+
+    from datetime import datetime
+    filename = f"knitting-library-export-{datetime.now().strftime('%Y-%m-%d')}.zip"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+    )
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 

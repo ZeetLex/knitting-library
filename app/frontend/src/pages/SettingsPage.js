@@ -5,9 +5,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X, ChevronLeft } from 'lucide-react';
+import { Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X, ChevronLeft, Download } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { changePassword, fetchUsers, createUser, deleteUser, adminResetPassword } from '../utils/api';
+import { changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary } from '../utils/api';
 import './SettingsPage.css';
 
 export default function SettingsPage({ onBack }) {
@@ -52,6 +52,13 @@ export default function SettingsPage({ onBack }) {
               {t('userManagement')}
             </button>
           )}
+          <button
+            className={`settings-nav-btn ${activeSection === 'data' ? 'active' : ''}`}
+            onClick={() => setActiveSection('data')}
+          >
+            <Download size={18} />
+            {t('dataSection')}
+          </button>
         </nav>
 
         {/* ── Content ─────────────────────────────────────────────────── */}
@@ -59,6 +66,7 @@ export default function SettingsPage({ onBack }) {
           {activeSection === 'appearance' && <AppearanceSection />}
           {activeSection === 'account'    && <AccountSection />}
           {activeSection === 'users' && user?.is_admin && <UsersSection />}
+          {activeSection === 'data'       && <DataSection />}
         </div>
       </div>
     </div>
@@ -366,6 +374,47 @@ function ResetPasswordModal({ t, targetUser, onClose }) {
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Data Section ────────────────────────────────────────────────────────── */
+function DataSection() {
+  const { t } = useApp();
+  const [exporting, setExporting] = useState(false);
+  const [error, setError]         = useState('');
+
+  const handleExport = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      await exportLibrary();
+    } catch (e) {
+      setError(e.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="settings-section">
+      <h3 className="section-heading">{t('dataSection')}</h3>
+
+      <div className="export-card">
+        <div className="export-card-text">
+          <p className="export-card-title">{t('exportTitle')}</p>
+          <p className="export-card-desc">{t('exportDescription')}</p>
+        </div>
+        <button
+          className="btn-export"
+          onClick={handleExport}
+          disabled={exporting}
+        >
+          <Download size={16} />
+          {exporting ? t('exporting') : t('exportBtn')}
+        </button>
+        {error && <p className="form-error">{error}</p>}
       </div>
     </div>
   );

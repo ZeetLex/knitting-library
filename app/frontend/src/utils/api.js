@@ -91,3 +91,28 @@ export function imageUrl(recipeId, filename) {
   const t = getToken();
   return `${API_BASE}/recipes/${recipeId}/images/${filename}${t ? '?token=' + t : ''}`;
 }
+
+// Export — fetches the ZIP and triggers a browser download
+export async function exportLibrary() {
+  const token = getToken();
+  const response = await fetch(`${API_BASE}/export`, {
+    headers: token ? { "X-Session-Token": token } : {}
+  });
+  if (!response.ok) throw new Error("Export failed");
+
+  // Get filename from Content-Disposition header if available
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : "knitting-library-export.zip";
+
+  // Stream the blob and trigger download
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
