@@ -157,3 +157,43 @@
 
 .header-icon-btn:hover  { background: rgba(255,255,255,0.18); color: white; }
 .header-icon-btn:active { opacity: 0.7; }
+
+/* ── Tab navigation ──────────────────────────────────────────────────────── */
+.header-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+  /* On small screens, push to fill available space */
+  flex: 1;
+  justify-content: center;
+  max-width: 280px;
+}
+
+.header-tab {
+  padding: 0 16px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: rgba(255,255,255,0.55);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  text-transform: uppercase;
+}
+.header-tab:hover  { color: rgba(255,255,255,0.85); }
+.header-tab.active {
+  color: white;
+  border-bottom-color: var(--terracotta);
+}
+
+@media (max-width: 400px) {
+  .header-tabs { max-width: 160px; }
+  .header-tab  { padding: 0 10px; font-size: 11px; }
+}

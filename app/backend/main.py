@@ -74,6 +74,21 @@ def init_db():
             finished_at TEXT,
             FOREIGN KEY (recipe_id) REFERENCES recipes(id)
         );
+        CREATE TABLE IF NOT EXISTS yarns (
+            id               TEXT PRIMARY KEY,
+            name             TEXT NOT NULL,
+            colour           TEXT DEFAULT '',
+            wool_type        TEXT DEFAULT '',
+            yardage          TEXT DEFAULT '',
+            needles          TEXT DEFAULT '',
+            tension          TEXT DEFAULT '',
+            origin           TEXT DEFAULT '',
+            seller           TEXT DEFAULT '',
+            price_per_skein  TEXT DEFAULT '',
+            product_info     TEXT DEFAULT '',
+            image_path       TEXT DEFAULT '',
+            created_date     TEXT NOT NULL
+        );
         -- No default categories — users create their own
     """)
     existing = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
@@ -84,6 +99,17 @@ def init_db():
             (admin_id, "admin", hash_password("admin"), datetime.utcnow().isoformat())
         )
         print("Default admin created: username=admin password=admin  -- PLEASE CHANGE THIS!")
+    # Migrations — add columns that may not exist in older databases
+    existing_cols = [r["name"] for r in conn.execute("PRAGMA table_info(yarns)").fetchall()]
+    if "colour" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN colour TEXT DEFAULT ''")
+        print("Migration: added 'colour' column to yarns")
+    if "seller" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN seller TEXT DEFAULT ''")
+        print("Migration: added 'seller' column to yarns")
+    if "price_per_skein" not in existing_cols:
+        conn.execute("ALTER TABLE yarns ADD COLUMN price_per_skein TEXT DEFAULT ''")
+        print("Migration: added 'price_per_skein' column to yarns")
     conn.commit()
     conn.close()
 
@@ -670,3 +696,177 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
     else:
         recipe["project_status"] = "none"
     return recipe
+
+# ── Yarn Database ─────────────────────────────────────────────────────────────
+
+YARN_DIR = Path("/data/yarns")
+YARN_DIR.mkdir(parents=True, exist_ok=True)
+
+def yarn_to_dict(row) -> dict:
+    return dict(row)
+
+@app.get("/api/yarns")
+def list_yarns(
+    search: Optional[str] = None, field: Optional[str] = None,
+    filter_colour: Optional[str] = None,
+    filter_wool_type: Optional[str] = None,
+    filter_seller: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = get_db()
+    query = "SELECT * FROM yarns WHERE 1=1"
+    params = []
+    if search:
+        like = f"%{search}%"
+        if field == "name":
+            query += " AND name LIKE ?"; params.append(like)
+        elif field == "colour":
+            query += " AND colour LIKE ?"; params.append(like)
+        elif field == "material":
+            query += " AND (wool_type LIKE ? OR origin LIKE ?)"; params.extend([like, like])
+        else:
+            query += " AND (name LIKE ? OR colour LIKE ? OR wool_type LIKE ? OR origin LIKE ? OR product_info LIKE ? OR seller LIKE ?)"
+            params.extend([like, like, like, like, like, like])
+    if filter_colour:
+        query += " AND colour = ?"; params.append(filter_colour)
+    if filter_wool_type:
+        query += " AND wool_type = ?"; params.append(filter_wool_type)
+    if filter_seller:
+        query += " AND seller = ?"; params.append(filter_seller)
+    query += " ORDER BY created_date DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [yarn_to_dict(r) for r in rows]
+
+@app.get("/api/yarns/autocomplete")
+def yarn_autocomplete(field: str, current_user: dict = Depends(get_current_user)):
+    """Return distinct non-empty values for a given field — powers the search datalist and filter pills."""
+    allowed = {"name", "colour", "wool_type", "origin", "seller"}
+    if field not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid field")
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT DISTINCT {field} FROM yarns WHERE {field} != '' AND {field} IS NOT NULL ORDER BY {field}"
+    ).fetchall()
+    conn.close()
+    return {"values": [r[field] for r in rows]}
+
+@app.get("/api/yarns/{yarn_id}")
+def get_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    conn.close()
+    if not row: raise HTTPException(status_code=404, detail="Yarn not found")
+    return yarn_to_dict(row)
+
+@app.post("/api/yarns")
+async def create_yarn(
+    name: str = Form(...),
+    colour: str = Form(""),
+    wool_type: str = Form(""),
+    yardage: str = Form(""),
+    needles: str = Form(""),
+    tension: str = Form(""),
+    origin: str = Form(""),
+    product_info: str = Form(""),
+    seller: str = Form(""),
+    price_per_skein: str = Form(""),
+    image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    yarn_id = str(uuid.uuid4())
+    yarn_dir = YARN_DIR / yarn_id
+    yarn_dir.mkdir(parents=True)
+    image_path = ""
+    if image and image.filename:
+        ext = Path(image.filename.lower()).suffix
+        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            data = await image.read()
+            save_path = yarn_dir / f"yarn{ext}"
+            with open(save_path, "wb") as f:
+                f.write(data)
+            # Generate thumbnail
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(save_path)
+                img.thumbnail((600, 600))
+                img.save(str(yarn_dir / "thumbnail.jpg"), "JPEG", quality=85)
+            except Exception as e:
+                print(f"Yarn thumbnail failed: {e}")
+            image_path = f"yarn{ext}"
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO yarns (id,name,colour,wool_type,yardage,needles,tension,origin,seller,price_per_skein,product_info,image_path,created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (yarn_id, name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    conn.close()
+    return yarn_to_dict(row)
+
+@app.put("/api/yarns/{yarn_id}")
+async def update_yarn(
+    yarn_id: str,
+    name: str = Form(...),
+    colour: str = Form(""),
+    wool_type: str = Form(""),
+    yardage: str = Form(""),
+    needles: str = Form(""),
+    tension: str = Form(""),
+    origin: str = Form(""),
+    product_info: str = Form(""),
+    seller: str = Form(""),
+    price_per_skein: str = Form(""),
+    image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    if not row: conn.close(); raise HTTPException(status_code=404, detail="Yarn not found")
+    yarn_dir = YARN_DIR / yarn_id
+    yarn_dir.mkdir(parents=True, exist_ok=True)
+    image_path = row["image_path"]
+    if image and image.filename:
+        ext = Path(image.filename.lower()).suffix
+        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            data = await image.read()
+            save_path = yarn_dir / f"yarn{ext}"
+            with open(save_path, "wb") as f: f.write(data)
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(save_path)
+                img.thumbnail((600, 600))
+                img.save(str(yarn_dir / "thumbnail.jpg"), "JPEG", quality=85)
+            except Exception as e: print(f"Yarn thumbnail failed: {e}")
+            image_path = f"yarn{ext}"
+    conn.execute(
+        "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=?,image_path=? WHERE id=?",
+        (name, colour, wool_type, yardage, needles, tension, origin, seller, price_per_skein, product_info, image_path, yarn_id)
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone()
+    conn.close()
+    return yarn_to_dict(row)
+
+@app.delete("/api/yarns/{yarn_id}")
+def delete_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM yarns WHERE id=?", (yarn_id,)).fetchone():
+        conn.close(); raise HTTPException(status_code=404, detail="Yarn not found")
+    conn.execute("DELETE FROM yarns WHERE id=?", (yarn_id,))
+    conn.commit(); conn.close()
+    yarn_dir = YARN_DIR / yarn_id
+    if yarn_dir.exists(): shutil.rmtree(yarn_dir)
+    return {"message": "Yarn deleted"}
+
+@app.get("/api/yarns/{yarn_id}/image")
+def get_yarn_image(yarn_id: str, request: Request, token: Optional[str] = None):
+    verify_token_param(request, token)
+    yarn_dir = YARN_DIR / yarn_id
+    # Try thumbnail first, then original
+    for name in ["thumbnail.jpg", "yarn.jpg", "yarn.jpeg", "yarn.png", "yarn.webp"]:
+        p = yarn_dir / name
+        if p.exists():
+            mt = "image/jpeg" if name.endswith((".jpg",".jpeg")) else "image/png" if name.endswith(".png") else "image/webp"
+            return FileResponse(str(p), media_type=mt)
+    raise HTTPException(status_code=404, detail="No image")

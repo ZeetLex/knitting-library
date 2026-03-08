@@ -192,3 +192,62 @@ export async function clearSessions(recipeId) {
   if (!res.ok) throw new Error('Failed to clear sessions');
   return res.json();
 }
+
+// ── Yarn API ──────────────────────────────────────────────────────────────────
+export async function fetchYarns({ search = '', field = '', filterColour = '', filterWoolType = '', filterSeller = '' } = {}) {
+  const params = new URLSearchParams();
+  if (search)         params.set('search', search);
+  if (field)          params.set('field', field);
+  if (filterColour)   params.set('filter_colour', filterColour);
+  if (filterWoolType) params.set('filter_wool_type', filterWoolType);
+  if (filterSeller)   params.set('filter_seller', filterSeller);
+  const res = await fetch(`${API_BASE}/yarns?${params}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load yarns');
+  return res.json();
+}
+
+export async function fetchYarnAutocomplete(field) {
+  const res = await fetch(`${API_BASE}/yarns/autocomplete?field=${field}`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.values || [];
+}
+
+export async function fetchYarn(id) {
+  const res = await fetch(`${API_BASE}/yarns/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Yarn not found');
+  return res.json();
+}
+
+export async function createYarn(formData) {
+  const res = await fetch(`${API_BASE}/yarns`, {
+    method: 'POST',
+    headers: { 'X-Session-Token': getToken() || '' },
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Failed to create yarn');
+  return res.json();
+}
+
+export async function updateYarn(id, formData) {
+  const res = await fetch(`${API_BASE}/yarns/${id}`, {
+    method: 'PUT',
+    headers: { 'X-Session-Token': getToken() || '' },
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Failed to update yarn');
+  return res.json();
+}
+
+export async function deleteYarn(id) {
+  const res = await fetch(`${API_BASE}/yarns/${id}`, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to delete yarn');
+  return res.json();
+}
+
+export function yarnImageUrl(yarnId) {
+  const t = getToken();
+  return `${API_BASE}/yarns/${yarnId}/image${t ? '?token=' + t : ''}`;
+}

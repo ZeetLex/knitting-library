@@ -1,0 +1,188 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Yarn Upload Modal
+══════════════════════════════════════════════════════════════════════════════ */
+
+.yum-modal {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg, 16px);
+  width: min(660px, 96vw);
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+  animation: slideUp 0.22s ease;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.yum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.yum-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.yum-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-light); padding: 4px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+}
+@media (hover: hover) and (pointer: fine) {
+  .yum-close:hover { color: var(--text-primary); background: var(--bg-secondary); }
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────────── */
+.yum-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Image drop zone ─────────────────────────────────────────────────────────── */
+.yum-image-drop {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  transition: border-color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+.yum-image-drop:hover,
+.yum-image-drop.dragover {
+  border-color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.06);
+}
+.yum-image-placeholder {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--text-light); pointer-events: none;
+}
+.yum-image-placeholder span { font-size: 13px; font-weight: 500; }
+.yum-image-hint { font-size: 11px !important; color: var(--text-light); }
+.yum-image-preview {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.yum-image-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; color: white; font-size: 13px; font-weight: 500;
+  opacity: 0; transition: opacity 0.18s;
+  pointer-events: none;
+}
+.yum-image-drop:hover .yum-image-overlay { opacity: 1; }
+
+/* ── Fields ─────────────────────────────────────────────────────────────────── */
+.yum-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.yum-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .yum-row { grid-template-columns: 1fr; }
+}
+.yum-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.yum-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+}
+.yum-required { color: var(--terracotta); margin-left: 2px; }
+
+.yum-input,
+.yum-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px; /* prevent iOS zoom */
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.yum-input:focus,
+.yum-textarea:focus {
+  outline: none;
+  border-color: var(--terracotta);
+}
+.yum-textarea {
+  resize: vertical;
+  min-height: 90px;
+  line-height: 1.5;
+}
+
+/* ── Error ─────────────────────────────────────────────────────────────────── */
+.yum-error {
+  margin: 0 20px;
+  padding: 8px 12px;
+  background: rgba(224, 85, 85, 0.12);
+  border: 1px solid rgba(224, 85, 85, 0.3);
+  border-radius: var(--radius-sm);
+  color: #e05555;
+  font-size: 13px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
+.yum-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.yum-btn-cancel {
+  padding: 9px 18px;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: var(--transition);
+}
+.yum-btn-save {
+  padding: 9px 22px;
+  background: var(--terracotta);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: var(--transition);
+}
+.yum-btn-cancel:disabled,
+.yum-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
