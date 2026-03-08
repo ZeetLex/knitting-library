@@ -60,6 +60,13 @@ def init_db():
             token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_date TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS annotations (
+            recipe_id TEXT NOT NULL,
+            page_key  TEXT NOT NULL,
+            data      TEXT NOT NULL DEFAULT '[]',
+            updated   TEXT NOT NULL,
+            PRIMARY KEY (recipe_id, page_key)
+        );
         -- No default categories — users create their own
     """)
     existing = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
@@ -285,6 +292,9 @@ async def create_recipe(title: str=Form(...), description: str=Form(""), categor
     if not saved_files:
         shutil.rmtree(recipe_dir)
         raise HTTPException(status_code=400, detail="No valid files uploaded")
+    # Convert PDF pages to images so the viewer can annotate per-page
+    if file_type == "pdf":
+        _convert_pdf_to_pages(recipe_dir)
     thumb = generate_thumbnail(recipe_dir, file_type, saved_files)
     conn = get_db()
     conn.execute("INSERT INTO recipes (id,title,description,file_type,thumbnail_path,created_date) VALUES (?,?,?,?,?,?)",
@@ -399,6 +409,45 @@ def get_image(recipe_id: str, filename: str, request: Request, token: Optional[s
 def health():
     return {"status": "ok", "message": "Knitting Library API v2"}
 
+# ── Annotations ───────────────────────────────────────────────────────────────
+# page_key is either an image filename (e.g. "image1.jpg") or "pdf-<pagenum>"
+# Data is stored as a JSON array of stroke objects.
+
+@app.get("/api/recipes/{recipe_id}/annotations/{page_key}")
+def get_annotations(recipe_id: str, page_key: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT data FROM annotations WHERE recipe_id=? AND page_key=?",
+        (recipe_id, page_key)
+    ).fetchone()
+    conn.close()
+    import json
+    return {"strokes": json.loads(row["data"]) if row else []}
+
+@app.put("/api/recipes/{recipe_id}/annotations/{page_key}")
+def save_annotations(recipe_id: str, page_key: str, data: dict,
+                     current_user: dict = Depends(get_current_user)):
+    import json
+    strokes_json = json.dumps(data.get("strokes", []))
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO annotations (recipe_id, page_key, data, updated) VALUES (?,?,?,?) "
+        "ON CONFLICT(recipe_id, page_key) DO UPDATE SET data=excluded.data, updated=excluded.updated",
+        (recipe_id, page_key, strokes_json, now)
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.delete("/api/recipes/{recipe_id}/annotations/{page_key}")
+def clear_annotations(recipe_id: str, page_key: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    conn.execute("DELETE FROM annotations WHERE recipe_id=? AND page_key=?", (recipe_id, page_key))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 # ── Export ────────────────────────────────────────────────────────────────────
 # Streams a ZIP file containing all recipe files + the database.
 # The ZIP is built in memory so no temp files are left on disk.
@@ -434,6 +483,46 @@ def export_library(current_user: dict = Depends(get_current_user)):
     )
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
+
+def _convert_pdf_to_pages(recipe_dir: Path):
+    """Convert every page of recipe.pdf to a JPEG image: page-001.jpg, page-002.jpg …"""
+    pdf_path = recipe_dir / "recipe.pdf"
+    if not pdf_path.exists():
+        return
+    try:
+        from pdf2image import convert_from_path
+        pages = convert_from_path(str(pdf_path), dpi=150)
+        for i, page in enumerate(pages):
+            page.save(str(recipe_dir / f"page-{i+1:03d}.jpg"), "JPEG", quality=88)
+        print(f"PDF converted: {len(pages)} pages → {recipe_dir}")
+    except Exception as e:
+        print(f"PDF page conversion failed: {e}")
+
+@app.get("/api/recipes/{recipe_id}/pdf-pages")
+def get_pdf_pages(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    """Return list of page image filenames for a PDF recipe, if they exist."""
+    recipe_dir = DATA_DIR / recipe_id
+    pages = sorted(recipe_dir.glob("page-*.jpg"))
+    return {"pages": [p.name for p in pages]}
+
+@app.post("/api/recipes/{recipe_id}/convert-pdf")
+def convert_pdf(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    """Trigger on-demand PDF conversion for recipes uploaded before this feature existed."""
+    recipe_dir = DATA_DIR / recipe_id
+    if not (recipe_dir / "recipe.pdf").exists():
+        raise HTTPException(status_code=404, detail="No PDF found for this recipe")
+    _convert_pdf_to_pages(recipe_dir)
+    pages = sorted(recipe_dir.glob("page-*.jpg"))
+    return {"pages": [p.name for p in pages]}
+
+@app.get("/api/recipes/{recipe_id}/pdf-pages/{filename}")
+def get_pdf_page_image(recipe_id: str, filename: str, request: Request, token: Optional[str] = None):
+    verify_token_param(request, token)
+    safe = Path(filename).name
+    path = DATA_DIR / recipe_id / safe
+    if path.exists() and safe.startswith("page-") and safe.endswith(".jpg"):
+        return FileResponse(str(path), media_type="image/jpeg")
+    raise HTTPException(status_code=404, detail="Page not found")
 
 def _save_cats_tags(conn, recipe_id, categories, tags):
     for cat_name in [c.strip() for c in categories.split(",") if c.strip()]:

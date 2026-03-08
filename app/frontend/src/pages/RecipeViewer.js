@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl } from '../utils/api';
+import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
@@ -14,21 +15,40 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [pdfPages, setPdfPages]     = useState([]);
+  const [converting, setConverting] = useState(false);
   const touchStartX = useRef(null);
 
   useEffect(() => {
     setLoading(true);
     fetchRecipe(recipeId)
-      .then(setRecipe)
+      .then(r => {
+        setRecipe(r);
+        if (r.file_type === 'pdf') {
+          fetchPdfPages(recipeId).then(d => {
+            const pages = d.pages || [];
+            if (pages.length > 0) {
+              setPdfPages(pages);
+            } else {
+              // Auto-convert on first view
+              setConverting(true);
+              convertPdf(recipeId)
+                .then(d2 => setPdfPages(d2.pages || []))
+                .catch(() => {})
+                .finally(() => setConverting(false));
+            }
+          });
+        }
+      })
       .catch(() => setError('Could not load this recipe.'))
       .finally(() => setLoading(false));
   }, [recipeId]);
 
   const handleKey = useCallback((e) => {
+    if (e.key === 'Escape') setFullscreen(false);
     if (!recipe || recipe.file_type !== 'images') return;
     if (e.key === 'ArrowLeft')  setImageIndex(i => Math.max(0, i - 1));
     if (e.key === 'ArrowRight') setImageIndex(i => Math.min(recipe.images.length - 1, i + 1));
-    if (e.key === 'Escape') setFullscreen(false);
   }, [recipe]);
 
   useEffect(() => {
@@ -84,23 +104,62 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
       <div className="viewer-body">
         <div className="viewer-content">
           {recipe.file_type === 'pdf' ? (
-            <div className="pdf-container">
+            <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
               <div className="pdf-controls">
-                <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}><ZoomOut size={18} /></button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom(z => Math.min(3, z + 0.25))}><ZoomIn size={18} /></button>
-                <button onClick={() => setZoom(1)}>{t('resetZoom')}</button>
-                <a href={pdfUrl(recipeId)} target="_blank" rel="noopener noreferrer" className="pdf-open-btn">
-                  <Maximize2 size={18} /><span>{t('openFull')}</span>
+                <button className="pdf-open-btn" onClick={() => { setFullscreen(f => !f); }}>
+                  <Maximize2 size={18} />
+                  <span>{fullscreen ? t('exitFullscreen') : t('openFull')}</span>
+                </button>
+                {fullscreen && (
+                  <button className="pdf-exit-btn" onClick={() => setFullscreen(false)}>
+                    <X size={18} />
+                  </button>
+                )}
+                {/* Download original PDF */}
+                <a href={pdfUrl(recipeId)} download className="pdf-download-btn">
+                  ↓ PDF
                 </a>
               </div>
-              <div className="pdf-frame-wrap">
-                <iframe
-                  src={`${pdfUrl(recipeId)}#toolbar=1&navpanes=1`}
-                  title={recipe.title}
-                  className="pdf-frame"
-                  style={{ zoom: zoom }}
-                />
+
+              <div className="pdf-pages-wrap">
+                {pdfPages.length > 0 ? (
+                  // Render each page as an annotatable image
+                  pdfPages.map((page, i) => (
+                    <div key={page} className="pdf-page-block">
+                      <div className="pdf-page-number">{t('pdfPage')} {i + 1}</div>
+                      <ImageAnnotationCanvas
+                        recipeId={recipeId}
+                        pageKey={page}
+                        src={pdfPageUrl(recipeId, page)}
+                      />
+                    </div>
+                  ))
+                ) : (
+                  // Pages not generated yet — show convert button or spinner
+                  <div className="pdf-convert-prompt">
+                    {converting ? (
+                      <div className="pdf-converting">
+                        <div className="spinner" />
+                        <p>{t('convertingPdf')}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>{t('pdfNotConverted')}</p>
+                        <button className="btn-primary" onClick={async () => {
+                          setConverting(true);
+                          try {
+                            const d = await convertPdf(recipeId);
+                            setPdfPages(d.pages || []);
+                          } catch(e) { alert('Conversion failed'); }
+                          finally { setConverting(false); }
+                        }}>
+                          {t('convertPdfBtn')}
+                        </button>
+                        <p className="pdf-convert-note">{t('pdfConvertNote')}</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -108,9 +167,12 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
               <div className="image-viewer-main">
                 {recipe.images.length > 0 ? (
-                  <img key={imageIndex} src={imageUrl(recipeId, recipe.images[imageIndex])}
-                    alt={`${recipe.title} - ${t('pdfPage')} ${imageIndex + 1}`}
-                    className="recipe-image fade-in" style={{ transform: `scale(${zoom})` }} />
+                  <ImageAnnotationCanvas
+                    recipeId={recipeId}
+                    pageKey={recipe.images[imageIndex]}
+                    src={imageUrl(recipeId, recipe.images[imageIndex])}
+                    zoom={zoom}
+                  />
                 ) : (
                   <div className="image-placeholder">{t('noImages')}</div>
                 )}

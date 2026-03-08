@@ -116,3 +116,54 @@ export async function exportLibrary() {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// Annotations
+export async function fetchAnnotations(recipeId, pageKey) {
+  const res = await fetch(
+    `${API_BASE}/recipes/${recipeId}/annotations/${encodeURIComponent(pageKey)}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.strokes || [];
+}
+
+export async function saveAnnotations(recipeId, pageKey, strokes) {
+  const res = await fetch(
+    `${API_BASE}/recipes/${recipeId}/annotations/${encodeURIComponent(pageKey)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ strokes }),
+    }
+  );
+  if (!res.ok) throw new Error('Failed to save annotations');
+  return res.json();
+}
+
+export async function clearAnnotations(recipeId, pageKey) {
+  const res = await fetch(
+    `${API_BASE}/recipes/${recipeId}/annotations/${encodeURIComponent(pageKey)}`,
+    { method: 'DELETE', headers: authHeaders() }
+  );
+  if (!res.ok) throw new Error('Failed to clear annotations');
+  return res.json();
+}
+
+// PDF page images
+export async function fetchPdfPages(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/pdf-pages`, { headers: authHeaders() });
+  if (!res.ok) return { pages: [] };
+  return res.json();
+}
+export async function convertPdf(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/convert-pdf`, {
+    method: 'POST', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Conversion failed');
+  return res.json();
+}
+export function pdfPageUrl(recipeId, filename) {
+  const t = getToken();
+  return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}${t ? '?token=' + t : ''}`;
+}

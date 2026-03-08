@@ -190,10 +190,9 @@
   background: #111;
   display: flex;
   flex-direction: column;
-  /* Enough height to be useful on mobile */
-  min-height: 55dvh;
   flex: 1;
-  overflow: hidden;
+  /* Allow canvas to grow — no clipping */
+  overflow: visible;
 }
 
 @media (min-width: 769px) {
@@ -258,20 +257,81 @@
 
 .pdf-open-btn { margin-left: auto; background: var(--terracotta) !important; }
 
-.pdf-frame-wrap {
-  flex: 1;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 0;
+.pdf-exit-btn {
+  background: rgba(255,255,255,0.15) !important;
+  border: 1px solid rgba(255,255,255,0.25) !important;
 }
 
-.pdf-frame {
-  width: 100%;
-  height: 100%;
-  min-height: 50dvh;
-  border: none;
-  display: block;
+/* PDF fullscreen — covers entire screen, annotation canvas works inside it */
+.pdf-container.pdf-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  height: 100dvh;
+  background: #111;
+  border-radius: 0;
 }
+
+/* ── PDF Page Viewer ────────────────────────────────────────────────────────── */
+/* All pages stack vertically — scroll through them like a document */
+.pdf-pages-wrap {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #222;
+}
+
+.pdf-page-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-page-number {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  padding: 2px 0;
+}
+
+/* Convert prompt shown for old PDFs */
+.pdf-convert-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 20px;
+  color: rgba(255,255,255,0.7);
+  text-align: center;
+  flex: 1;
+}
+.pdf-converting {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  color: rgba(255,255,255,0.6);
+}
+.pdf-convert-note {
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+  max-width: 320px;
+}
+.pdf-download-btn {
+  margin-left: auto;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pdf-download-btn:hover { background: rgba(255,255,255,0.2); }
 
 /* ── Image Viewer ───────────────────────────────────────────────────────────── */
 .image-viewer {
@@ -279,9 +339,9 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 55dvh;
   background: #111;
-  overflow: hidden;
+  /* overflow must be visible so canvas flows with scroll */
+  overflow: visible;
 }
 
 .image-viewer.fullscreen {
@@ -294,34 +354,14 @@
 .image-viewer-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px;
-  overflow: hidden;
-  /* Smooth momentum scrolling for zoomed images on iOS */
-  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  /* Allow content to grow — canvas scrolls with the page */
+  overflow: visible;
 }
 
-.recipe-image {
-  max-width: 100%;
-  max-height: 52dvh;
-  object-fit: contain;
-  border-radius: 4px;
-  transition: transform 0.2s ease;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-  display: block;
-}
-
-@media (min-width: 769px) {
-  .recipe-image { max-height: 70dvh; }
-}
-
-.image-viewer.fullscreen .recipe-image {
-  max-height: 88dvh;
-  max-width: 100%;
-}
+/* recipe-image class removed — ImageAnnotationCanvas renders into canvas directly */
 
 /* Navigation arrows */
 .image-nav {

@@ -128,6 +128,19 @@ const translations = {
     exportDescription: "Download all your recipes and the database as a ZIP file. Use this for backups or moving to a new server.",
     exportBtn: "Download Export",
     exporting: "Preparing export…",
+    // Annotations
+    annotate: "Annotate",
+    pencilTool: "Pencil",
+    highlightTool: "Highlight",
+    sizeLabel: "Size",
+    opacityLabel: "Opacity",
+    undoStroke: "Undo",
+    clearAll: "Clear all",
+    exitFullscreen: "Exit fullscreen",
+    convertingPdf: "Converting PDF to pages…",
+    pdfNotConverted: "This PDF hasn't been converted to pages yet. Click below to enable annotations.",
+    convertPdfBtn: "Convert PDF for annotations",
+    pdfConvertNote: "This only needs to be done once. May take a few seconds for large PDFs.",
   },
 
   no: {
@@ -253,6 +266,19 @@ const translations = {
     exportDescription: "Last ned alle oppskriftene og databasen som en ZIP-fil. Bruk dette til sikkerhetskopiering eller flytting til en ny server.",
     exportBtn: "Last ned eksport",
     exporting: "Forbereder eksport…",
+    // Annotations
+    annotate: "Marker",
+    pencilTool: "Blyant",
+    highlightTool: "Markering",
+    sizeLabel: "Størrelse",
+    opacityLabel: "Gjennomsiktighet",
+    undoStroke: "Angre",
+    clearAll: "Fjern alt",
+    exitFullscreen: "Avslutt fullskjerm",
+    convertingPdf: "Konverterer PDF til sider…",
+    pdfNotConverted: "Denne PDF-en er ikke konvertert til sider ennå. Klikk nedenfor for å aktivere merknader.",
+    convertPdfBtn: "Konverter PDF for merknader",
+    pdfConvertNote: "Dette trenger bare gjøres én gang. Kan ta noen sekunder for store PDF-er.",
   },
 };
 
