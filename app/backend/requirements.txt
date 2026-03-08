@@ -1,0 +1,6 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+Pillow==10.3.0
+pdf2image==1.17.0
+aiofiles==23.2.1

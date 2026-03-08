@@ -1,0 +1,251 @@
+/* ─── Upload Modal ────────────────────────────────────────────────────────────── */
+
+.upload-modal {
+  background: white;
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 540px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s ease;
+}
+
+/* ─── Drop Zone ───────────────────────────────────────────────────────────────── */
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  transition: var(--transition);
+  background: var(--cream);
+  overflow: hidden;
+}
+
+.drop-zone.dragging {
+  border-color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.05);
+}
+
+.drop-zone.has-files {
+  border-style: solid;
+  border-color: var(--sage);
+  background: rgba(122, 158, 126, 0.06);
+}
+
+/* Hide the real file input - we use the label as the click target */
+.file-input-hidden {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.drop-zone-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 20px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.drop-icon {
+  color: var(--text-light);
+  margin-bottom: 12px;
+}
+
+.drop-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.drop-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.drop-link {
+  color: var(--terracotta);
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+/* ─── File Preview ────────────────────────────────────────────────────────────── */
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 4px 4px 4px 4px;
+}
+
+.file-type-icon {
+  flex-shrink: 0;
+}
+
+.file-type-icon.pdf { color: #e05555; }
+.file-type-icon.img { color: var(--sage); }
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+.file-remove {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-light);
+  transition: var(--transition);
+}
+
+.file-remove:hover {
+  border-color: #e05555;
+  color: #e05555;
+}
+
+/* ─── Folder Upload ───────────────────────────────────────────────────────────── */
+
+.folder-upload-hint {
+  display: flex;
+  justify-content: center;
+  padding: 10px 24px 16px;
+}
+
+.folder-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: var(--transition);
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.folder-btn:hover {
+  color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.06);
+}
+
+/* ─── Error ───────────────────────────────────────────────────────────────────── */
+
+.upload-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(224, 85, 85, 0.08);
+  border: 1px solid rgba(224, 85, 85, 0.2);
+  border-radius: var(--radius-sm);
+  color: #c44444;
+  font-size: 13px;
+}
+
+/* ─── Form Fields ─────────────────────────────────────────────────────────────── */
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.4;
+}
+
+/* ─── Spinner (inside button) ─────────────────────────────────────────────────── */
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* ─── Success State ───────────────────────────────────────────────────────────── */
+
+.upload-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+  text-align: center;
+  gap: 12px;
+}
+
+.success-icon {
+  color: var(--sage);
+}
+
+.upload-success h4 {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+}
+
+.upload-success p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ─── Mobile ──────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .upload-modal {
+    max-height: 95vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    margin-top: auto;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .drop-zone-label {
+    padding: 24px 16px 16px;
+  }
+
+  .drop-title {
+    font-size: 16px;
+  }
+}

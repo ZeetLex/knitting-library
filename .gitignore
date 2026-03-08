@@ -1,0 +1,20 @@
+# Dependencies
+app/frontend/node_modules/
+
+# Build output
+app/frontend/build/
+
+# Data (recipes and database - these are your personal files)
+data/
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc

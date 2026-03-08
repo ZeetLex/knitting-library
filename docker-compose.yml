@@ -1,0 +1,42 @@
+# docker-compose.yml
+#
+# This is the main file that starts your entire application.
+# Run it with: docker-compose up --build
+#
+# It starts two services:
+#   1. backend  - The Python API server (handles uploads, database, files)
+#   2. frontend - The React web interface (what you see in your browser)
+#
+# Your recipe files and database are stored in the ./data folder on your
+# computer, so they persist even if you update or restart the containers.
+
+services:
+
+  # ─── Python Backend API ─────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: knitting-backend
+    restart: unless-stopped
+    volumes:
+      # This mounts your local ./data folder into the container.
+      # All recipe files and the database are stored here.
+      # To back up everything, just copy this folder!
+      - ./data:/data
+    # The backend is NOT exposed directly - all traffic goes through the frontend/nginx
+
+  # ─── React Frontend + Nginx ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+    container_name: knitting-frontend
+    restart: unless-stopped
+    ports:
+      # Change 3000 to any port you prefer, e.g. "8080:80"
+      - "3000:80"
+    depends_on:
+      - backend
+
+# Note: No named volumes needed because we use a direct path (./data)
