@@ -367,3 +367,29 @@
 
 /* Skeleton card */
 .recipe-card-skeleton { display: flex; flex-direction: column; }
+
+/* ── Status filter pills ─────────────────────────────────────────────────── */
+.pill-status-active {
+  border-color: rgba(78, 154, 244, 0.4);
+  color: #4e9af4;
+}
+.pill-status-active.pill-active {
+  background: #4e9af4;
+  border-color: #4e9af4;
+  color: white;
+}
+.pill-status-finished {
+  border-color: rgba(76, 175, 80, 0.4);
+  color: #4caf50;
+}
+.pill-status-finished.pill-active {
+  background: #4caf50;
+  border-color: #4caf50;
+  color: white;
+}
+.pill-status-active,
+.pill-status-finished {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

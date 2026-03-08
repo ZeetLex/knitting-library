@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, Play, CheckCircle } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CategoryManager from '../components/CategoryManager';
 import { useApp } from '../utils/AppContext';
@@ -21,6 +21,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [search, setSearch]           = useState('');
   const [category, setCategory]       = useState('');
   const [activeTags, setActiveTags]   = useState([]);
+  const [statusFilter, setStatusFilter] = useState('');   // '', 'active', 'finished'
   const [categories, setCategories]   = useState([]);
   const [allTags, setAllTags]         = useState([]);
   const [gridSize, setGridSize]       = useState('medium');
@@ -39,14 +40,14 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags });
+      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter });
       setRecipes(data);
     } catch (e) {
       setError('Could not load recipes. Make sure the server is running.');
     } finally {
       setLoading(false);
     }
-  }, [search, category, activeTags, refreshKey]);
+  }, [search, category, activeTags, statusFilter, refreshKey]);
 
   useEffect(() => {
     const timer = setTimeout(loadRecipes, 300);
@@ -57,8 +58,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setActiveTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
-  const clearFilters = () => { setSearch(''); setCategory(''); setActiveTags([]); };
-  const hasActiveFilters = search || category || activeTags.length > 0;
+  const clearFilters = () => { setSearch(''); setCategory(''); setActiveTags([]); setStatusFilter(''); };
+  const hasActiveFilters = search || category || activeTags.length > 0 || statusFilter;
 
   const recipeCountLabel = () => {
     if (recipes.length === 0) return t('recipeCount_zero');
@@ -113,6 +114,32 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         {filtersOpen && (
           <div className="filter-panel fade-in">
             <div className="filter-panel-inner">
+
+              {/* ── Project status filter ───────────────────────────────── */}
+              <div className="filter-group">
+                <label className="filter-label">{t('filterAll')}</label>
+                <div className="filter-pills">
+                  <button
+                    className={`pill ${!statusFilter ? 'pill-active' : ''}`}
+                    onClick={() => setStatusFilter('')}
+                  >
+                    {t('filterAll')}
+                  </button>
+                  <button
+                    className={`pill pill-status-active ${statusFilter === 'active' ? 'pill-active' : ''}`}
+                    onClick={() => setStatusFilter(statusFilter === 'active' ? '' : 'active')}
+                  >
+                    <Play size={11} /> {t('filterActive')}
+                  </button>
+                  <button
+                    className={`pill pill-status-finished ${statusFilter === 'finished' ? 'pill-active' : ''}`}
+                    onClick={() => setStatusFilter(statusFilter === 'finished' ? '' : 'finished')}
+                  >
+                    <CheckCircle size={11} /> {t('filterFinished')}
+                  </button>
+                </div>
+              </div>
+
               <div className="filter-group">
                 <label className="filter-label">{t('category')}</label>
                 <div className="filter-pills">

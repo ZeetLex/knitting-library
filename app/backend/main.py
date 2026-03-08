@@ -67,6 +67,13 @@ def init_db():
             updated   TEXT NOT NULL,
             PRIMARY KEY (recipe_id, page_key)
         );
+        CREATE TABLE IF NOT EXISTS project_sessions (
+            id          TEXT PRIMARY KEY,
+            recipe_id   TEXT NOT NULL,
+            started_at  TEXT NOT NULL,
+            finished_at TEXT,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+        );
         -- No default categories — users create their own
     """)
     existing = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
@@ -235,6 +242,7 @@ def reset_password(user_id: str, data: dict, admin: dict = Depends(require_admin
 
 @app.get("/api/recipes")
 def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags: Optional[str]=None,
+                 status: Optional[str]=None,
                  current_user: dict=Depends(get_current_user)):
     conn = get_db()
     query = """
@@ -261,8 +269,35 @@ def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags:
         recipe = dict(r)
         recipe["categories"] = [x["name"] for x in conn.execute("SELECT c.name FROM categories c JOIN recipe_categories rc ON c.id=rc.category_id WHERE rc.recipe_id=?", (recipe["id"],)).fetchall()]
         recipe["tags"] = [x["name"] for x in conn.execute("SELECT t.name FROM tags t JOIN recipe_tags rt ON t.id=rt.tag_id WHERE rt.recipe_id=?", (recipe["id"],)).fetchall()]
+        # Attach project status
+        sessions = conn.execute(
+            "SELECT id, started_at, finished_at FROM project_sessions WHERE recipe_id=? ORDER BY started_at ASC",
+            (recipe["id"],)
+        ).fetchall()
+        recipe["sessions"] = [dict(s) for s in sessions]
+        active = next((s for s in reversed(recipe["sessions"]) if not s["finished_at"]), None)
+        if active:
+            recipe["project_status"] = "active"
+            recipe["active_started_at"] = active["started_at"]
+        elif recipe["sessions"]:
+            recipe["project_status"] = "finished"
+        else:
+            recipe["project_status"] = "none"
         result.append(recipe)
     conn.close()
+    # Filter by status if requested
+    if status == "active":
+        result = [r for r in result if r["project_status"] == "active"]
+    elif status == "finished":
+        result = [r for r in result if r["project_status"] == "finished"]
+    elif status == "started":  # alias
+        result = [r for r in result if r["project_status"] == "active"]
+    # Pin active projects to top, then finished, then rest — all by date within group
+    def sort_key(r):
+        if r["project_status"] == "active":   return 0
+        if r["project_status"] == "finished": return 1
+        return 2
+    result.sort(key=sort_key)
     return result
 
 @app.get("/api/recipes/{recipe_id}")
@@ -408,6 +443,56 @@ def get_image(recipe_id: str, filename: str, request: Request, token: Optional[s
 @app.get("/api/health")
 def health():
     return {"status": "ok", "message": "Knitting Library API v2"}
+
+# ── Project Sessions ──────────────────────────────────────────────────────────
+
+@app.post("/api/recipes/{recipe_id}/start")
+def start_project(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close(); raise HTTPException(status_code=404, detail="Recipe not found")
+    # Check no active session already running
+    active = conn.execute(
+        "SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)
+    ).fetchone()
+    if active:
+        conn.close(); raise HTTPException(status_code=400, detail="Project already active")
+    session_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "INSERT INTO project_sessions (id, recipe_id, started_at) VALUES (?,?,?)",
+        (session_id, recipe_id, now)
+    )
+    conn.commit()
+    recipe = get_recipe_full(recipe_id, conn); conn.close()
+    return recipe
+
+@app.post("/api/recipes/{recipe_id}/finish")
+def finish_project(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    active = conn.execute(
+        "SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)
+    ).fetchone()
+    if not active:
+        conn.close(); raise HTTPException(status_code=400, detail="No active session")
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "UPDATE project_sessions SET finished_at=? WHERE id=?", (now, active["id"])
+    )
+    conn.commit()
+    recipe = get_recipe_full(recipe_id, conn); conn.close()
+    return recipe
+
+@app.delete("/api/recipes/{recipe_id}/sessions")
+def clear_sessions(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete all session history for a recipe, resetting it to 'not started'."""
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close(); raise HTTPException(status_code=404, detail="Recipe not found")
+    conn.execute("DELETE FROM project_sessions WHERE recipe_id=?", (recipe_id,))
+    conn.commit()
+    recipe = get_recipe_full(recipe_id, conn); conn.close()
+    return recipe
 
 # ── Annotations ───────────────────────────────────────────────────────────────
 # page_key is either an image filename (e.g. "image1.jpg") or "pdf-<pagenum>"
@@ -568,4 +653,20 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
         recipe["images"] = sorted([f.name for f in images if f.name != "thumbnail.jpg"])
     else:
         recipe["images"] = []
+    # Project status: derive from sessions
+    sessions = conn.execute(
+        "SELECT id, started_at, finished_at FROM project_sessions WHERE recipe_id=? ORDER BY started_at ASC",
+        (recipe_id,)
+    ).fetchall()
+    recipe["sessions"] = [dict(s) for s in sessions]
+    # Active session = last session with no finished_at
+    active = next((s for s in reversed(recipe["sessions"]) if not s["finished_at"]), None)
+    if active:
+        recipe["project_status"] = "active"
+        recipe["active_session_id"] = active["id"]
+        recipe["active_started_at"]  = active["started_at"]
+    elif recipe["sessions"]:
+        recipe["project_status"] = "finished"
+    else:
+        recipe["project_status"] = "none"
     return recipe

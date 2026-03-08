@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Penci
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
+import ProjectStatus from '../components/ProjectStatus';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
@@ -218,6 +219,9 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
         <aside className="viewer-sidebar">
           <h1 className="viewer-title">{recipe.title}</h1>
           {recipe.description && <p className="viewer-description">{recipe.description}</p>}
+
+          {/* Project status — start/finish + session history */}
+          <ProjectStatus recipe={recipe} onUpdated={setRecipe} />
 
           {recipe.categories.length > 0 && (
             <div className="viewer-meta-group">

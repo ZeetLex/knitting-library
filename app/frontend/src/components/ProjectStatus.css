@@ -1,0 +1,281 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Project Status Component
+══════════════════════════════════════════════════════════════════════════════ */
+
+.project-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+}
+
+/* ── Header row: badge + button ─────────────────────────────────────────── */
+.ps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Status badge */
+.ps-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ps-badge--none {
+  background: var(--bg-primary);
+  color: var(--text-light);
+  border: 1px solid var(--border);
+}
+.ps-badge--active {
+  background: rgba(78, 154, 244, 0.15);
+  color: #4e9af4;
+  border: 1px solid rgba(78, 154, 244, 0.3);
+}
+.ps-badge--finished {
+  background: rgba(109, 191, 109, 0.15);
+  color: #4caf50;
+  border: 1px solid rgba(109, 191, 109, 0.3);
+}
+
+/* Action buttons */
+.ps-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.ps-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ps-btn--start {
+  background: var(--terracotta);
+  color: white;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ps-btn--start:hover:not(:disabled) { background: var(--terracotta-dark, #b5603c); }
+}
+
+.ps-btn--finish {
+  background: rgba(109, 191, 109, 0.2);
+  color: #4caf50;
+  border: 1.5px solid rgba(109, 191, 109, 0.4);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ps-btn--finish:hover:not(:disabled) { background: rgba(109, 191, 109, 0.3); }
+}
+
+/* ── Active session info ─────────────────────────────────────────────────── */
+.ps-active-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4e9af4;
+  padding: 6px 10px;
+  background: rgba(78, 154, 244, 0.08);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Stats row ───────────────────────────────────────────────────────────── */
+.ps-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ps-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 100px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.ps-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-light);
+}
+
+.ps-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ── Session history ─────────────────────────────────────────────────────── */
+.ps-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ps-session {
+  padding: 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ps-session--active {
+  border-color: rgba(78, 154, 244, 0.4);
+  background: rgba(78, 154, 244, 0.05);
+}
+
+.ps-session-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ps-session-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ps-session-live {
+  font-size: 11px;
+  color: #4e9af4;
+  font-weight: 600;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.ps-session-dur {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ps-session-times {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ps-time-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Progress bar showing this session's share of total time */
+.ps-session-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ps-session-bar-fill {
+  height: 100%;
+  background: var(--terracotta);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── Clear sessions button ───────────────────────────────────────────────── */
+.ps-clear-wrap {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.ps-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-light);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  width: 100%;
+  justify-content: center;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ps-clear-btn:hover:not(:disabled) {
+    border-color: #e05555;
+    color: #e05555;
+    background: rgba(224, 85, 85, 0.07);
+  }
+}
+.ps-clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Confirm row */
+.ps-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ps-confirm-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 120px;
+}
+.ps-confirm-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+}
+.ps-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ps-confirm-btn--yes {
+  background: #e05555;
+  color: white;
+}
+.ps-confirm-btn--no {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}

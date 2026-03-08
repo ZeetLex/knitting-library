@@ -2,11 +2,12 @@ const API_BASE = '/api';
 function getToken() { return localStorage.getItem('knitting_token') || ''; }
 function authHeaders() { return { 'X-Session-Token': getToken() }; }
 
-export async function fetchRecipes({ search='', category='', tags=[] }={}) {
+export async function fetchRecipes({ search='', category='', tags=[], status='' }={}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (category) params.set('category', category);
   if (tags.length) params.set('tags', tags.join(','));
+  if (status) params.set('status', status);
   const res = await fetch(`${API_BASE}/recipes?${params}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load recipes');
   return res.json();
@@ -166,4 +167,28 @@ export async function convertPdf(recipeId) {
 export function pdfPageUrl(recipeId, filename) {
   const t = getToken();
   return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}${t ? '?token=' + t : ''}`;
+}
+
+// Project sessions
+export async function startProject(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/start`, {
+    method: 'POST', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to start project');
+  return res.json();
+}
+export async function finishProject(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/finish`, {
+    method: 'POST', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to finish project');
+  return res.json();
+}
+
+export async function clearSessions(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions`, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to clear sessions');
+  return res.json();
 }

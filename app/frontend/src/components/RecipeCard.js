@@ -1,24 +1,21 @@
-/**
- * RecipeCard.js
- * Displays a single recipe as a card in the grid.
- * Shows thumbnail, name, and tags.
- */
-
 import React, { useState } from 'react';
+import { Play, CheckCircle } from 'lucide-react';
 import { thumbnailUrl } from '../utils/api';
+import { useApp } from '../utils/AppContext';
 import './RecipeCard.css';
 
 export default function RecipeCard({ recipe, onClick, style }) {
+  const { t } = useApp();
   const [imgError, setImgError] = useState(false);
+  const status = recipe.project_status || 'none';
 
   return (
     <button
-      className="recipe-card fade-in"
+      className={`recipe-card fade-in ${status !== 'none' ? `recipe-card--${status}` : ''}`}
       onClick={onClick}
       style={style}
       aria-label={`Open ${recipe.title}`}
     >
-      {/* Thumbnail */}
       <div className="recipe-card-thumb">
         {recipe.thumbnail_path && !imgError ? (
           <img
@@ -32,14 +29,22 @@ export default function RecipeCard({ recipe, onClick, style }) {
             <span>{recipe.file_type === 'pdf' ? '📄' : '🖼️'}</span>
           </div>
         )}
-
-        {/* File type badge */}
         <span className="recipe-type-badge">
-          {recipe.file_type === 'pdf' ? 'PDF' : `IMG`}
+          {recipe.file_type === 'pdf' ? 'PDF' : 'IMG'}
         </span>
+        {/* Project status overlay badge */}
+        {status === 'active' && (
+          <span className="recipe-status-badge recipe-status-badge--active">
+            <Play size={10} /> {t('projectActive')}
+          </span>
+        )}
+        {status === 'finished' && (
+          <span className="recipe-status-badge recipe-status-badge--finished">
+            <CheckCircle size={10} /> {t('projectFinished')}
+          </span>
+        )}
       </div>
 
-      {/* Info */}
       <div className="recipe-card-info">
         <h3 className="recipe-card-title">{recipe.title}</h3>
         {recipe.categories.length > 0 && (
