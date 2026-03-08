@@ -1,9 +1,3 @@
-/**
- * Library.js
- * The main page showing the recipe grid.
- * Contains the search bar, filter panel, and the grid of recipe cards.
- */
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
@@ -11,33 +5,31 @@ import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchCategories, fetchTags } from '../utils/api';
 import './Library.css';
 
-// Grid size options - small shows more cards, large shows fewer but bigger
-const { t } = useApp();
-const GRID_SIZES = {
-  small:  { label: 'Small',  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
-  medium: { label: 'Medium', icon: <LayoutGrid size={16} />, cols: 'grid-medium' },
-  large:  { label: 'Large',  icon: <Square size={16} />,     cols: 'grid-large'  },
-};
-
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
-  const [recipes, setRecipes]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
-  const [search, setSearch]         = useState('');
-  const [category, setCategory]     = useState('');
-  const [activeTags, setActiveTags] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [allTags, setAllTags]       = useState([]);
-  const [gridSize, setGridSize]     = useState('medium');
+  const { t } = useApp();
+
+  const GRID_SIZES = {
+    small:  { label: t('gridSmall'),  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
+    medium: { label: t('gridMedium'), icon: <LayoutGrid size={16} />, cols: 'grid-medium' },
+    large:  { label: t('gridLarge'),  icon: <Square size={16} />,     cols: 'grid-large'  },
+  };
+
+  const [recipes, setRecipes]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [search, setSearch]           = useState('');
+  const [category, setCategory]       = useState('');
+  const [activeTags, setActiveTags]   = useState([]);
+  const [categories, setCategories]   = useState([]);
+  const [allTags, setAllTags]         = useState([]);
+  const [gridSize, setGridSize]       = useState('medium');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Load categories and tags once on mount
   useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
     fetchTags().then(setAllTags).catch(console.error);
   }, [refreshKey]);
 
-  // Re-load recipes whenever search, filters, or refreshKey changes
   const loadRecipes = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -52,40 +44,36 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   }, [search, category, activeTags, refreshKey]);
 
   useEffect(() => {
-    // Small delay so we don't fire a search request on every keystroke
     const timer = setTimeout(loadRecipes, 300);
     return () => clearTimeout(timer);
   }, [loadRecipes]);
 
   const toggleTag = (tag) => {
-    setActiveTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
+    setActiveTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
-  const clearFilters = () => {
-    setSearch('');
-    setCategory('');
-    setActiveTags([]);
-  };
-
+  const clearFilters = () => { setSearch(''); setCategory(''); setActiveTags([]); };
   const hasActiveFilters = search || category || activeTags.length > 0;
+
+  const recipeCountLabel = () => {
+    if (recipes.length === 0) return t('recipeCount_zero');
+    if (recipes.length === 1) return t('recipeCount_one');
+    return `${recipes.length} ${t('recipeCount_other')}`;
+  };
 
   return (
     <div className="library">
-      {/* ─── Search & Controls Bar ──────────────────────────────────────────── */}
       <div className="library-controls">
         <div className="library-controls-inner">
-          {/* Search Input */}
           <div className="search-wrap">
             <Search size={18} className="search-icon" />
             <input
               type="text"
-              placeholder="Search recipes, tags…"
+              placeholder={t('searchPlaceholder')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="search-input"
-              aria-label="Search recipes"
+              aria-label={t('searchPlaceholder')}
             />
             {search && (
               <button className="search-clear" onClick={() => setSearch('')} aria-label="Clear search">
@@ -94,25 +82,21 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             )}
           </div>
 
-          {/* Filter Toggle Button */}
           <button
             className={`filter-btn ${filtersOpen || hasActiveFilters ? 'active' : ''}`}
             onClick={() => setFiltersOpen(o => !o)}
-            aria-label="Toggle filters"
           >
             <SlidersHorizontal size={18} />
-            <span>Filters</span>
+            <span>{t('filters')}</span>
             {hasActiveFilters && <span className="filter-badge" />}
           </button>
 
-          {/* Grid Size Switcher */}
           <div className="grid-size-switcher">
             {Object.entries(GRID_SIZES).map(([key, val]) => (
               <button
                 key={key}
                 className={`grid-size-btn ${gridSize === key ? 'active' : ''}`}
                 onClick={() => setGridSize(key)}
-                aria-label={`${val.label} grid`}
                 title={val.label}
               >
                 {val.icon}
@@ -121,19 +105,14 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
           </div>
         </div>
 
-        {/* ─── Filter Panel ──────────────────────────────────────────────────── */}
         {filtersOpen && (
           <div className="filter-panel fade-in">
             <div className="filter-panel-inner">
-              {/* Category Filter */}
               <div className="filter-group">
-                <label className="filter-label">Category</label>
+                <label className="filter-label">{t('category')}</label>
                 <div className="filter-pills">
-                  <button
-                    className={`pill ${!category ? 'pill-active' : ''}`}
-                    onClick={() => setCategory('')}
-                  >
-                    All
+                  <button className={`pill ${!category ? 'pill-active' : ''}`} onClick={() => setCategory('')}>
+                    {t('all')}
                   </button>
                   {categories.map(cat => (
                     <button
@@ -147,10 +126,9 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                 </div>
               </div>
 
-              {/* Tag Filter */}
               {allTags.length > 0 && (
                 <div className="filter-group">
-                  <label className="filter-label">Tags</label>
+                  <label className="filter-label">{t('tags')}</label>
                   <div className="filter-pills">
                     {allTags.map(tag => (
                       <button
@@ -168,7 +146,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               {hasActiveFilters && (
                 <button className="clear-filters-btn" onClick={clearFilters}>
                   <X size={14} />
-                  Clear all filters
+                  {t('clearFilters')}
                 </button>
               )}
             </div>
@@ -176,21 +154,12 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         )}
       </div>
 
-      {/* ─── Recipe Count ───────────────────────────────────────────────────── */}
       <div className="library-meta">
-        {!loading && (
-          <p className="recipe-count">
-            {recipes.length === 0 ? 'No recipes found' :
-             recipes.length === 1 ? '1 recipe' :
-             `${recipes.length} recipes`}
-          </p>
-        )}
+        {!loading && <p className="recipe-count">{recipeCountLabel()}</p>}
       </div>
 
-      {/* ─── Grid ───────────────────────────────────────────────────────────── */}
       <div className={`recipe-grid ${GRID_SIZES[gridSize].cols}`}>
         {loading ? (
-          // Show skeleton loading cards while fetching
           Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="recipe-card-skeleton">
               <div className="skeleton" style={{ aspectRatio: '3/4', borderRadius: 'var(--radius)' }} />
@@ -209,21 +178,19 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
           <div className="library-empty">
             <p className="library-empty-icon">🧶</p>
             <p className="library-empty-title">
-              {hasActiveFilters ? 'No recipes match your filters' : 'Your library is empty'}
+              {hasActiveFilters ? t('noRecipesFiltered') : t('noRecipes')}
             </p>
             <p className="library-empty-sub">
-              {hasActiveFilters
-                ? 'Try clearing some filters'
-                : 'Upload your first recipe to get started!'}
+              {hasActiveFilters ? t('noRecipesFilteredSub') : t('noRecipesSub')}
             </p>
             {!hasActiveFilters && (
               <button className="library-empty-btn" onClick={onUploadClick}>
-                Add Your First Recipe
+                {t('addFirstRecipe')}
               </button>
             )}
             {hasActiveFilters && (
               <button className="library-empty-btn secondary" onClick={clearFilters}>
-                Clear Filters
+                {t('clearFiltersBtn')}
               </button>
             )}
           </div>

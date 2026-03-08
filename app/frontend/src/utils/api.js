@@ -71,6 +71,17 @@ export async function changePassword(oldPassword, newPassword) {
   if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to change password'); }
   return res.json();
 }
-export function thumbnailUrl(recipeId) { return `${API_BASE}/recipes/${recipeId}/thumbnail`; }
-export function pdfUrl(recipeId) { return `${API_BASE}/recipes/${recipeId}/pdf`; }
-export function imageUrl(recipeId, filename) { return `${API_BASE}/recipes/${recipeId}/images/${filename}`; }
+// File URLs include the token as a query param so the browser can load them
+// directly in <img> and <iframe> tags without needing custom headers.
+export function thumbnailUrl(recipeId) {
+  const t = getToken();
+  return `${API_BASE}/recipes/${recipeId}/thumbnail${t ? '?token=' + t : ''}`;
+}
+export function pdfUrl(recipeId) {
+  const t = getToken();
+  return `${API_BASE}/recipes/${recipeId}/pdf${t ? '?token=' + t : ''}`;
+}
+export function imageUrl(recipeId, filename) {
+  const t = getToken();
+  return `${API_BASE}/recipes/${recipeId}/images/${filename}${t ? '?token=' + t : ''}`;
+}

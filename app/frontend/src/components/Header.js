@@ -4,15 +4,19 @@ import { useApp } from '../utils/AppContext';
 import './Header.css';
 
 export default function Header({ onUploadClick, onLogoClick, onSettingsClick }) {
-  const { user, logout, t } = useApp();
+  const { logout, t, language } = useApp();
+
+  const appName = language === 'no' ? 'Strikkebibliotek' : 'Knitting Library';
+  const appSub  = language === 'no' ? 'Bibliotek' : 'Library';
+
   return (
     <header className="header">
       <div className="header-inner">
         <button className="header-logo" onClick={onLogoClick} aria-label="Go to library">
           <span className="header-logo-icon">🧶</span>
           <span className="header-logo-text">
-            <span className="header-logo-main">Knitting</span>
-            <span className="header-logo-sub">Library</span>
+            <span className="header-logo-main">{language === 'no' ? 'Strikke' : 'Knitting'}</span>
+            <span className="header-logo-sub">{appSub}</span>
           </span>
         </button>
         <div className="header-right">

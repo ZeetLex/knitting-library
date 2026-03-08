@@ -344,21 +344,39 @@ def add_category(data: dict, current_user: dict=Depends(get_current_user)):
     return {"message": f"Category '{name}' added"}
 
 # ── File serving ──────────────────────────────────────────────────────────────
+# Images and PDFs are loaded by the browser directly via <img src> and <iframe>,
+# so they cannot send headers. We accept the token as a ?token= query param instead.
+
+def verify_token_param(request: Request, token: Optional[str] = None):
+    t = token or request.headers.get("X-Session-Token")
+    if not t:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    conn = get_db()
+    row = conn.execute(
+        "SELECT u.* FROM users u JOIN sessions s ON u.id = s.user_id WHERE s.token = ?", (t,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    return dict(row)
 
 @app.get("/api/recipes/{recipe_id}/thumbnail")
-def get_thumbnail(recipe_id: str, current_user: dict=Depends(get_current_user)):
+def get_thumbnail(recipe_id: str, request: Request, token: Optional[str] = None):
+    verify_token_param(request, token)
     thumb = DATA_DIR / recipe_id / "thumbnail.jpg"
     if thumb.exists(): return FileResponse(str(thumb), media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 @app.get("/api/recipes/{recipe_id}/pdf")
-def get_pdf(recipe_id: str, current_user: dict=Depends(get_current_user)):
+def get_pdf(recipe_id: str, request: Request, token: Optional[str] = None):
+    verify_token_param(request, token)
     pdf = DATA_DIR / recipe_id / "recipe.pdf"
     if pdf.exists(): return FileResponse(str(pdf), media_type="application/pdf")
     raise HTTPException(status_code=404, detail="PDF not found")
 
 @app.get("/api/recipes/{recipe_id}/images/{filename}")
-def get_image(recipe_id: str, filename: str, current_user: dict=Depends(get_current_user)):
+def get_image(recipe_id: str, filename: str, request: Request, token: Optional[str] = None):
+    verify_token_param(request, token)
     safe_name = Path(filename).name
     image_path = DATA_DIR / recipe_id / safe_name
     if image_path.exists(): return FileResponse(str(image_path))
