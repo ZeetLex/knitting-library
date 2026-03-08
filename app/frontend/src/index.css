@@ -10,10 +10,6 @@
   --radius:           12px;
   --radius-sm:        8px;
   --transition:       all 0.18s ease;
-  --safe-top:    env(safe-area-inset-top,    0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left:   env(safe-area-inset-left,   0px);
-  --safe-right:  env(safe-area-inset-right,  0px);
 }
 :root, [data-theme="light"] {
   --bg-primary:    #f5f0e8;

@@ -3,9 +3,10 @@
 ══════════════════════════════════════════════════════════════════════════════ */
 .category-manager {
   flex-shrink: 0;
-  /* Prevent this element from ever pushing layout wider */
   max-width: 100%;
   min-width: 0;
+  /* Required so the absolute-positioned dropdown anchors here */
+  position: relative;
 }
 
 /* ── Toggle button ──────────────────────────────────────────────────────────── */

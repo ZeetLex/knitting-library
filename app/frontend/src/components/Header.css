@@ -7,8 +7,6 @@
   z-index: 100;
   background: var(--navy);
   box-shadow: 0 2px 20px rgba(0,0,0,0.3);
-  padding-top: var(--safe-top);
-  /* Prevent header itself from ever being wider than viewport */
   max-width: 100vw;
   overflow: hidden;
 }
@@ -88,12 +86,6 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
-  /* Hide on mobile — saves horizontal space */
-  display: none;
-}
-
-@media (min-width: 641px) {
-  .header-logo-sub { display: block; }
 }
 
 /* ── Right cluster ──────────────────────────────────────────────────────────── */

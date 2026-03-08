@@ -29,8 +29,11 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
-    fetchTags().then(setAllTags).catch(console.error);
   }, [refreshKey, catRefreshKey]);
+
+  useEffect(() => {
+    fetchTags().then(setAllTags).catch(console.error);
+  }, [refreshKey]);
 
   const loadRecipes = useCallback(async () => {
     setLoading(true);

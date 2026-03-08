@@ -1,10 +1,3 @@
-/**
- * CategoryManager.js
- * A small collapsible panel on the library page for managing categories.
- * Lets you add new categories and delete existing ones.
- * Lives just above the recipe grid, stays out of the way until opened.
- */
-
 import React, { useState, useEffect } from 'react';
 import { Plus, X, Tag, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
@@ -13,16 +6,15 @@ import './CategoryManager.css';
 
 export default function CategoryManager({ onCategoriesChanged }) {
   const { t } = useApp();
-  const [open, setOpen]           = useState(false);
+  const [open, setOpen]             = useState(false);
   const [categories, setCategories] = useState([]);
-  const [input, setInput]         = useState('');
-  const [error, setError]         = useState('');
+  const [input, setInput]           = useState('');
+  const [error, setError]           = useState('');
 
-  const load = () => {
+  // Load once on mount only — we manage the list locally after that
+  useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
-  };
-
-  useEffect(() => { load(); }, []);
+  }, []);
 
   const handleAdd = async () => {
     const name = input.trim();
@@ -35,7 +27,9 @@ export default function CategoryManager({ onCategoriesChanged }) {
     try {
       await addCategory(name);
       setInput('');
-      load();
+      // Update local state directly so panel stays open and shows the new tag immediately
+      setCategories(prev => [...prev, name]);
+      // Tell parent (updates filter pills) but does NOT remount this component
       onCategoriesChanged?.();
     } catch (e) {
       setError(e.message);
@@ -45,7 +39,7 @@ export default function CategoryManager({ onCategoriesChanged }) {
   const handleDelete = async (cat) => {
     try {
       await deleteCategory(cat);
-      load();
+      setCategories(prev => prev.filter(c => c !== cat));
       onCategoriesChanged?.();
     } catch (e) {
       console.error(e);
@@ -58,7 +52,6 @@ export default function CategoryManager({ onCategoriesChanged }) {
 
   return (
     <div className={`category-manager ${open ? 'open' : ''}`}>
-      {/* ── Toggle button ─────────────────────────────────── */}
       <button className="cm-toggle" onClick={() => setOpen(o => !o)}>
         <Tag size={15} />
         <span>{t('manageCategories')}</span>
@@ -66,10 +59,8 @@ export default function CategoryManager({ onCategoriesChanged }) {
         {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
       </button>
 
-      {/* ── Expanded panel ────────────────────────────────── */}
       {open && (
         <div className="cm-panel">
-          {/* Add new */}
           <div className="cm-add-row">
             <input
               className="cm-input"
@@ -77,7 +68,6 @@ export default function CategoryManager({ onCategoriesChanged }) {
               onChange={e => { setInput(e.target.value); setError(''); }}
               onKeyDown={handleKeyDown}
               placeholder={t('newCategoryPlaceholder')}
-              autoFocus
             />
             <button
               className="cm-add-btn"
@@ -91,7 +81,6 @@ export default function CategoryManager({ onCategoriesChanged }) {
 
           {error && <p className="cm-error">{error}</p>}
 
-          {/* Existing categories */}
           <div className="cm-list">
             {categories.length === 0 ? (
               <p className="cm-empty">{t('noCategoriesYet')}</p>

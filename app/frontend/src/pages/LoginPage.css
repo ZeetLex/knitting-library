@@ -6,8 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Safe area padding so the card never hides under the status bar */
-  padding: calc(20px + var(--safe-top)) 16px calc(20px + var(--safe-bottom));
+  padding: 20px 16px;
   background: var(--bg-primary);
   overflow-x: hidden;
 }

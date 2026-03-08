@@ -19,20 +19,18 @@
 ══════════════════════════════════════════════════════════════════════════════ */
 .library-controls {
   position: sticky;
-  top: calc(60px + var(--safe-top));
+  top: 0;
   z-index: 50;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
-  /* Bleed to the library edges without going past viewport */
   margin: 0 -12px;
   padding: 0 12px;
-  /* Clip anything that might overflow */
   overflow: hidden;
 }
 
 @media (min-width: 641px) {
   .library-controls {
-    top: calc(72px + var(--safe-top));
+    top: 0;
     margin: 0 -24px;
     padding: 0 24px;
   }
@@ -269,12 +267,13 @@
   padding: 10px 0 8px;
   display: flex;
   align-items: flex-start;
-  /* Count left, category manager right — wrap on very small screens */
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  /* Don't let it overflow */
-  overflow: hidden;
+  /* Must be visible so the category dropdown panel can extend below */
+  overflow: visible;
+  position: relative;
+  z-index: 10;
 }
 
 .recipe-count {
