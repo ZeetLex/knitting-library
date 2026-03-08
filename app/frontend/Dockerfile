@@ -16,6 +16,7 @@ RUN npm run build
 
 # Step 2: Serve the built app with nginx
 FROM nginx:alpine
+LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
 # Copy the built React app files to nginx's web root
 COPY --from=builder /app/build /usr/share/nginx/html

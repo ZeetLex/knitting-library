@@ -1,20 +1,26 @@
 # This file tells Docker how to build the backend server container.
-# It installs Python, the required libraries, and starts the API server.
+# Uses Alpine Linux for a much smaller image size (~200MB vs ~750MB).
 
-FROM python:3.11-slim
+FROM python:3.11-alpine
+LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
-# Install system tools needed for PDF thumbnail generation (poppler)
-# and image processing (libgl1)
-RUN apt-get update && apt-get install -y \
+# Install only what we actually need:
+#   poppler     - converts PDF pages to images for thumbnails
+#   gcc/musl    - needed to compile some Python packages on Alpine
+#   zlib/jpeg   - image format support for Pillow
+# All install caches are cleaned in the same layer to keep image size down
+RUN apk add --no-cache \
     poppler-utils \
-    libgl1 \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    gcc \
+    musl-dev \
+    zlib-dev \
+    jpeg-dev \
+    libffi-dev
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy and install Python dependencies first (this is cached by Docker for speed)
+# Copy and install Python dependencies first (this layer is cached by Docker)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -22,5 +28,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Start the FastAPI server on port 8000
-# --host 0.0.0.0 makes it accessible from outside the container
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
