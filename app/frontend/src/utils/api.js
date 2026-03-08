@@ -170,9 +170,11 @@ export function pdfPageUrl(recipeId, filename) {
 }
 
 // Project sessions
-export async function startProject(recipeId) {
+export async function startProject(recipeId, yarnId = null) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/start`, {
-    method: 'POST', headers: authHeaders()
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yarn_id: yarnId }),
   });
   if (!res.ok) throw new Error('Failed to start project');
   return res.json();

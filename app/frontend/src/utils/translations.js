@@ -204,6 +204,13 @@ const translations = {
     yarnFilters: "Filters",
     showInfo: "Recipe info",
     hideInfo: "Hide info",
+    selectYarn: "Select yarn",
+    selectYarnTitle: "Choose yarn for this project",
+    selectYarnHint: "Pick which yarn you'll be using (optional)",
+    noYarnSelected: "No yarn selected",
+    continueWithoutYarn: "Start without yarn",
+    yarnForProject: "Yarn used",
+    changeYarn: "Change yarn",
   },
 
   no: {
@@ -405,6 +412,13 @@ const translations = {
     yarnFilters: "Filtre",
     showInfo: "Oppskriftsinfo",
     hideInfo: "Skjul info",
+    selectYarn: "Velg garn",
+    selectYarnTitle: "Velg garn for dette prosjektet",
+    selectYarnHint: "Velg garnet du skal bruke (valgfritt)",
+    noYarnSelected: "Ingen garn valgt",
+    continueWithoutYarn: "Start uten garn",
+    yarnForProject: "Garn brukt",
+    changeYarn: "Bytt garn",
   },
 };
 

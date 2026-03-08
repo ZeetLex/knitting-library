@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import sqlite3
@@ -72,7 +72,9 @@ def init_db():
             recipe_id   TEXT NOT NULL,
             started_at  TEXT NOT NULL,
             finished_at TEXT,
-            FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+            yarn_id     TEXT,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id),
+            FOREIGN KEY (yarn_id)   REFERENCES yarns(id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id               TEXT PRIMARY KEY,
@@ -110,6 +112,11 @@ def init_db():
     if "price_per_skein" not in existing_cols:
         conn.execute("ALTER TABLE yarns ADD COLUMN price_per_skein TEXT DEFAULT ''")
         print("Migration: added 'price_per_skein' column to yarns")
+    # project_sessions migrations
+    ps_cols = [r["name"] for r in conn.execute("PRAGMA table_info(project_sessions)").fetchall()]
+    if "yarn_id" not in ps_cols:
+        conn.execute("ALTER TABLE project_sessions ADD COLUMN yarn_id TEXT")
+        print("Migration: added 'yarn_id' column to project_sessions")
     conn.commit()
     conn.close()
 
@@ -297,7 +304,7 @@ def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags:
         recipe["tags"] = [x["name"] for x in conn.execute("SELECT t.name FROM tags t JOIN recipe_tags rt ON t.id=rt.tag_id WHERE rt.recipe_id=?", (recipe["id"],)).fetchall()]
         # Attach project status
         sessions = conn.execute(
-            "SELECT id, started_at, finished_at FROM project_sessions WHERE recipe_id=? ORDER BY started_at ASC",
+            "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, y.name as yarn_name, y.colour as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
             (recipe["id"],)
         ).fetchall()
         recipe["sessions"] = [dict(s) for s in sessions]
@@ -473,7 +480,7 @@ def health():
 # ── Project Sessions ──────────────────────────────────────────────────────────
 
 @app.post("/api/recipes/{recipe_id}/start")
-def start_project(recipe_id: str, current_user: dict = Depends(get_current_user)):
+def start_project(recipe_id: str, body: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     conn = get_db()
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close(); raise HTTPException(status_code=404, detail="Recipe not found")
@@ -483,11 +490,12 @@ def start_project(recipe_id: str, current_user: dict = Depends(get_current_user)
     ).fetchone()
     if active:
         conn.close(); raise HTTPException(status_code=400, detail="Project already active")
+    yarn_id = body.get("yarn_id") or None
     session_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     conn.execute(
-        "INSERT INTO project_sessions (id, recipe_id, started_at) VALUES (?,?,?)",
-        (session_id, recipe_id, now)
+        "INSERT INTO project_sessions (id, recipe_id, started_at, yarn_id) VALUES (?,?,?,?)",
+        (session_id, recipe_id, now, yarn_id)
     )
     conn.commit()
     recipe = get_recipe_full(recipe_id, conn); conn.close()
@@ -681,7 +689,7 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
         recipe["images"] = []
     # Project status: derive from sessions
     sessions = conn.execute(
-        "SELECT id, started_at, finished_at FROM project_sessions WHERE recipe_id=? ORDER BY started_at ASC",
+        "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, y.name as yarn_name, y.colour as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
         (recipe_id,)
     ).fetchall()
     recipe["sessions"] = [dict(s) for s in sessions]

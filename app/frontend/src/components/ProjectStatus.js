@@ -1,16 +1,14 @@
 /**
  * ProjectStatus.js
- * Shows start/finish button, session history, and total knitting time.
- * Used inside the RecipeViewer sidebar.
+ * Shows start/finish button, yarn picker on start, session history.
  */
 
-import React, { useState } from 'react';
-import { Play, CheckCircle, Clock, RotateCcw, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { startProject, finishProject, clearSessions } from '../utils/api';
+import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl } from '../utils/api';
 import './ProjectStatus.css';
 
-// ── Format a duration in seconds into "2d 3h 45m" ──────────────────────────
 function formatDuration(seconds, t) {
   if (seconds < 60) return `< 1${t('minutes')}`;
   const d = Math.floor(seconds / 86400);
@@ -23,7 +21,6 @@ function formatDuration(seconds, t) {
   return parts.join(' ');
 }
 
-// ── Format ISO string to local date + time ──────────────────────────────────
 function formatDateTime(iso, lang) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString(lang === 'no' ? 'nb-NO' : 'en-US', {
@@ -32,7 +29,6 @@ function formatDateTime(iso, lang) {
   });
 }
 
-// ── Calculate total seconds across all finished sessions ────────────────────
 function totalSeconds(sessions) {
   return sessions.reduce((sum, s) => {
     if (!s.finished_at) return sum;
@@ -40,19 +36,150 @@ function totalSeconds(sessions) {
   }, 0);
 }
 
+// ── Yarn Pill — small display of name + colour ───────────────────────────────
+function YarnPill({ name, colour, imageId }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <span className="ps-yarn-pill">
+      {imageId && !imgErr ? (
+        <img
+          src={yarnImageUrl(imageId)}
+          alt={name}
+          className="ps-yarn-pill-img"
+          onError={() => setImgErr(true)}
+        />
+      ) : (
+        <span className="ps-yarn-pill-emoji">🧵</span>
+      )}
+      <span className="ps-yarn-pill-name">{name}</span>
+      {colour && <span className="ps-yarn-pill-colour">{colour}</span>}
+    </span>
+  );
+}
+
+// ── Yarn Picker Modal ────────────────────────────────────────────────────────
+function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
+  const [yarns, setYarns]     = useState([]);
+  const [search, setSearch]   = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+
+  useEffect(() => {
+    fetchYarns().then(y => { setYarns(y); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const filtered = yarns.filter(y =>
+    !search || y.name.toLowerCase().includes(search.toLowerCase()) ||
+    (y.colour && y.colour.toLowerCase().includes(search.toLowerCase())) ||
+    (y.wool_type && y.wool_type.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="yp-modal">
+        <div className="yp-header">
+          <div>
+            <h2 className="yp-title">{t('selectYarnTitle')}</h2>
+            <p className="yp-hint">{t('selectYarnHint')}</p>
+          </div>
+          <button className="yp-close" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="yp-search-wrap">
+          <Search size={15} className="yp-search-icon" />
+          <input
+            type="search"
+            className="yp-search"
+            placeholder={`${t('search')}…`}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Yarn list */}
+        <div className="yp-list">
+          {loading ? (
+            <div className="yp-loading"><div className="yp-spinner" /></div>
+          ) : filtered.length === 0 ? (
+            <p className="yp-empty">🧵 {t('noYarns')}</p>
+          ) : (
+            filtered.map(yarn => (
+              <YarnPickerRow
+                key={yarn.id}
+                yarn={yarn}
+                selected={selected?.id === yarn.id}
+                onSelect={() => setSelected(selected?.id === yarn.id ? null : yarn)}
+              />
+            ))
+          )}
+        </div>
+
+        <div className="yp-footer">
+          <button className="yp-btn-skip" onClick={onSkip}>
+            {t('continueWithoutYarn')}
+          </button>
+          <button
+            className="yp-btn-confirm"
+            onClick={() => onSelect(selected)}
+            disabled={!selected}
+          >
+            <Play size={15} />
+            {t('startProject')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function YarnPickerRow({ yarn, selected, onSelect }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <button
+      className={`yp-row ${selected ? 'yp-row--selected' : ''}`}
+      onClick={onSelect}
+    >
+      <div className="yp-row-thumb">
+        {yarn.image_path && !imgErr ? (
+          <img src={yarnImageUrl(yarn.id)} alt={yarn.name} onError={() => setImgErr(true)} />
+        ) : (
+          <span>🧵</span>
+        )}
+      </div>
+      <div className="yp-row-info">
+        <span className="yp-row-name">{yarn.name}</span>
+        <span className="yp-row-sub">
+          {[yarn.colour, yarn.wool_type].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      <div className={`yp-row-check ${selected ? 'checked' : ''}`}>
+        {selected && <CheckCircle size={18} />}
+      </div>
+    </button>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
 export default function ProjectStatus({ recipe, onUpdated }) {
   const { t, language } = useApp();
-  const [loading, setLoading]           = useState(false);
+  const [loading, setLoading]         = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [showYarnPicker, setShowYarnPicker] = useState(false);
 
   const status   = recipe.project_status || 'none';
   const sessions = recipe.sessions || [];
-  const finished = sessions.filter(s => s.finished_at);
   const total    = totalSeconds(sessions);
 
-  const handleStart = async () => {
+  // Find the active session's yarn data
+  const activeSession = sessions.find(s => !s.finished_at);
+
+  const handleStartClick = () => setShowYarnPicker(true);
+
+  const handleYarnSelected = async (yarn) => {
+    setShowYarnPicker(false);
     setLoading(true);
-    try { onUpdated(await startProject(recipe.id)); }
+    try { onUpdated(await startProject(recipe.id, yarn?.id || null)); }
     catch (e) { alert(e.message); }
     finally { setLoading(false); }
   };
@@ -65,8 +192,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   };
 
   const handleClear = async () => {
-    setLoading(true);
-    setConfirmClear(false);
+    setLoading(true); setConfirmClear(false);
     try { onUpdated(await clearSessions(recipe.id)); }
     catch (e) { alert(e.message); }
     finally { setLoading(false); }
@@ -75,7 +201,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   return (
     <div className="project-status">
 
-      {/* ── Status badge + main action button ─────────────────────────── */}
+      {/* ── Status badge + main action ─────────────────────────────── */}
       <div className="ps-header">
         <span className={`ps-badge ps-badge--${status}`}>
           {status === 'active'   && <><Play size={12} /> {t('projectActive')}</>}
@@ -84,27 +210,39 @@ export default function ProjectStatus({ recipe, onUpdated }) {
         </span>
 
         {status === 'none' || status === 'finished' ? (
-          <button className="ps-btn ps-btn--start" onClick={handleStart} disabled={loading}>
-            <Play size={15} />
-            {t('startProject')}
+          <button className="ps-btn ps-btn--start" onClick={handleStartClick} disabled={loading}>
+            <Play size={15} /> {t('startProject')}
           </button>
         ) : (
           <button className="ps-btn ps-btn--finish" onClick={handleFinish} disabled={loading}>
-            <CheckCircle size={15} />
-            {t('finishProject')}
+            <CheckCircle size={15} /> {t('finishProject')}
           </button>
         )}
       </div>
 
-      {/* ── Active session info ────────────────────────────────────────── */}
-      {status === 'active' && recipe.active_started_at && (
+      {/* ── Active session yarn + start time ──────────────────────── */}
+      {status === 'active' && (
         <div className="ps-active-info">
-          <Clock size={13} />
-          <span>{t('startedAt')}: {formatDateTime(recipe.active_started_at, language)}</span>
+          {activeSession?.yarn_name && (
+            <div className="ps-active-yarn">
+              <span className="ps-active-yarn-label">{t('yarnForProject')}</span>
+              <YarnPill
+                name={activeSession.yarn_name}
+                colour={activeSession.yarn_colour}
+                imageId={activeSession.yarn_id}
+              />
+            </div>
+          )}
+          {recipe.active_started_at && (
+            <div className="ps-time-row" style={{ marginTop: 4 }}>
+              <Clock size={13} />
+              <span>{t('startedAt')}: {formatDateTime(recipe.active_started_at, language)}</span>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── Summary stats ─────────────────────────────────────────────── */}
+      {/* ── Summary stats ─────────────────────────────────────────── */}
       {sessions.length > 0 && (
         <div className="ps-stats">
           <div className="ps-stat">
@@ -120,7 +258,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
         </div>
       )}
 
-      {/* ── Session history ────────────────────────────────────────────── */}
+      {/* ── Session history ────────────────────────────────────────── */}
       {sessions.length > 0 && (
         <div className="ps-history">
           {sessions.map((s, i) => {
@@ -131,32 +269,34 @@ export default function ProjectStatus({ recipe, onUpdated }) {
               <div key={s.id} className={`ps-session ${!s.finished_at ? 'ps-session--active' : ''}`}>
                 <div className="ps-session-header">
                   <span className="ps-session-num">{t('session')} {i + 1}</span>
-                  {!s.finished_at && (
-                    <span className="ps-session-live">● {t('projectActive')}</span>
-                  )}
-                  {dur !== null && (
-                    <span className="ps-session-dur">{formatDuration(dur, t)}</span>
-                  )}
+                  {!s.finished_at && <span className="ps-session-live">● {t('projectActive')}</span>}
+                  {dur !== null && <span className="ps-session-dur">{formatDuration(dur, t)}</span>}
                 </div>
+
+                {/* Yarn used in this session */}
+                {s.yarn_name && (
+                  <div className="ps-session-yarn">
+                    <YarnPill
+                      name={s.yarn_name}
+                      colour={s.yarn_colour}
+                      imageId={s.yarn_id}
+                    />
+                  </div>
+                )}
+
                 <div className="ps-session-times">
                   <div className="ps-time-row">
-                    <Play size={10} />
-                    <span>{formatDateTime(s.started_at, language)}</span>
+                    <Play size={10} /><span>{formatDateTime(s.started_at, language)}</span>
                   </div>
                   {s.finished_at && (
                     <div className="ps-time-row">
-                      <CheckCircle size={10} />
-                      <span>{formatDateTime(s.finished_at, language)}</span>
+                      <CheckCircle size={10} /><span>{formatDateTime(s.finished_at, language)}</span>
                     </div>
                   )}
                 </div>
-                {/* Progress bar for finished sessions */}
                 {dur !== null && total > 0 && (
                   <div className="ps-session-bar">
-                    <div
-                      className="ps-session-bar-fill"
-                      style={{ width: `${Math.round((dur / total) * 100)}%` }}
-                    />
+                    <div className="ps-session-bar-fill" style={{ width: `${Math.round((dur / total) * 100)}%` }} />
                   </div>
                 )}
               </div>
@@ -165,26 +305,31 @@ export default function ProjectStatus({ recipe, onUpdated }) {
         </div>
       )}
 
-      {/* ── Clear all sessions ─────────────────────────────────────────── */}
+      {/* ── Clear sessions ─────────────────────────────────────────── */}
       {sessions.length > 0 && (
         <div className="ps-clear-wrap">
           {confirmClear ? (
             <div className="ps-confirm-row">
               <span className="ps-confirm-text">{t('clearSessionsConfirm')}</span>
-              <button className="ps-confirm-btn ps-confirm-btn--yes" onClick={handleClear} disabled={loading}>
-                {t('clearSessionsYes')}
-              </button>
-              <button className="ps-confirm-btn ps-confirm-btn--no" onClick={() => setConfirmClear(false)}>
-                {t('clearSessionsNo')}
-              </button>
+              <button className="ps-confirm-btn ps-confirm-btn--yes" onClick={handleClear} disabled={loading}>{t('clearSessionsYes')}</button>
+              <button className="ps-confirm-btn ps-confirm-btn--no" onClick={() => setConfirmClear(false)}>{t('clearSessionsNo')}</button>
             </div>
           ) : (
             <button className="ps-clear-btn" onClick={() => setConfirmClear(true)} disabled={loading}>
-              <Trash2 size={13} />
-              {t('clearSessions')}
+              <Trash2 size={13} /> {t('clearSessions')}
             </button>
           )}
         </div>
+      )}
+
+      {/* ── Yarn picker modal ──────────────────────────────────────── */}
+      {showYarnPicker && (
+        <YarnPickerModal
+          t={t}
+          onSelect={handleYarnSelected}
+          onSkip={() => handleYarnSelected(null)}
+          onClose={() => setShowYarnPicker(false)}
+        />
       )}
     </div>
   );
