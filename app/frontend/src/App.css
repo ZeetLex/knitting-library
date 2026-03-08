@@ -1,18 +1,20 @@
-/* ─── App Layout ─────────────────────────────────────────────────────────────── */
-
+/* App shell */
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 .app-main {
   flex: 1;
-  padding-top: 72px; /* Height of the fixed header */
+  /* Include iPhone status-bar safe area so content starts below it */
+  padding-top: calc(60px + var(--safe-top));
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
-@media (max-width: 640px) {
-  .app-main {
-    padding-top: 64px;
-  }
+@media (min-width: 641px) {
+  .app-main { padding-top: calc(72px + var(--safe-top)); }
 }

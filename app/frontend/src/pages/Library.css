@@ -1,59 +1,92 @@
-/* ─── Library Page ────────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Library Page
+══════════════════════════════════════════════════════════════════════════════ */
 .library {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 24px 48px;
+  padding: 0 12px 80px;
+  /* Never wider than screen */
+  width: 100%;
+  overflow-x: hidden;
 }
 
-/* ─── Controls Bar ────────────────────────────────────────────────────────────── */
+@media (min-width: 641px) {
+  .library { padding: 0 24px 80px; }
+}
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   Sticky Controls Bar
+══════════════════════════════════════════════════════════════════════════════ */
 .library-controls {
   position: sticky;
-  top: 72px;
+  top: calc(60px + var(--safe-top));
   z-index: 50;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
-  margin: 0 -24px;
-  padding: 0 24px;
+  /* Bleed to the library edges without going past viewport */
+  margin: 0 -12px;
+  padding: 0 12px;
+  /* Clip anything that might overflow */
+  overflow: hidden;
+}
+
+@media (min-width: 641px) {
+  .library-controls {
+    top: calc(72px + var(--safe-top));
+    margin: 0 -24px;
+    padding: 0 24px;
+  }
 }
 
 .library-controls-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 0;
+  gap: 8px;
+  padding: 10px 0;
+  /* Prevent row from forcing a horizontal scroll */
+  overflow: hidden;
+  width: 100%;
 }
 
-/* ─── Search ──────────────────────────────────────────────────────────────────── */
+@media (min-width: 641px) {
+  .library-controls-inner { padding: 14px 0; gap: 12px; }
+}
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   Search
+══════════════════════════════════════════════════════════════════════════════ */
 .search-wrap {
   position: relative;
   flex: 1;
+  /* Crucial: allows the flex item to shrink below its content size */
   min-width: 0;
 }
 
 .search-icon {
   position: absolute;
-  left: 14px;
+  left: 11px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-light);
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .search-input {
   width: 100%;
-  height: 44px;
-  padding: 0 40px 0 42px;
+  height: 40px;
+  padding: 0 36px 0 36px;
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
   font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
+  font-size: 16px;  /* 16px prevents iOS auto-zoom */
   color: var(--text-primary);
   transition: var(--transition);
   outline: none;
+  -webkit-appearance: none;
+  /* Never exceed its container */
+  max-width: 100%;
 }
 
 .search-input:focus {
@@ -61,13 +94,11 @@
   box-shadow: 0 0 0 3px rgba(196, 113, 74, 0.12);
 }
 
-.search-input::placeholder {
-  color: var(--text-light);
-}
+.search-input::placeholder { color: var(--text-light); }
 
 .search-clear {
   position: absolute;
-  right: 12px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -76,22 +107,21 @@
   color: var(--text-light);
   display: flex;
   align-items: center;
-  padding: 4px;
+  padding: 6px;
   border-radius: 4px;
 }
 
-.search-clear:hover {
-  color: var(--text-primary);
-}
+.search-clear:hover { color: var(--text-primary); }
 
-/* ─── Filter Button ───────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Filter Button
+══════════════════════════════════════════════════════════════════════════════ */
 .filter-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 16px;
+  gap: 5px;
+  height: 40px;
+  padding: 0 10px;
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
@@ -103,6 +133,15 @@
   transition: var(--transition);
   position: relative;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Text label only on wider screens */
+.filter-btn span { display: none; }
+
+@media (min-width: 480px) {
+  .filter-btn { padding: 0 14px; }
+  .filter-btn span { display: inline; }
 }
 
 .filter-btn:hover,
@@ -113,29 +152,31 @@
 }
 
 .filter-badge {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   background: var(--terracotta);
   border-radius: 50%;
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
 }
 
-/* ─── Grid Size Switcher ──────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Grid Size Switcher
+══════════════════════════════════════════════════════════════════════════════ */
 .grid-size-switcher {
   display: flex;
   gap: 2px;
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
-  padding: 4px;
+  padding: 3px;
+  flex-shrink: 0;
 }
 
 .grid-size-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -147,27 +188,22 @@
   transition: var(--transition);
 }
 
-.grid-size-btn.active {
-  background: var(--navy);
-  color: white;
-}
+.grid-size-btn.active { background: var(--navy); color: white; }
+.grid-size-btn:hover:not(.active) { background: var(--bg-hover); color: var(--text-primary); }
 
-.grid-size-btn:hover:not(.active) {
-  background: var(--cream-dark);
-  color: var(--text-primary);
-}
-
-/* ─── Filter Panel ────────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Filter Panel
+══════════════════════════════════════════════════════════════════════════════ */
 .filter-panel {
   border-top: 1px solid var(--border);
-  padding: 16px 0;
+  padding: 12px 0;
+  overflow: hidden;
 }
 
 .filter-panel-inner {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .filter-group {
@@ -177,7 +213,7 @@
 }
 
 .filter-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -187,12 +223,12 @@
 .filter-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .pill {
   height: 32px;
-  padding: 0 14px;
+  padding: 0 12px;
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: 100px;
@@ -205,21 +241,9 @@
   white-space: nowrap;
 }
 
-.pill:hover {
-  border-color: var(--terracotta);
-  color: var(--terracotta);
-}
-
-.pill-active {
-  background: var(--terracotta);
-  border-color: var(--terracotta);
-  color: white;
-}
-
-.pill-active:hover {
-  background: var(--terracotta-light);
-  color: white;
-}
+.pill:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.pill-active { background: var(--terracotta); border-color: var(--terracotta); color: white; }
+.pill-active:hover { background: var(--terracotta-light); color: white; }
 
 .clear-filters-btn {
   display: flex;
@@ -236,19 +260,21 @@
   align-self: flex-start;
 }
 
-.clear-filters-btn:hover {
-  color: var(--terracotta);
-}
+.clear-filters-btn:hover { color: var(--terracotta); }
 
-/* ─── Recipe Count ────────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Meta Row (recipe count + category manager)
+══════════════════════════════════════════════════════════════════════════════ */
 .library-meta {
-  padding: 16px 0 8px;
+  padding: 10px 0 8px;
   display: flex;
   align-items: flex-start;
+  /* Count left, category manager right — wrap on very small screens */
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
+  /* Don't let it overflow */
+  overflow: hidden;
 }
 
 .recipe-count {
@@ -258,46 +284,64 @@
   flex-shrink: 0;
 }
 
-/* ─── Grid Layouts ────────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Recipe Grid
+══════════════════════════════════════════════════════════════════════════════ */
 .recipe-grid {
   display: grid;
-  gap: 20px;
+  gap: 10px;
+  /* Prevent any card from blowing out the grid width */
+  width: 100%;
+  overflow: hidden;
 }
 
-.grid-small  { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
-.grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-.grid-large  { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+/* ── Mobile (< 480px): always 2 columns ── */
+.grid-small  { grid-template-columns: repeat(2, 1fr); }
+.grid-medium { grid-template-columns: repeat(2, 1fr); }
+.grid-large  { grid-template-columns: repeat(1, 1fr); gap: 12px; }
 
-/* ─── Empty State ─────────────────────────────────────────────────────────────── */
+/* ── Tablet (480–900px) ── */
+@media (min-width: 480px) {
+  .recipe-grid { gap: 14px; }
+  .grid-small  { grid-template-columns: repeat(3, 1fr); }
+  .grid-medium { grid-template-columns: repeat(2, 1fr); }
+  .grid-large  { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+}
 
+/* ── Desktop (> 900px) ── */
+@media (min-width: 900px) {
+  .recipe-grid { gap: 20px; }
+  .grid-small  { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .grid-large  { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Empty State
+══════════════════════════════════════════════════════════════════════════════ */
 .library-empty {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 24px;
+  padding: 60px 24px;
   text-align: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.library-empty-icon {
-  font-size: 48px;
-  line-height: 1;
-  margin-bottom: 8px;
-}
+.library-empty-icon { font-size: 44px; line-height: 1; margin-bottom: 6px; }
 
 .library-empty-title {
   font-family: 'Playfair Display', serif;
-  font-size: 22px;
+  font-size: 20px;
   color: var(--text-primary);
 }
 
 .library-empty-sub {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--text-secondary);
-  max-width: 320px;
+  max-width: 280px;
 }
 
 .library-empty-btn {
@@ -320,44 +364,7 @@
   border: 1.5px solid var(--terracotta);
 }
 
-.library-empty-btn:hover {
-  opacity: 0.85;
-  transform: translateY(-1px);
-}
+.library-empty-btn:hover { opacity: 0.85; }
 
-/* ─── Skeleton ────────────────────────────────────────────────────────────────── */
-
-.recipe-card-skeleton {
-  display: flex;
-  flex-direction: column;
-}
-
-/* ─── Mobile ──────────────────────────────────────────────────────────────────── */
-
-@media (max-width: 640px) {
-  .library {
-    padding: 0 16px 48px;
-  }
-
-  .library-controls {
-    top: 64px;
-    margin: 0 -16px;
-    padding: 0 16px;
-  }
-
-  .library-controls-inner {
-    gap: 8px;
-  }
-
-  .filter-btn span {
-    display: none;
-  }
-
-  .filter-btn {
-    padding: 0 12px;
-  }
-
-  .grid-small  { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .grid-medium { grid-template-columns: repeat(2, 1fr); gap: 14px; }
-  .grid-large  { grid-template-columns: repeat(1, 1fr); gap: 16px; }
-}
+/* Skeleton card */
+.recipe-card-skeleton { display: flex; flex-direction: column; }

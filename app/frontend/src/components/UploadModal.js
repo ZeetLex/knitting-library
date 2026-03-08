@@ -67,7 +67,7 @@ export default function UploadModal({ onClose, onSuccess }) {
   const sizeStr   = totalSize < 1024*1024 ? `${(totalSize/1024).toFixed(0)} KB` : `${(totalSize/1024/1024).toFixed(1)} MB`;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
       <div className="upload-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{t('addRecipeTitle')}</h3>

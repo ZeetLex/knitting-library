@@ -1,16 +1,19 @@
-/* ─── Category Manager ───────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Category Manager — inline collapsible panel on the Library page
+══════════════════════════════════════════════════════════════════════════════ */
 .category-manager {
   flex-shrink: 0;
+  /* Prevent this element from ever pushing layout wider */
+  max-width: 100%;
+  min-width: 0;
 }
 
-/* ── Toggle button ─────────────────────────────────────────────────────────── */
-
+/* ── Toggle button ──────────────────────────────────────────────────────────── */
 .cm-toggle {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 6px 12px;
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
@@ -53,18 +56,23 @@
   color: var(--terracotta);
 }
 
-/* ── Panel ─────────────────────────────────────────────────────────────────── */
-
+/* ── Panel ──────────────────────────────────────────────────────────────────── */
 .cm-panel {
   background: var(--card-bg);
   border: 1.5px solid var(--terracotta);
   border-top: none;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) var(--radius-sm);
-  padding: 16px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   animation: slideDown 0.15s ease;
+  /* On small screens, don't exceed viewport */
+  max-width: min(340px, calc(100vw - 24px));
+  /* Align right so it doesn't clip left edge */
+  position: absolute;
+  right: 0;
+  z-index: 30;
 }
 
 @keyframes slideDown {
@@ -72,24 +80,27 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Add row ───────────────────────────────────────────────────────────────── */
+/* Position relative wrapper so the panel anchors correctly */
+.category-manager { position: relative; }
 
+/* ── Add row ────────────────────────────────────────────────────────────────── */
 .cm-add-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
 .cm-input {
   flex: 1;
-  height: 36px;
-  padding: 0 12px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--input-bg);
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
+  font-size: 16px; /* prevent iOS zoom */
   outline: none;
   transition: var(--transition);
 }
@@ -102,9 +113,9 @@
 .cm-add-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 36px;
-  padding: 0 14px;
+  gap: 4px;
+  height: 34px;
+  padding: 0 12px;
   background: var(--terracotta);
   color: white;
   border: none;
@@ -115,27 +126,24 @@
   cursor: pointer;
   transition: var(--transition);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.cm-add-btn:hover:not(:disabled) {
-  background: var(--terracotta-light);
-}
+.cm-add-btn:hover:not(:disabled) { background: var(--terracotta-light); }
+.cm-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.cm-add-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ── Category tags ─────────────────────────────────────────────────────────── */
-
+/* ── Tag list ───────────────────────────────────────────────────────────────── */
 .cm-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  /* Scrollable if many categories */
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .cm-empty {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-light);
   font-style: italic;
 }
@@ -143,27 +151,35 @@
 .cm-tag {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px 5px 12px;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 100px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
   transition: var(--transition);
+  /* Don't let a long category name break the panel */
+  max-width: 100%;
+  overflow: hidden;
 }
 
-.cm-tag:hover {
-  border-color: rgba(224, 85, 85, 0.3);
+.cm-tag span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.cm-tag:hover { border-color: rgba(224, 85, 85, 0.3); }
 
 .cm-delete {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px; /* prevent squash */
   background: none;
   border: none;
   cursor: pointer;
@@ -171,7 +187,6 @@
   border-radius: 50%;
   padding: 0;
   transition: var(--transition);
-  flex-shrink: 0;
 }
 
 .cm-delete:hover {
@@ -183,21 +198,4 @@
   font-size: 12px;
   color: #e05555;
   margin: -4px 0;
-}
-
-/* ── Mobile ────────────────────────────────────────────────────────────────── */
-
-@media (max-width: 640px) {
-  .category-manager {
-    padding: 0 16px;
-  }
-
-  .cm-add-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cm-add-btn {
-    justify-content: center;
-  }
 }

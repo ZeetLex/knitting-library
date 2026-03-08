@@ -288,7 +288,7 @@ function AddUserModal({ t, onClose, onAdded }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
       <div className="settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{t('addUser')}</h3>
@@ -337,7 +337,7 @@ function ResetPasswordModal({ t, targetUser, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
       <div className="settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{t('resetPassword')}</h3>

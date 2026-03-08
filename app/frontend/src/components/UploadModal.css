@@ -1,18 +1,135 @@
-/* ─── Upload Modal ────────────────────────────────────────────────────────────── */
-
+/* ══════════════════════════════════════════════════════════════════════════════
+   Upload Modal
+   Mobile: full-width sheet slides up from bottom
+   Desktop: centred card, max 540px wide
+══════════════════════════════════════════════════════════════════════════════ */
 .upload-modal {
   background: var(--card-bg);
-  border-radius: var(--radius);
+  /* Rounded top corners only — flush at bottom on mobile */
+  border-radius: var(--radius) var(--radius) 0 0;
   width: 100%;
-  max-width: 540px;
-  max-height: 92vh;
+  max-width: 100%;
+  /* 92dvh so it never quite fills the screen */
+  max-height: 92dvh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-lg);
   animation: slideUp 0.25s ease;
+  /* Safe area padding at the very bottom (home bar on iPhone) */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* ─── Drop Zone ───────────────────────────────────────────────────────────────── */
+@media (min-width: 641px) {
+  .upload-modal {
+    border-radius: var(--radius);
+    max-width: 540px;
+    max-height: 90dvh;
+    padding-bottom: 0;
+  }
+}
 
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 0;
+  flex-shrink: 0;
+  /* Drag handle hint on mobile */
+  position: relative;
+}
+
+/* Little drag indicator pill at the very top of the sheet */
+.modal-header::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (min-width: 641px) {
+  .modal-header { padding: 20px 24px 0; }
+  .modal-header::before { display: none; }
+}
+
+.modal-header h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+@media (min-width: 641px) {
+  .modal-header h3 { font-size: 20px; }
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Large tap target on mobile */
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.modal-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+/* ── Body ───────────────────────────────────────────────────────────────────── */
+.modal-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Prevent content from stretching viewport */
+  overflow-x: hidden;
+}
+
+@media (min-width: 641px) {
+  .modal-body { padding: 20px 24px; gap: 16px; }
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
+.modal-footer {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  /* On mobile, footer buttons should be easy to reach */
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+}
+
+/* On very narrow phones, stack the buttons vertically */
+@media (max-width: 360px) {
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+  .modal-footer .btn-primary,
+  .modal-footer .btn-secondary {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@media (min-width: 641px) {
+  .modal-footer { padding: 16px 24px 20px; }
+}
+
+/* ── Drop Zone ──────────────────────────────────────────────────────────────── */
 .drop-zone {
   border: 2px dashed var(--border);
   border-radius: var(--radius);
@@ -23,20 +140,18 @@
 
 .drop-zone.dragging {
   border-color: var(--terracotta);
-  background: rgba(196, 113, 74, 0.05);
+  background: rgba(196,113,74,0.05);
 }
 
 .drop-zone.has-files {
   border-style: solid;
   border-color: var(--sage);
-  background: rgba(122, 158, 126, 0.06);
+  background: rgba(122,158,126,0.06);
 }
 
-/* Hide the real file input - we use the label as the click target */
 .file-input-hidden {
   position: absolute;
-  width: 0;
-  height: 0;
+  width: 0; height: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -46,27 +161,24 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px 20px;
+  padding: 20px 16px 14px;
   cursor: pointer;
   text-align: center;
 }
 
-.drop-icon {
-  color: var(--text-light);
-  margin-bottom: 12px;
-}
+.drop-icon { color: var(--text-light); margin-bottom: 8px; }
 
 .drop-title {
   font-family: 'Playfair Display', serif;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text-primary);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .drop-sub {
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .drop-link {
@@ -75,28 +187,20 @@
   text-decoration: underline;
 }
 
-/* ─── File Preview ────────────────────────────────────────────────────────────── */
-
+/* ── File Preview ───────────────────────────────────────────────────────────── */
 .file-preview {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
-  padding: 4px 4px 4px 4px;
+  min-width: 0;
 }
 
-.file-type-icon {
-  flex-shrink: 0;
-}
-
+.file-type-icon { flex-shrink: 0; }
 .file-type-icon.pdf { color: #e05555; }
 .file-type-icon.img { color: var(--sage); }
 
-.file-info {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
+.file-info { flex: 1; min-width: 0; text-align: left; }
 
 .file-name {
   font-size: 14px;
@@ -107,16 +211,12 @@
   text-overflow: ellipsis;
 }
 
-.file-size {
-  font-size: 12px;
-  color: var(--text-light);
-  margin-top: 2px;
-}
+.file-size { font-size: 12px; color: var(--text-light); margin-top: 2px; }
 
 .file-remove {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,17 +228,13 @@
   transition: var(--transition);
 }
 
-.file-remove:hover {
-  border-color: #e05555;
-  color: #e05555;
-}
+.file-remove:hover { border-color: #e05555; color: #e05555; }
 
-/* ─── Folder Upload ───────────────────────────────────────────────────────────── */
-
+/* ── Folder Upload ──────────────────────────────────────────────────────────── */
 .folder-upload-hint {
   display: flex;
   justify-content: center;
-  padding: 10px 24px 16px;
+  padding: 4px 16px 12px;
 }
 
 .folder-btn {
@@ -151,45 +247,121 @@
   transition: var(--transition);
   background: none;
   border: none;
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 4px;
 }
 
-.folder-btn:hover {
-  color: var(--terracotta);
-  background: rgba(196, 113, 74, 0.06);
-}
+.folder-btn:hover { color: var(--terracotta); background: rgba(196,113,74,0.06); }
 
-/* ─── Error ───────────────────────────────────────────────────────────────────── */
-
+/* ── Error ──────────────────────────────────────────────────────────────────── */
 .upload-error {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  background: rgba(224, 85, 85, 0.08);
-  border: 1px solid rgba(224, 85, 85, 0.2);
+  padding: 10px 12px;
+  background: rgba(224,85,85,0.08);
+  border: 1px solid rgba(224,85,85,0.2);
   border-radius: var(--radius-sm);
   color: #c44444;
   font-size: 13px;
 }
 
-/* ─── Form Fields ─────────────────────────────────────────────────────────────── */
+/* ── Form Fields ────────────────────────────────────────────────────────────── */
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.field-hint { font-size: 12px; color: var(--text-light); line-height: 1.4; }
 
-.form-field {
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: block;
+}
+
+.form-hint { font-weight: 400; color: var(--text-light); }
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;  /* prevent iOS zoom */
+  color: var(--text-primary);
+  background: var(--input-bg);
+  outline: none;
+  transition: var(--transition);
+  -webkit-appearance: none;
+  /* Never wider than container */
+  max-width: 100%;
+}
+
+.form-input:focus {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196,113,74,0.1);
+}
+
+.form-textarea { resize: vertical; min-height: 70px; }
+
+.form-pills {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
-.field-hint {
-  font-size: 12px;
-  color: var(--text-light);
-  line-height: 1.4;
+.pill {
+  height: 32px;
+  padding: 0 12px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
 }
 
-/* ─── Spinner (inside button) ─────────────────────────────────────────────────── */
+.pill:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.pill-active { background: var(--terracotta); border-color: var(--terracotta); color: white; }
+.pill-active:hover { background: var(--terracotta-light); color: white; }
 
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  padding: 11px 20px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) { background: var(--terracotta-light); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  padding: 11px 16px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-secondary:hover { border-color: var(--navy); color: var(--navy); }
+
+/* ── Spinner ────────────────────────────────────────────────────────────────── */
 .btn-spinner {
   display: inline-block;
   width: 14px;
@@ -202,50 +374,17 @@
   margin-right: 6px;
 }
 
-/* ─── Success State ───────────────────────────────────────────────────────────── */
-
+/* ── Success ────────────────────────────────────────────────────────────────── */
 .upload-success {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 40px;
+  padding: 40px 24px;
   text-align: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.success-icon {
-  color: var(--sage);
-}
-
-.upload-success h4 {
-  font-family: 'Playfair Display', serif;
-  font-size: 22px;
-}
-
-.upload-success p {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-/* ─── Mobile ──────────────────────────────────────────────────────────────────── */
-
-@media (max-width: 640px) {
-  .upload-modal {
-    max-height: 95vh;
-    border-radius: var(--radius) var(--radius) 0 0;
-    margin-top: auto;
-  }
-
-  .modal-overlay {
-    align-items: flex-end;
-  }
-
-  .drop-zone-label {
-    padding: 24px 16px 16px;
-  }
-
-  .drop-title {
-    font-size: 16px;
-  }
-}
+.success-icon { color: var(--sage); }
+.upload-success h4 { font-family: 'Playfair Display', serif; font-size: 20px; }
+.upload-success p { font-size: 14px; color: var(--text-secondary); }

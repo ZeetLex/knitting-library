@@ -94,8 +94,13 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                   <Maximize2 size={18} /><span>{t('openFull')}</span>
                 </a>
               </div>
-              <div className="pdf-frame-wrap" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-                <iframe src={`${pdfUrl(recipeId)}#toolbar=1&navpanes=1`} title={recipe.title} className="pdf-frame" />
+              <div className="pdf-frame-wrap">
+                <iframe
+                  src={`${pdfUrl(recipeId)}#toolbar=1&navpanes=1`}
+                  title={recipe.title}
+                  className="pdf-frame"
+                  style={{ zoom: zoom }}
+                />
               </div>
             </div>
           ) : (
@@ -236,7 +241,7 @@ function EditModal({ t, recipe, onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
       <div className="edit-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{t('editRecipeTitle')}</h3>
