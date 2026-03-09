@@ -9,6 +9,7 @@ import { useApp } from '../utils/AppContext';
 import {
   uploadImportGroup, getImportQueue, confirmImportItem,
   discardImportItem, fetchCategories, fetchTags, thumbnailUrl,
+  fetchPdfPages, pdfPageUrl, imageUrl,
 } from '../utils/api';
 import './ImportWizard.css';
 
@@ -241,6 +242,11 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
   const [saving, setSaving]         = useState(false);
   const [skipConfirm, setSkipConfirm] = useState(false);
 
+  // Preview pages for the current item
+  const [pages, setPages]           = useState([]);
+  const [pageType, setPageType]     = useState('pdf'); // 'pdf' | 'images'
+  const [pagesLoading, setPagesLoading] = useState(false);
+
   useEffect(() => {
     fetchCategories().then(setAllCats).catch(() => {});
     fetchTags().then(setAllTags).catch(() => {});
@@ -248,9 +254,26 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
 
   useEffect(() => {
     const item = items[cursor];
-    if (item) {
-      setTitle(item.recipe?.title || item.group_name || '');
-      setCategories([]); setTags([]); setDescription(''); setSkipConfirm(false);
+    if (!item) return;
+    setTitle(item.recipe?.title || item.group_name || '');
+    setCategories([]); setTags([]); setDescription(''); setSkipConfirm(false);
+
+    setPages([]); setPagesLoading(true);
+    const recipeId = item.recipe_id;
+    const recipe   = item.recipe;
+
+    if (recipe?.file_type === 'pdf') {
+      setPageType('pdf');
+      fetchPdfPages(recipeId)
+        .then(res => setPages(res.pages || []))
+        .catch(() => setPages([]))
+        .finally(() => setPagesLoading(false));
+    } else if (recipe?.file_type === 'images' && recipe?.images?.length) {
+      setPageType('images');
+      setPages(recipe.images);
+      setPagesLoading(false);
+    } else {
+      setPagesLoading(false);
     }
   }, [cursor, items]);
 
@@ -319,23 +342,49 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
               ))}
             </div>
           </div>
-          {/* Edit panel */}
+          {/* Edit panel — split into viewer (top/left) + form (bottom/right) */}
           <div className="iw-edit-panel">
-            <div className="iw-preview">
-              {currentItem?.recipe?.thumbnail_path ? (
-                <img src={thumbnailUrl(currentItem.recipe_id)} alt={title} className="iw-thumbnail" />
+
+            {/* ── Page viewer ── */}
+            <div className="iw-viewer">
+              {pagesLoading ? (
+                <div className="iw-viewer-loading">
+                  <RefreshCw size={22} className="iw-spin" />
+                  <span>{t('importLoadingItem')}</span>
+                </div>
+              ) : pages.length > 0 ? (
+                <div className="iw-viewer-scroll">
+                  {pages.map((pg, i) => (
+                    <img
+                      key={pg}
+                      src={pageType === 'pdf'
+                        ? pdfPageUrl(currentItem.recipe_id, pg)
+                        : imageUrl(currentItem.recipe_id, pg)
+                      }
+                      alt={`Page ${i + 1}`}
+                      className="iw-viewer-page"
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
               ) : (
-                <div className="iw-preview-placeholder">
-                  {currentItem?.recipe?.file_type === 'pdf' ? <FileText size={32}/> : <Image size={32}/>}
+                <div className="iw-viewer-empty">
+                  {currentItem?.recipe?.file_type === 'pdf'
+                    ? <FileText size={40} />
+                    : <Image size={40} />
+                  }
+                  <span className="iw-viewer-empty-label">
+                    {currentItem?.recipe?.file_type === 'pdf' ? 'PDF' : `${currentItem?.recipe?.images?.length || 0} images`}
+                  </span>
                 </div>
               )}
-              <div className="iw-preview-meta">
+              {/* Type + counter badge overlay */}
+              <div className="iw-viewer-badges">
                 {currentItem?.recipe?.file_type === 'pdf'
                   ? <span className="iw-type-badge pdf">PDF</span>
-                  : <span className="iw-type-badge img">{currentItem?.recipe?.images?.length || '?'} images</span>
+                  : <span className="iw-type-badge img">{pages.length} {pages.length === 1 ? 'image' : 'images'}</span>
                 }
-                <span className="iw-source-name">{currentItem?.group_name}</span>
-                <span className="iw-counter-badge">{cursor+1} / {total}</span>
+                <span className="iw-counter-badge">{cursor + 1} / {total}</span>
               </div>
             </div>
             <div className="iw-form">
