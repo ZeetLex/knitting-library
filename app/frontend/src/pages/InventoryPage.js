@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Minus, Package, Pencil, Trash2, Clock, ChevronDown, ChevronUp, X, Search } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import {
@@ -228,8 +229,8 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
 
   return (
     <>
-      {/* YarnUploadModal rendered on top when user wants to add a new yarn to the database */}
-      {showYarnUpload && (
+      {/* YarnUploadModal rendered via portal — escapes the modal stack so it always appears on top */}
+      {showYarnUpload && createPortal(
         <YarnUploadModal
           onClose={() => setShowYarnUpload(false)}
           onSuccess={(newYarn) => {
@@ -241,7 +242,8 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
               if (added) { setSelectedYarn(added); setSelectedColour(null); }
             }).catch(() => {});
           }}
-        />
+        />,
+        document.body
       )}
 
       <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
