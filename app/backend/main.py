@@ -23,7 +23,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 DATA_DIR = Path("/data/recipes")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = Path("/data/recipes.db")
+DB_PATH  = Path("/data/recipes.db")
+YARN_DIR = Path("/data/yarns")
+YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_db():
     conn = sqlite3.connect(str(DB_PATH))
@@ -102,6 +104,38 @@ def init_db():
             created_date     TEXT NOT NULL
         );
         -- No default categories — users create their own
+        CREATE TABLE IF NOT EXISTS inventory_items (
+            id              TEXT PRIMARY KEY,
+            type            TEXT NOT NULL DEFAULT 'yarn',  -- 'yarn' or 'tool'
+            -- yarn-specific links
+            yarn_id         TEXT,
+            yarn_colour_id  TEXT,
+            -- tool-specific
+            category        TEXT DEFAULT '',  -- needle/tool/notion/other
+            -- shared fields
+            name            TEXT NOT NULL,
+            quantity        INTEGER NOT NULL DEFAULT 0,
+            purchase_date   TEXT DEFAULT '',
+            purchase_price  TEXT DEFAULT '',
+            purchase_note   TEXT DEFAULT '',
+            notes           TEXT DEFAULT '',
+            created_date    TEXT NOT NULL,
+            FOREIGN KEY (yarn_id)        REFERENCES yarns(id),
+            FOREIGN KEY (yarn_colour_id) REFERENCES yarn_colours(id)
+        );
+        CREATE TABLE IF NOT EXISTS inventory_log (
+            id          TEXT PRIMARY KEY,
+            item_id     TEXT NOT NULL,
+            change      INTEGER NOT NULL,  -- positive = added, negative = used
+            reason      TEXT NOT NULL DEFAULT 'manual',  -- manual/project_start/adjustment
+            recipe_id   TEXT,
+            session_id  TEXT,
+            note        TEXT DEFAULT '',
+            created_at  TEXT NOT NULL,
+            FOREIGN KEY (item_id)    REFERENCES inventory_items(id),
+            FOREIGN KEY (recipe_id)  REFERENCES recipes(id),
+            FOREIGN KEY (session_id) REFERENCES project_sessions(id)
+        );
     """)
     existing = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
     if existing == 0:
@@ -146,6 +180,40 @@ def init_db():
     if "price" not in yc_cols:
         conn.execute("ALTER TABLE yarn_colours ADD COLUMN price TEXT DEFAULT ''")
         print("Migration: added 'price' column to yarn_colours")
+    # inventory tables — safe to create if they don't exist yet
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_items (
+            id              TEXT PRIMARY KEY,
+            type            TEXT NOT NULL DEFAULT 'yarn',
+            yarn_id         TEXT,
+            yarn_colour_id  TEXT,
+            category        TEXT DEFAULT '',
+            name            TEXT NOT NULL,
+            quantity        INTEGER NOT NULL DEFAULT 0,
+            purchase_date   TEXT DEFAULT '',
+            purchase_price  TEXT DEFAULT '',
+            purchase_note   TEXT DEFAULT '',
+            notes           TEXT DEFAULT '',
+            created_date    TEXT NOT NULL,
+            FOREIGN KEY (yarn_id)        REFERENCES yarns(id),
+            FOREIGN KEY (yarn_colour_id) REFERENCES yarn_colours(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_log (
+            id          TEXT PRIMARY KEY,
+            item_id     TEXT NOT NULL,
+            change      INTEGER NOT NULL,
+            reason      TEXT NOT NULL DEFAULT 'manual',
+            recipe_id   TEXT,
+            session_id  TEXT,
+            note        TEXT DEFAULT '',
+            created_at  TEXT NOT NULL,
+            FOREIGN KEY (item_id)    REFERENCES inventory_items(id),
+            FOREIGN KEY (recipe_id)  REFERENCES recipes(id),
+            FOREIGN KEY (session_id) REFERENCES project_sessions(id)
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -513,20 +581,34 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
     conn = get_db()
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close(); raise HTTPException(status_code=404, detail="Recipe not found")
-    # Check no active session already running
     active = conn.execute(
         "SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)
     ).fetchone()
     if active:
         conn.close(); raise HTTPException(status_code=400, detail="Project already active")
-    yarn_id = body.get("yarn_id") or None
+    yarn_id        = body.get("yarn_id") or None
     yarn_colour_id = body.get("yarn_colour_id") or None
-    session_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    session_id     = str(uuid.uuid4())
+    now            = datetime.utcnow().isoformat()
     conn.execute(
         "INSERT INTO project_sessions (id, recipe_id, started_at, yarn_id, yarn_colour_id) VALUES (?,?,?,?,?)",
         (session_id, recipe_id, now, yarn_id, yarn_colour_id)
     )
+    # Optional inventory deduction
+    inventory_item_id = body.get("inventory_item_id") or None
+    skeins_used       = int(body.get("skeins_used") or 0)
+    if inventory_item_id and skeins_used > 0:
+        inv_row = conn.execute("SELECT * FROM inventory_items WHERE id=?", (inventory_item_id,)).fetchone()
+        if inv_row:
+            new_qty = max(0, inv_row["quantity"] - skeins_used)
+            conn.execute("UPDATE inventory_items SET quantity=? WHERE id=?", (new_qty, inventory_item_id))
+            recipe_row = conn.execute("SELECT title FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+            recipe_title = recipe_row["title"] if recipe_row else recipe_id
+            conn.execute(
+                "INSERT INTO inventory_log (id,item_id,change,reason,recipe_id,session_id,note,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (str(uuid.uuid4()), inventory_item_id, -skeins_used, "project_start",
+                 recipe_id, session_id, f"Used for: {recipe_title}", now)
+            )
     conn.commit()
     recipe = get_recipe_full(recipe_id, conn); conn.close()
     return recipe
@@ -603,14 +685,24 @@ def clear_annotations(recipe_id: str, page_key: str, current_user: dict = Depend
 
 @app.get("/api/export")
 def export_library(current_user: dict = Depends(get_current_user)):
+    """
+    Export everything needed for a full backup or migration:
+      recipes.db          — SQLite database (recipes, tags, categories, users,
+                            annotations, project sessions, yarns, yarn colours,
+                            inventory items, inventory log)
+      recipes/<id>/...    — Recipe PDF and image files + thumbnails
+      yarns/<id>/...      — Yarn type images and colour variant images
+
+    Inventory data (items + log) lives entirely in the database — no extra files.
+    """
     buf = io.BytesIO()
 
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # 1. Include the SQLite database
+        # 1. SQLite database — contains ALL metadata including inventory
         if DB_PATH.exists():
             zf.write(str(DB_PATH), arcname="recipes.db")
 
-        # 2. Include every recipe folder under /data/recipes/
+        # 2. Recipe files (PDFs, images, thumbnails)
         if DATA_DIR.exists():
             for recipe_dir in DATA_DIR.iterdir():
                 if recipe_dir.is_dir():
@@ -619,7 +711,7 @@ def export_library(current_user: dict = Depends(get_current_user)):
                             arcname = "recipes/" + str(file.relative_to(DATA_DIR))
                             zf.write(str(file), arcname=arcname)
 
-        # 3. Include every yarn folder under /data/yarns/
+        # 3. Yarn images and colour variant images
         if YARN_DIR.exists():
             for yarn_dir in YARN_DIR.iterdir():
                 if yarn_dir.is_dir():
@@ -744,9 +836,6 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
     return recipe
 
 # ── Yarn Database ─────────────────────────────────────────────────────────────
-
-YARN_DIR = Path("/data/yarns")
-YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 def yarn_to_dict(row, conn=None) -> dict:
     d = dict(row)
@@ -1328,3 +1417,171 @@ def get_yarn_image(yarn_id: str, request: Request, token: Optional[str] = None):
             mt = "image/jpeg" if name.endswith((".jpg",".jpeg")) else "image/png" if name.endswith(".png") else "image/webp"
             return FileResponse(str(p), media_type=mt)
     raise HTTPException(status_code=404, detail="No image")
+
+# ── Inventory endpoints ───────────────────────────────────────────────────────
+
+def inventory_item_to_dict(row, conn) -> dict:
+    """Convert an inventory_items row to a dict, enriching yarn items with yarn/colour names."""
+    d = dict(row)
+    if d.get("type") == "yarn":
+        if d.get("yarn_id"):
+            y = conn.execute("SELECT name FROM yarns WHERE id=?", (d["yarn_id"],)).fetchone()
+            d["yarn_name"] = y["name"] if y else ""
+        else:
+            d["yarn_name"] = ""
+        if d.get("yarn_colour_id"):
+            c = conn.execute("SELECT name, image_path FROM yarn_colours WHERE id=?", (d["yarn_colour_id"],)).fetchone()
+            d["colour_name"]       = c["name"]       if c else ""
+            d["colour_image_path"] = c["image_path"] if c else ""
+        else:
+            d["colour_name"]       = ""
+            d["colour_image_path"] = ""
+    return d
+
+@app.get("/api/inventory")
+def list_inventory(
+    type: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = get_db()
+    q = "SELECT * FROM inventory_items WHERE 1=1"
+    params = []
+    if type:
+        q += " AND type=?"; params.append(type)
+    if search:
+        like = f"%{search}%"
+        q += " AND (name LIKE ? OR notes LIKE ?)"; params.extend([like, like])
+    q += " ORDER BY created_date DESC"
+    rows = conn.execute(q, params).fetchall()
+    result = [inventory_item_to_dict(r, conn) for r in rows]
+    conn.close()
+    return result
+
+@app.get("/api/inventory/{item_id}")
+def get_inventory_item(item_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        conn.close(); raise HTTPException(status_code=404, detail="Item not found")
+    result = inventory_item_to_dict(row, conn)
+    conn.close()
+    return result
+
+@app.get("/api/inventory/{item_id}/log")
+def get_inventory_log(item_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT l.*, r.title as recipe_title
+           FROM inventory_log l
+           LEFT JOIN recipes r ON l.recipe_id = r.id
+           WHERE l.item_id=?
+           ORDER BY l.created_at DESC""",
+        (item_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/inventory")
+def create_inventory_item(body: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    item_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    t = body.get("type", "yarn")
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    qty = int(body.get("quantity", 0))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO inventory_items
+           (id, type, yarn_id, yarn_colour_id, category, name, quantity,
+            purchase_date, purchase_price, purchase_note, notes, created_date)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (item_id, t,
+         body.get("yarn_id") or None,
+         body.get("yarn_colour_id") or None,
+         body.get("category", ""),
+         name, qty,
+         body.get("purchase_date", ""),
+         body.get("purchase_price", ""),
+         body.get("purchase_note", ""),
+         body.get("notes", ""),
+         now)
+    )
+    # Log the initial addition if qty > 0
+    if qty > 0:
+        conn.execute(
+            "INSERT INTO inventory_log (id,item_id,change,reason,note,created_at) VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), item_id, qty, "added", "Initial stock", now)
+        )
+    conn.commit()
+    row = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    result = inventory_item_to_dict(row, conn)
+    conn.close()
+    return result
+
+@app.put("/api/inventory/{item_id}")
+def update_inventory_item(item_id: str, body: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        conn.close(); raise HTTPException(status_code=404, detail="Item not found")
+    name = body.get("name", row["name"]).strip() or row["name"]
+    conn.execute(
+        """UPDATE inventory_items SET
+           category=?, name=?, purchase_date=?, purchase_price=?,
+           purchase_note=?, notes=?, yarn_id=?, yarn_colour_id=?
+           WHERE id=?""",
+        (body.get("category", row["category"]),
+         name,
+         body.get("purchase_date", row["purchase_date"]),
+         body.get("purchase_price", row["purchase_price"]),
+         body.get("purchase_note", row["purchase_note"]),
+         body.get("notes", row["notes"]),
+         body.get("yarn_id") or row["yarn_id"],
+         body.get("yarn_colour_id") or row["yarn_colour_id"],
+         item_id)
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    result = inventory_item_to_dict(updated, conn)
+    conn.close()
+    return result
+
+@app.post("/api/inventory/{item_id}/adjust")
+def adjust_inventory(item_id: str, body: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Add or remove quantity. body: { change: int, reason: str, note: str, recipe_id: str, session_id: str }"""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        conn.close(); raise HTTPException(status_code=404, detail="Item not found")
+    change = int(body.get("change", 0))
+    if change == 0:
+        conn.close(); raise HTTPException(status_code=400, detail="change cannot be 0")
+    new_qty = max(0, row["quantity"] + change)
+    now = datetime.utcnow().isoformat()
+    conn.execute("UPDATE inventory_items SET quantity=? WHERE id=?", (new_qty, item_id))
+    conn.execute(
+        "INSERT INTO inventory_log (id,item_id,change,reason,recipe_id,session_id,note,created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (str(uuid.uuid4()), item_id, change,
+         body.get("reason", "manual"),
+         body.get("recipe_id") or None,
+         body.get("session_id") or None,
+         body.get("note", ""),
+         now)
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM inventory_items WHERE id=?", (item_id,)).fetchone()
+    result = inventory_item_to_dict(updated, conn)
+    conn.close()
+    return result
+
+@app.delete("/api/inventory/{item_id}")
+def delete_inventory_item(item_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM inventory_items WHERE id=?", (item_id,)).fetchone():
+        conn.close(); raise HTTPException(status_code=404, detail="Item not found")
+    conn.execute("DELETE FROM inventory_log WHERE item_id=?", (item_id,))
+    conn.execute("DELETE FROM inventory_items WHERE id=?", (item_id,))
+    conn.commit(); conn.close()
+    return {"message": "Deleted"}

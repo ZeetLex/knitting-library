@@ -18,3 +18,10 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# Local build/deploy scripts
+update.bat
+update-beta.bat
+update-docker-beta.bat
+restart.bat
+deploy.bat

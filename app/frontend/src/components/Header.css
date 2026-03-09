@@ -197,3 +197,44 @@
   .header-tabs { max-width: 160px; }
   .header-tab  { padding: 0 10px; font-size: 11px; }
 }
+
+/* ── Sub-tab row (Inventory / Yarn Database) ─────────────────────────────── */
+.header--with-subtabs {
+  /* header grows to fit both rows */
+}
+
+.header-subtabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: var(--navy);
+}
+
+@media (min-width: 641px) {
+  .header-subtabs { padding: 0 24px; }
+}
+
+.header-subtab {
+  padding: 8px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.header-subtab.active {
+  color: white;
+  border-bottom-color: var(--terracotta);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .header-subtab:not(.active):hover { color: rgba(255,255,255,0.8); }
+}

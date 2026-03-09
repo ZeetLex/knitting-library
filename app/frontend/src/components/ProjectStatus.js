@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search } from 'lucide-react';
+import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search, Minus, Plus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl } from '../utils/api';
+import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl, fetchInventory } from '../utils/api';
 import './ProjectStatus.css';
 
 function formatDuration(seconds, t) {
@@ -217,6 +217,12 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   const [loading, setLoading]         = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [showYarnPicker, setShowYarnPicker] = useState(false);
+  // Inventory step — shown after yarn is picked
+  const [showInventoryPicker, setShowInventoryPicker] = useState(false);
+  const [pendingYarn, setPendingYarn]   = useState(null);   // { yarn, colour }
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [selectedInvItem, setSelectedInvItem] = useState(null);
+  const [skeinsToUse, setSkeinsToUse]   = useState(1);
 
   const status   = recipe.project_status || 'none';
   const sessions = recipe.sessions || [];
@@ -227,12 +233,59 @@ export default function ProjectStatus({ recipe, onUpdated }) {
 
   const handleStartClick = () => setShowYarnPicker(true);
 
+  // Called when yarn (and optional colour) is chosen in the yarn picker
   const handleYarnSelected = async (yarn, colour) => {
     setShowYarnPicker(false);
+    // Load matching inventory items for this yarn+colour
+    try {
+      const allItems = await fetchInventory({ type: 'yarn' });
+      const matching = allItems.filter(i =>
+        (!yarn || i.yarn_id === yarn?.id) &&
+        (!colour || i.yarn_colour_id === colour?.id)
+      );
+      if (matching.length > 0) {
+        setPendingYarn({ yarn, colour });
+        setInventoryItems(matching);
+        setSelectedInvItem(null);
+        setSkeinsToUse(1);
+        setShowInventoryPicker(true);
+        return;
+      }
+    } catch {}
+    // No matching inventory — start directly
+    await doStartProject(yarn, colour, null, 0);
+  };
+
+  const doStartProject = async (yarn, colour, invItemId, skeins) => {
     setLoading(true);
-    try { onUpdated(await startProject(recipe.id, yarn?.id || null, colour?.id || null)); }
-    catch (e) { alert(e.message); }
+    try {
+      const result = await startProject(
+        recipe.id,
+        yarn?.id || null,
+        colour?.id || null,
+        invItemId || null,
+        skeins || 0
+      );
+      onUpdated(result);
+    } catch (e) { alert(e.message); }
     finally { setLoading(false); }
+  };
+
+  const handleInventoryConfirm = async () => {
+    setShowInventoryPicker(false);
+    await doStartProject(
+      pendingYarn?.yarn,
+      pendingYarn?.colour,
+      selectedInvItem?.id || null,
+      selectedInvItem ? skeinsToUse : 0
+    );
+    setPendingYarn(null);
+  };
+
+  const handleInventorySkip = async () => {
+    setShowInventoryPicker(false);
+    await doStartProject(pendingYarn?.yarn, pendingYarn?.colour, null, 0);
+    setPendingYarn(null);
   };
 
   const handleFinish = async () => {
@@ -383,6 +436,72 @@ export default function ProjectStatus({ recipe, onUpdated }) {
           onSkip={() => handleYarnSelected(null, null)}
           onClose={() => setShowYarnPicker(false)}
         />
+      )}
+
+      {/* ── Inventory deduction step ── */}
+      {showInventoryPicker && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleInventorySkip()}>
+          <div className="inv-use-modal">
+            <div className="inv-use-header">
+              <h3>{t('useFromInventory')}</h3>
+              <button className="inv-modal-close" onClick={handleInventorySkip}><X size={18} /></button>
+            </div>
+            <p className="inv-use-sub">
+              {pendingYarn?.yarn
+                ? `${pendingYarn.yarn.name}${pendingYarn.colour ? ` — ${pendingYarn.colour.name}` : ''}`
+                : ''}
+            </p>
+
+            <div className="inv-use-items">
+              {/* "Don't use inventory" option */}
+              <button
+                className={`inv-use-item ${!selectedInvItem ? 'inv-use-item--selected' : ''}`}
+                onClick={() => setSelectedInvItem(null)}
+              >
+                <span className="inv-use-item-name">{t('noInventoryItem')}</span>
+              </button>
+
+              {inventoryItems.map(item => (
+                <button
+                  key={item.id}
+                  className={`inv-use-item ${selectedInvItem?.id === item.id ? 'inv-use-item--selected' : ''}`}
+                  onClick={() => setSelectedInvItem(item)}
+                >
+                  <div className="inv-use-item-info">
+                    <span className="inv-use-item-name">{item.name}</span>
+                    <span className="inv-use-item-stock">{t('currentStock')}: <strong>{item.quantity}</strong> {t('skeinCount')}</span>
+                    {item.purchase_price && <span className="inv-use-item-price">💰 {item.purchase_price}</span>}
+                  </div>
+                  {selectedInvItem?.id === item.id && <span className="inv-use-check">✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Skein count — only when an inventory item is picked */}
+            {selectedInvItem && (
+              <div className="inv-use-skeins">
+                <span className="inv-use-skeins-label">{t('skeinsToUse')}</span>
+                <div className="inv-qty-row">
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.max(1, s - 1))}><Minus size={14} /></button>
+                  <span className="inv-qty-value">{skeinsToUse}<span className="inv-qty-unit">{t('skeinCount')}</span></span>
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.min(selectedInvItem.quantity, s + 1))}><Plus size={14} /></button>
+                </div>
+                {skeinsToUse > 0 && (
+                  <p className="inv-use-remaining">
+                    → {Math.max(0, selectedInvItem.quantity - skeinsToUse)} {t('skeinCount')} {t('currentStock').toLowerCase()}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="inv-use-footer">
+              <button className="inv-modal-cancel" onClick={handleInventorySkip}>{t('noInventoryItem')}</button>
+              <button className="inv-modal-save" onClick={handleInventoryConfirm}>
+                {t('startProject')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import Library from './pages/Library';
 import RecipeViewer from './pages/RecipeViewer';
 import YarnLibrary from './pages/YarnLibrary';
 import YarnViewer from './pages/YarnViewer';
+import InventoryPage from './pages/InventoryPage';
 import SettingsPage from './pages/SettingsPage';
 import UploadModal from './components/UploadModal';
 import YarnUploadModal from './components/YarnUploadModal';
@@ -12,15 +13,16 @@ import Header from './components/Header';
 import './App.css';
 
 function AppInner() {
-  const { user, loading } = useApp();
-  const [activeTab, setActiveTab]           = useState('recipes');
+  const { user, loading, t } = useApp();
+  const [activeTab, setActiveTab]             = useState('recipes');
+  const [yarnSubTab, setYarnSubTab]           = useState('inventory');
   const [viewingRecipeId, setViewingRecipeId] = useState(null);
-  const [viewingYarnId, setViewingYarnId]   = useState(null);
-  const [uploadOpen, setUploadOpen]         = useState(false);
-  const [yarnUploadOpen, setYarnUploadOpen] = useState(false);
-  const [showSettings, setShowSettings]     = useState(false);
-  const [refreshKey, setRefreshKey]         = useState(0);
-  const [yarnRefreshKey, setYarnRefreshKey] = useState(0);
+  const [viewingYarnId, setViewingYarnId]     = useState(null);
+  const [uploadOpen, setUploadOpen]           = useState(false);
+  const [yarnUploadOpen, setYarnUploadOpen]   = useState(false);
+  const [showSettings, setShowSettings]       = useState(false);
+  const [refreshKey, setRefreshKey]           = useState(0);
+  const [yarnRefreshKey, setYarnRefreshKey]   = useState(0);
 
   const handleUploadSuccess = useCallback(() => {
     setUploadOpen(false);
@@ -28,14 +30,35 @@ function AppInner() {
   }, []);
 
   const handleAddClick = () => {
-    if (activeTab === 'yarns') setYarnUploadOpen(true);
-    else setUploadOpen(true);
+    if (activeTab === 'yarns' && yarnSubTab === 'yarndatabase') setYarnUploadOpen(true);
+    else if (activeTab === 'recipes') setUploadOpen(true);
   };
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setViewingRecipeId(null);
     setViewingYarnId(null);
+  };
+
+  const handleYarnSubTabChange = (sub) => {
+    setYarnSubTab(sub);
+    setViewingYarnId(null);
+  };
+
+  // Header + button label
+  const addLabel = activeTab === 'yarns' && yarnSubTab === 'yarndatabase'
+    ? t('addYarn')
+    : activeTab === 'recipes' ? t('addRecipe')
+    : null; // inventory manages its own add buttons
+
+  const sharedHeaderProps = {
+    activeTab,
+    onTabChange: handleTabChange,
+    onUploadClick: handleAddClick,
+    onSettingsClick: () => setShowSettings(true),
+    addLabel,
+    yarnSubTab,
+    onYarnSubTabChange: handleYarnSubTabChange,
   };
 
   if (loading) return (
@@ -48,14 +71,8 @@ function AppInner() {
 
   if (showSettings) return (
     <div className="app">
-      <Header
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onUploadClick={handleAddClick}
-        onLogoClick={() => { setShowSettings(false); setViewingRecipeId(null); setViewingYarnId(null); }}
-        onSettingsClick={() => setShowSettings(true)}
-      />
-      <main className="app-main">
+      <Header {...sharedHeaderProps} onLogoClick={() => { setShowSettings(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
+      <main className={`app-main${activeTab === 'yarns' ? ' app-main--with-subtabs' : ''}`}>
         <SettingsPage onBack={() => setShowSettings(false)} />
       </main>
     </div>
@@ -63,15 +80,10 @@ function AppInner() {
 
   return (
     <div className="app">
-      <Header
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onUploadClick={handleAddClick}
-        onLogoClick={() => { setViewingRecipeId(null); setViewingYarnId(null); }}
-        onSettingsClick={() => setShowSettings(true)}
-      />
-      <main className="app-main">
-        {/* ── Recipes tab ─────────────────────────────────────────── */}
+      <Header {...sharedHeaderProps} onLogoClick={() => { setViewingRecipeId(null); setViewingYarnId(null); }} />
+      <main className={`app-main${activeTab === 'yarns' ? ' app-main--with-subtabs' : ''}`}>
+
+        {/* ── Recipes tab ── */}
         {activeTab === 'recipes' && (
           viewingRecipeId ? (
             <RecipeViewer
@@ -88,29 +100,36 @@ function AppInner() {
           )
         )}
 
-        {/* ── Yarns tab ────────────────────────────────────────────── */}
+        {/* ── Inventory / Yarn Database tab ── */}
         {activeTab === 'yarns' && (
-          viewingYarnId ? (
-            <YarnViewer
-              yarnId={viewingYarnId}
-              onBack={() => setViewingYarnId(null)}
-              onDeleted={() => { setViewingYarnId(null); setYarnRefreshKey(k => k + 1); }}
-            />
-          ) : (
-            <YarnLibrary
-              key={yarnRefreshKey}
-              onYarnClick={setViewingYarnId}
-            />
-          )
+          <>
+            {yarnSubTab === 'inventory' && (
+              <InventoryPage
+                onRequestAddYarn={() => { setYarnSubTab('yarndatabase'); setYarnUploadOpen(true); }}
+              />
+            )}
+            {yarnSubTab === 'yarndatabase' && (
+              viewingYarnId ? (
+                <YarnViewer
+                  yarnId={viewingYarnId}
+                  onBack={() => setViewingYarnId(null)}
+                  onDeleted={() => { setViewingYarnId(null); setYarnRefreshKey(k => k + 1); }}
+                />
+              ) : (
+                <YarnLibrary
+                  key={yarnRefreshKey}
+                  onYarnClick={setViewingYarnId}
+                />
+              )
+            )}
+          </>
         )}
+
       </main>
 
-      {/* Recipe upload modal */}
       {uploadOpen && (
         <UploadModal onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
       )}
-
-      {/* Yarn upload modal (from header + button) */}
       {yarnUploadOpen && (
         <YarnUploadModal
           onClose={() => setYarnUploadOpen(false)}
@@ -122,9 +141,5 @@ function AppInner() {
 }
 
 export default function App() {
-  return (
-    <AppProvider>
-      <AppInner />
-    </AppProvider>
-  );
+  return <AppProvider><AppInner /></AppProvider>;
 }

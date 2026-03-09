@@ -3,12 +3,20 @@ import { Plus, Settings, LogOut } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './Header.css';
 
-export default function Header({ activeTab, onTabChange, onUploadClick, onLogoClick, onSettingsClick }) {
+export default function Header({
+  activeTab, onTabChange,
+  onUploadClick, onLogoClick, onSettingsClick,
+  addLabel,
+  // Sub-tab props — only used when activeTab === 'yarns'
+  yarnSubTab, onYarnSubTabChange,
+}) {
   const { logout, t, language } = useApp();
   const appSub = language === 'no' ? 'Bibliotek' : 'Library';
+  const showSubTabs = activeTab === 'yarns';
 
   return (
-    <header className="header">
+    <header className={`header ${showSubTabs ? 'header--with-subtabs' : ''}`}>
+      {/* ── Main row ── */}
       <div className="header-inner">
         <button className="header-logo" onClick={onLogoClick} aria-label="Go to library">
           <span className="header-logo-icon">🧶</span>
@@ -34,10 +42,12 @@ export default function Header({ activeTab, onTabChange, onUploadClick, onLogoCl
         </nav>
 
         <div className="header-right">
-          <button className="header-upload-btn" onClick={onUploadClick}>
-            <Plus size={18} />
-            <span>{activeTab === 'yarns' ? t('addYarn') : t('addRecipe')}</span>
-          </button>
+          {addLabel && (
+            <button className="header-upload-btn" onClick={onUploadClick}>
+              <Plus size={18} />
+              <span>{addLabel}</span>
+            </button>
+          )}
           <button className="header-icon-btn" onClick={onSettingsClick} title={t('settings')} aria-label={t('settings')}>
             <Settings size={20} />
           </button>
@@ -46,6 +56,24 @@ export default function Header({ activeTab, onTabChange, onUploadClick, onLogoCl
           </button>
         </div>
       </div>
+
+      {/* ── Sub-tab row — shown only on Inventory tab ── */}
+      {showSubTabs && (
+        <div className="header-subtabs">
+          <button
+            className={`header-subtab ${yarnSubTab === 'inventory' ? 'active' : ''}`}
+            onClick={() => onYarnSubTabChange('inventory')}
+          >
+            {t('tabInventory')}
+          </button>
+          <button
+            className={`header-subtab ${yarnSubTab === 'yarndatabase' ? 'active' : ''}`}
+            onClick={() => onYarnSubTabChange('yarndatabase')}
+          >
+            {t('tabYarnDatabase')}
+          </button>
+        </div>
+      )}
     </header>
   );
 }

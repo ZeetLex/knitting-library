@@ -170,11 +170,16 @@ export function pdfPageUrl(recipeId, filename) {
 }
 
 // Project sessions
-export async function startProject(recipeId, yarnId = null, yarnColourId = null) {
+export async function startProject(recipeId, yarnId = null, yarnColourId = null, inventoryItemId = null, skeinsUsed = 0) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/start`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ yarn_id: yarnId, yarn_colour_id: yarnColourId }),
+    body: JSON.stringify({
+      yarn_id: yarnId,
+      yarn_colour_id: yarnColourId,
+      inventory_item_id: inventoryItemId,
+      skeins_used: skeinsUsed,
+    }),
   });
   if (!res.ok) throw new Error('Failed to start project');
   return res.json();
@@ -288,5 +293,67 @@ export async function scrapeYarnUrl(url) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to fetch URL');
   }
+  return res.json();
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+
+export async function fetchInventory({ type = '', search = '' } = {}) {
+  const params = new URLSearchParams();
+  if (type)   params.set('type', type);
+  if (search) params.set('search', search);
+  const res = await fetch(`${API_BASE}/inventory?${params}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch inventory');
+  return res.json();
+}
+
+export async function fetchInventoryItem(id) {
+  const res = await fetch(`${API_BASE}/inventory/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch item');
+  return res.json();
+}
+
+export async function fetchInventoryLog(id) {
+  const res = await fetch(`${API_BASE}/inventory/${id}/log`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch log');
+  return res.json();
+}
+
+export async function createInventoryItem(data) {
+  const res = await fetch(`${API_BASE}/inventory`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create item');
+  return res.json();
+}
+
+export async function updateInventoryItem(id, data) {
+  const res = await fetch(`${API_BASE}/inventory/${id}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update item');
+  return res.json();
+}
+
+export async function adjustInventory(id, change, reason = 'manual', note = '', recipeId = null, sessionId = null) {
+  const res = await fetch(`${API_BASE}/inventory/${id}/adjust`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ change, reason, note, recipe_id: recipeId, session_id: sessionId }),
+  });
+  if (!res.ok) throw new Error('Failed to adjust inventory');
+  return res.json();
+}
+
+export async function deleteInventoryItem(id) {
+  const res = await fetch(`${API_BASE}/inventory/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete item');
   return res.json();
 }

@@ -6,6 +6,9 @@
   max-width: 100vw;
 }
 
+/* Header is 60px on mobile, 72px desktop.
+   When showing sub-tabs it grows by ~33px (the sub-tab row).
+   app-main padding-top must match. */
 .app-main {
   flex: 1;
   padding-top: 60px;
@@ -13,6 +16,12 @@
   max-width: 100vw;
 }
 
+/* When inventory tab is active, header has sub-tabs row (+33px) */
+.app-main--with-subtabs {
+  padding-top: 93px;
+}
+
 @media (min-width: 641px) {
-  .app-main { padding-top: 72px; }
+  .app-main              { padding-top: 72px; }
+  .app-main--with-subtabs { padding-top: 105px; }
 }
