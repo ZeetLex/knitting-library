@@ -731,6 +731,174 @@ def export_library(current_user: dict = Depends(get_current_user)):
         headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
     )
 
+# ── Bulk Import ────────────────────────────────────────────────────────────────
+#
+# How it works (browser-upload flow):
+#   1. User selects a folder in their browser (webkitdirectory input)
+#   2. Frontend groups files by folder structure into recipe candidates
+#   3. POST /api/import/upload-group  → receives one group (files), stages it as
+#                                        a draft recipe with thumbnail, returns recipe_id
+#   4. GET  /api/import/queue         → returns all currently staged (pending) recipes
+#   5. POST /api/import/confirm/{id}  → saves title/tags/categories, marks as done
+#   6. POST /api/import/discard/{id}  → deletes the draft recipe entirely
+#
+# The import_queue table persists staged items across sessions so the wizard
+# is fully resumable — close at item 20, come back and pick up from item 21.
+
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+PDF_EXT    = ".pdf"
+
+def _init_import_table():
+    """Create import_queue table if it doesn't exist yet."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS import_queue (
+            recipe_id   TEXT PRIMARY KEY,
+            group_name  TEXT,              -- original folder/file name
+            status      TEXT DEFAULT 'staged'  -- staged | done | discarded
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_init_import_table()
+
+
+@app.post("/api/import/upload-group")
+async def import_upload_group(
+    group_name: str = Form(...),
+    files: List[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Receive one recipe group uploaded from the browser.
+    Creates a draft recipe, generates thumbnail, records in import_queue.
+    Returns { recipe_id, recipe } for immediate preview in the wizard.
+    """
+    recipe_id  = str(uuid.uuid4())
+    recipe_dir = DATA_DIR / recipe_id
+    recipe_dir.mkdir(parents=True)
+
+    saved_files = []
+    file_type   = "images"
+
+    for upload in files:
+        ext = Path(upload.filename).suffix.lower()
+        if ext == PDF_EXT:
+            dest_name = "recipe.pdf"
+            file_type = "pdf"
+        elif ext in IMAGE_EXTS:
+            # Use just the filename (strip any path prefix the browser may send)
+            dest_name = Path(upload.filename).name
+        else:
+            continue
+        dest = recipe_dir / dest_name
+        with open(dest, "wb") as f:
+            f.write(await upload.read())
+        saved_files.append(dest_name)
+
+    if not saved_files:
+        shutil.rmtree(recipe_dir)
+        raise HTTPException(status_code=400, detail="No valid files in group")
+
+    # Generate thumbnail + convert PDF pages
+    if file_type == "pdf":
+        _convert_pdf_to_pages(recipe_dir)
+    thumb = generate_thumbnail(recipe_dir, file_type, saved_files)
+
+    # Default title = group name (folder name or filename without extension)
+    default_title = Path(group_name).stem if group_name.lower().endswith(".pdf") else group_name
+
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO recipes (id,title,description,file_type,thumbnail_path,created_date) VALUES (?,?,?,?,?,?)",
+        (recipe_id, default_title, "", file_type, thumb, datetime.utcnow().isoformat())
+    )
+    conn.execute(
+        "INSERT INTO import_queue (recipe_id, group_name, status) VALUES (?,?,?)",
+        (recipe_id, group_name, "staged")
+    )
+    conn.commit()
+    recipe = get_recipe_full(recipe_id, conn)
+    conn.close()
+    return {"recipe_id": recipe_id, "recipe": recipe}
+
+
+@app.get("/api/import/queue")
+def import_get_queue(current_user: dict = Depends(get_current_user)):
+    """
+    Return all staged (pending) import items so the wizard can resume.
+    Each item includes the full recipe object for preview.
+    """
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT recipe_id, group_name FROM import_queue WHERE status='staged' ORDER BY rowid"
+    ).fetchall()
+    items = []
+    for row in rows:
+        recipe = get_recipe_full(row["recipe_id"], conn)
+        if recipe:
+            items.append({
+                "recipe_id":  row["recipe_id"],
+                "group_name": row["group_name"],
+                "recipe":     recipe,
+            })
+    conn.close()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/import/confirm/{recipe_id}")
+def import_confirm(recipe_id: str, data: dict,
+                   current_user: dict = Depends(get_current_user)):
+    """
+    Save user-entered metadata onto the draft recipe and mark it as done.
+    The recipe stays in the library — nothing is moved or deleted.
+    """
+    title       = data.get("title", "").strip()
+    categories  = data.get("categories", "")
+    tags        = data.get("tags", "")
+    description = data.get("description", "")
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+
+    conn = get_db()
+    if not conn.execute(
+        "SELECT recipe_id FROM import_queue WHERE recipe_id=? AND status='staged'",
+        (recipe_id,)
+    ).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Staged recipe not found")
+
+    conn.execute("UPDATE recipes SET title=?, description=? WHERE id=?",
+                 (title, description, recipe_id))
+    conn.execute("DELETE FROM recipe_categories WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_tags       WHERE recipe_id=?", (recipe_id,))
+    _save_cats_tags(conn, recipe_id, categories, tags)
+    conn.execute("UPDATE import_queue SET status='done' WHERE recipe_id=?", (recipe_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "confirmed", "recipe_id": recipe_id}
+
+
+@app.post("/api/import/discard/{recipe_id}")
+def import_discard(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Delete a staged draft recipe entirely — removes files and DB rows.
+    Used when the user clicks Skip and chooses not to keep the item.
+    """
+    conn = get_db()
+    conn.execute("DELETE FROM recipe_categories WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_tags       WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipes           WHERE id=?",        (recipe_id,))
+    conn.execute("UPDATE import_queue SET status='discarded' WHERE recipe_id=?", (recipe_id,))
+    conn.commit()
+    conn.close()
+    recipe_dir = DATA_DIR / recipe_id
+    if recipe_dir.exists():
+        shutil.rmtree(recipe_dir)
+    return {"status": "discarded", "recipe_id": recipe_id}
+
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _convert_pdf_to_pages(recipe_dir: Path):

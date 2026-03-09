@@ -357,3 +357,59 @@ export async function deleteInventoryItem(id) {
   if (!res.ok) throw new Error('Failed to delete item');
   return res.json();
 }
+
+// ── Bulk Import ───────────────────────────────────────────────────────────────
+
+// ── Bulk Import API ───────────────────────────────────────────────────────────
+
+/**
+ * Upload one group of files (one recipe candidate) to the backend for staging.
+ * groupName = the folder name or filename that identifies this recipe.
+ * files = array of File objects belonging to this group.
+ * Returns { recipe_id, recipe }
+ */
+export async function uploadImportGroup(groupName, files) {
+  const form = new FormData();
+  form.append('group_name', groupName);
+  for (const file of files) {
+    form.append('files', file, file.name);
+  }
+  const res = await fetch(`${API_BASE}/import/upload-group`, {
+    method: 'POST',
+    headers: authHeaders(),   // no Content-Type — let browser set multipart boundary
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Upload failed');
+  }
+  return res.json();
+}
+
+/** Return all currently staged (pending) items so the wizard can resume. */
+export async function getImportQueue() {
+  const res = await fetch(`${API_BASE}/import/queue`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch import queue');
+  return res.json(); // { items: [...], count: N }
+}
+
+/** Save metadata onto a staged recipe and mark it done. */
+export async function confirmImportItem(recipeId, { title, categories, tags, description }) {
+  const res = await fetch(`${API_BASE}/import/confirm/${recipeId}`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, categories, tags, description }),
+  });
+  if (!res.ok) throw new Error('Failed to confirm import item');
+  return res.json();
+}
+
+/** Discard a staged draft recipe — deletes it from the library entirely. */
+export async function discardImportItem(recipeId) {
+  const res = await fetch(`${API_BASE}/import/discard/${recipeId}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to discard import item');
+  return res.json();
+}
