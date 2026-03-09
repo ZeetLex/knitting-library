@@ -253,6 +253,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
 function ColourSwatch({ colour, yarnId, active, onClick, onDelete, t }) {
   const [imgErr, setImgErr] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const { currencySymbol } = useApp();
   return (
     <div className={`yv-colour-swatch ${active ? 'yv-colour-swatch--active' : ''}`}>
       <button className="yv-swatch-thumb" onClick={onClick}>
@@ -283,6 +284,7 @@ function ColourSwatch({ colour, yarnId, active, onClick, onDelete, t }) {
 
 function ColourPreview({ yarn, colour, onClose }) {
   const [imgErr, setImgErr] = useState(false);
+  const { currencySymbol } = useApp();
   return (
     <div className="yv-colour-preview">
       <button className="yv-colour-preview-close" onClick={onClose}><X size={18} /></button>
