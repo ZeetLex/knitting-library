@@ -15,6 +15,7 @@ const translations = {
     username: "Username",
     password: "Password",
     signingIn: "Signing in…",
+    statistics: "Statistics",
     loginError: "Incorrect username or password",
     loginWelcome: "Welcome back",
     loginSubtitle: "Sign in to your knitting library",
@@ -305,6 +306,7 @@ const translations = {
     password: "Passord",
     signingIn: "Logger inn…",
     loginError: "Feil brukernavn eller passord",
+    statistics: "Statistikk",
     loginWelcome: "Velkommen tilbake",
     loginSubtitle: "Logg inn i strikkebiblioteket ditt",
 

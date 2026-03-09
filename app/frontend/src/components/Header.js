@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Settings, LogOut } from 'lucide-react';
+import { Plus, Settings, BarChart2 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './Header.css';
 
@@ -10,7 +10,7 @@ export default function Header({
   // Sub-tab props — only used when activeTab === 'yarns'
   yarnSubTab, onYarnSubTabChange,
 }) {
-  const { logout, t, language } = useApp();
+  const { t, language } = useApp();
   const appSub = language === 'no' ? 'Bibliotek' : 'Library';
   const showSubTabs = activeTab === 'yarns';
 
@@ -51,8 +51,8 @@ export default function Header({
           <button className="header-icon-btn" onClick={onSettingsClick} title={t('settings')} aria-label={t('settings')}>
             <Settings size={20} />
           </button>
-          <button className="header-icon-btn" onClick={logout} title={t('logout')} aria-label={t('logout')}>
-            <LogOut size={20} />
+          <button className="header-icon-btn" title={t('statistics')} aria-label={t('statistics')} disabled style={{ opacity: 0.5, cursor: 'default' }}>
+            <BarChart2 size={20} />
           </button>
         </div>
       </div>

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X, ChevronLeft, Download } from 'lucide-react';
+import { Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X, ChevronLeft, Download, LogOut } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary } from '../utils/api';
 import './SettingsPage.css';
@@ -126,7 +126,7 @@ function AppearanceSection() {
 
 /* ─── Account Section ─────────────────────────────────────────────────────── */
 function AccountSection() {
-  const { user, t } = useApp();
+  const { user, t, logout } = useApp();
   const [oldPw, setOldPw]       = useState('');
   const [newPw, setNewPw]       = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -191,6 +191,13 @@ function AccountSection() {
 
         <button className="btn-primary" onClick={handleSubmit} disabled={saving || !oldPw || !newPw || !confirmPw}>
           {saving ? t('saving') : t('savePassword')}
+        </button>
+      </div>
+
+      <div className="settings-logout-row">
+        <button className="btn-logout" onClick={logout}>
+          <LogOut size={16} />
+          {t('logout')}
         </button>
       </div>
     </div>

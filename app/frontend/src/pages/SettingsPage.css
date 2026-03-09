@@ -507,7 +507,37 @@
 
 .btn-sm-primary:hover { background: var(--terracotta-light); }
 
-/* ── Settings Modal (password reset etc.) ───────────────────────────────────── */
+/* ── Logout ─────────────────────────────────────────────────────────────────── */
+.settings-logout-row {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn-logout:hover {
+    background: rgba(180, 60, 40, 0.08);
+    color: var(--terracotta);
+    border-color: var(--terracotta);
+  }
+}
+
+
 .settings-modal {
   background: var(--card-bg);
   border-radius: var(--radius) var(--radius) 0 0;
