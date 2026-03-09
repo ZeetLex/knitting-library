@@ -10,8 +10,6 @@
 > - Bugs and rough edges are expected — please report them
 > - Database migrations are included where possible, but large structural changes may occasionally require a clean install
 > - Do not rely on this as your only copy of important patterns — keep backups
->
-> **Current version: v2.48**
 
 ---
 
