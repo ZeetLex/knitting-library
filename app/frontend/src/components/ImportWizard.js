@@ -92,6 +92,49 @@ function PillInput({ label, values, allOptions, onChange, placeholder }) {
   );
 }
 
+// ── ViewerPage — single page with spinner until loaded ────────────────────────
+// Using a component (not inline img) ensures React treats each page as a
+// distinct element with its own lifecycle. This prevents the "blank on first
+// mount" issue caused by lazy loading and React reconciliation timing.
+function ViewerPage({ src, alt }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError]   = useState(false);
+  const imgRef = useRef(null);
+
+  // Force a reload if the image src changes (e.g. cursor moves to next item)
+  useEffect(() => {
+    setLoaded(false);
+    setError(false);
+    // If the browser already has this in cache, onLoad won't fire — check immediately
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [src]);
+
+  return (
+    <div className="iw-page-wrap">
+      {!loaded && !error && (
+        <div className="iw-page-placeholder">
+          <RefreshCw size={18} className="iw-spin" />
+        </div>
+      )}
+      {error && (
+        <div className="iw-page-placeholder iw-page-error">
+          <AlertCircle size={18} />
+        </div>
+      )}
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        className={`iw-viewer-page ${loaded ? 'loaded' : 'hidden'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => { setError(true); setLoaded(false); }}
+      />
+    </div>
+  );
+}
+
 // ── Phase 1: Choose files ─────────────────────────────────────────────────────
 function UploadPhase({ onGroupsReady, onClose, t }) {
   const folderInputRef = useRef(null);
@@ -345,7 +388,7 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
                     ? <FileText size={14} className="iw-queue-icon pdf" />
                     : <Image    size={14} className="iw-queue-icon img" />
                   }
-                  <span className="iw-queue-name">{item.group_name}</span>
+                  <span className="iw-queue-name">{item.group_name || item.recipe?.title || '…'}</span>
                 </div>
               ))}
             </div>
@@ -363,15 +406,13 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
               ) : pages.length > 0 ? (
                 <div className="iw-viewer-scroll">
                   {pages.map((pg, i) => (
-                    <img
-                      key={pg}
-                      src={(pageType === 'pdf'
+                    <ViewerPage
+                      key={`${currentItem.recipe_id}-${pg}`}
+                      src={pageType === 'pdf'
                         ? pdfPageUrl(currentItem.recipe_id, pg)
                         : imageUrl(currentItem.recipe_id, pg)
-                      ) + `&cb=${currentItem.recipe_id.slice(0,8)}`}
+                      }
                       alt={`Page ${i + 1}`}
-                      className="iw-viewer-page"
-                      loading="lazy"
                     />
                   ))}
                 </div>

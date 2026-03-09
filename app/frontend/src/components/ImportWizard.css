@@ -159,7 +159,6 @@
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
-  border-radius: 0;
   transition: background 0.12s;
   border-left: 3px solid transparent;
 }
@@ -183,7 +182,7 @@
   flex: 1;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text) !important;   /* !important overrides any dark-mode inheritance */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,6 +251,35 @@
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Hide until onLoad fires — prevents blank white flash */
+.iw-viewer-page.hidden { opacity: 0; height: 0; overflow: hidden; }
+.iw-viewer-page.loaded { opacity: 1; height: auto; }
+
+/* Per-page wrapper — reserves space while loading */
+.iw-page-wrap {
+  width: 100%;
+  max-width: 560px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.iw-page-placeholder {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.iw-page-error {
+  color: var(--terracotta);
+  min-height: 60px;
 }
 
 .iw-viewer-loading,

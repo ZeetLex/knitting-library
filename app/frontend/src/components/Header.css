@@ -9,6 +9,8 @@
   box-shadow: 0 2px 20px rgba(0,0,0,0.3);
   max-width: 100vw;
   overflow: hidden;
+  /* Push header below iOS status bar in PWA / standalone mode */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .header-inner {
@@ -18,10 +20,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Horizontal padding uses safe areas on notched phones */
-  padding: 0 calc(14px + var(--safe-left)) 0 calc(14px + var(--safe-right));
+  padding: 0 max(14px, env(safe-area-inset-right, 14px)) 0 max(14px, env(safe-area-inset-left, 14px));
   gap: 8px;
-  /* Never overflow */
   overflow: hidden;
 }
 
@@ -65,10 +65,10 @@
 }
 
 .header-logo-main {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
   font-size: 16px;
   font-weight: 700;
-  color: var(--cream);
+  color: #ffffff;
   letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;

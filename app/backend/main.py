@@ -826,7 +826,7 @@ async def import_upload_group(
     # without a second round-trip (avoids race between response and disk flush)
     pdf_pages = sorted([f.name for f in recipe_dir.glob("page-*.jpg")])
 
-    return {"recipe_id": recipe_id, "recipe": recipe, "pdf_pages": pdf_pages}
+    return {"recipe_id": recipe_id, "recipe": recipe, "pdf_pages": pdf_pages, "group_name": group_name}
 
 
 @app.get("/api/import/queue")
@@ -907,15 +907,55 @@ def import_discard(recipe_id: str, current_user: dict = Depends(get_current_user
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _convert_pdf_to_pages(recipe_dir: Path):
-    """Convert every page of recipe.pdf to a JPEG image: page-001.jpg, page-002.jpg …"""
+    """
+    Convert every page of recipe.pdf to a JPEG image: page-001.jpg, page-002.jpg …
+
+    IMPORTANT: thread_count is intentionally omitted (defaults to 1) so that
+    convert_from_path is fully synchronous — using thread_count>1 causes the
+    function to return before worker threads finish writing files, creating a
+    race condition where the frontend requests page images that don't exist yet.
+
+    After saving each file we call flush()+fsync() to guarantee the bytes are
+    on disk before this function returns.
+    """
     pdf_path = recipe_dir / "recipe.pdf"
     if not pdf_path.exists():
         return
     try:
         from pdf2image import convert_from_path
-        pages = convert_from_path(str(pdf_path), dpi=150)
+        import os
+
+        # Single-threaded conversion — fully synchronous, no worker threads
+        pages = convert_from_path(str(pdf_path), dpi=200, fmt="jpeg")
+
         for i, page in enumerate(pages):
-            page.save(str(recipe_dir / f"page-{i+1:03d}.jpg"), "JPEG", quality=88)
+            out = recipe_dir / f"page-{i+1:03d}.jpg"
+            with open(str(out), "wb") as f:
+                page.save(f, "JPEG", quality=90)
+                f.flush()
+                os.fsync(f.fileno())   # force kernel buffer → disk
+
+        # Sanity check — retry any page whose file is suspiciously small (< 10 KB),
+        # which indicates a blank white render from a poppler font-cache miss.
+        blank_indices = [
+            i + 1 for i in range(len(pages))
+            if (recipe_dir / f"page-{i+1:03d}.jpg").stat().st_size < 10_000
+        ]
+
+        if blank_indices:
+            print(f"Retrying {len(blank_indices)} blank pages at DPI=250: {blank_indices}")
+            for page_num in blank_indices:
+                retry = convert_from_path(
+                    str(pdf_path), dpi=250,
+                    first_page=page_num, last_page=page_num, fmt="jpeg"
+                )
+                if retry:
+                    out = recipe_dir / f"page-{page_num:03d}.jpg"
+                    with open(str(out), "wb") as f:
+                        retry[0].save(f, "JPEG", quality=90)
+                        f.flush()
+                        os.fsync(f.fileno())
+
         print(f"PDF converted: {len(pages)} pages → {recipe_dir}")
     except Exception as e:
         print(f"PDF page conversion failed: {e}")
@@ -963,7 +1003,7 @@ def generate_thumbnail(recipe_dir: Path, file_type: str, files: list) -> str:
             from pdf2image import convert_from_path
             pdf_file = next(recipe_dir.glob("*.pdf"), None)
             if pdf_file:
-                pages = convert_from_path(str(pdf_file), first_page=1, last_page=1, dpi=150)
+                pages = convert_from_path(str(pdf_file), first_page=1, last_page=1, dpi=200)
                 if pages: pages[0].save(str(thumb_path), "JPEG", quality=85); return "thumbnail.jpg"
         except Exception as e: print(f"PDF thumb failed: {e}")
     elif file_type == "images":
