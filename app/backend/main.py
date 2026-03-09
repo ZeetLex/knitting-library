@@ -219,6 +219,26 @@ def init_db():
     if "currency" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN currency TEXT DEFAULT 'NOK'")
         print("Migration: added 'currency' column to users")
+
+    # Clean legacy price strings — extract the first number from values like
+    # "100kr", "ca. 100 NOK", "69 NOK", "£49" so they become plain "100", "69", "49".
+    # This runs once per startup but is fast (only updates rows that need changing).
+    import re as _re
+    def _extract_number(s):
+        if not s: return s
+        s = s.strip()
+        if _re.match(r'^\d+(\.\d+)?$', s): return s  # already clean
+        m = _re.search(r'(\d+(?:[.,]\d+)?)', s)
+        return m.group(1).replace(',', '.') if m else ''
+
+    for table, col in [('yarns', 'price_per_skein'), ('yarn_colours', 'price'), ('inventory_items', 'purchase_price')]:
+        rows = conn.execute(f"SELECT id, {col} FROM {table} WHERE {col} != ''").fetchall()
+        for row in rows:
+            cleaned = _extract_number(row[col])
+            if cleaned != row[col]:
+                conn.execute(f"UPDATE {table} SET {col}=? WHERE id=?", (cleaned, row['id']))
+                print(f"Price cleaned: {table}.{col} '{row[col]}' → '{cleaned}'")
+
     conn.commit()
     conn.close()
 
