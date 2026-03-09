@@ -214,6 +214,11 @@ def init_db():
             FOREIGN KEY (session_id) REFERENCES project_sessions(id)
         )
     """)
+    # currency column migration — add to users if not present
+    user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "currency" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN currency TEXT DEFAULT 'NOK'")
+        print("Migration: added 'currency' column to users")
     conn.commit()
     conn.close()
 
@@ -240,7 +245,11 @@ def require_admin(current_user: dict = Depends(get_current_user)):
     return current_user
 
 def user_dict(u):
-    return {"id": u["id"], "username": u["username"], "is_admin": bool(u["is_admin"]), "theme": u["theme"], "language": u["language"]}
+    return {
+        "id": u["id"], "username": u["username"], "is_admin": bool(u["is_admin"]),
+        "theme": u["theme"], "language": u["language"],
+        "currency": u["currency"] if u["currency"] else "NOK"
+    }
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
 
@@ -282,17 +291,21 @@ def get_me(current_user: dict = Depends(get_current_user)):
 
 @app.put("/api/auth/settings")
 def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
-    theme    = data.get("theme", current_user["theme"])
-    language = data.get("language", current_user["language"])
+    theme    = data.get("theme",    current_user.get("theme", "light"))
+    language = data.get("language", current_user.get("language", "en"))
+    currency = data.get("currency", current_user.get("currency", "NOK"))
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Theme must be light or dark")
     if language not in ("en", "no"):
         raise HTTPException(status_code=400, detail="Language must be en or no")
+    if currency not in ("NOK", "USD", "GBP"):
+        raise HTTPException(status_code=400, detail="Currency must be NOK, USD, or GBP")
     conn = get_db()
-    conn.execute("UPDATE users SET theme=?, language=? WHERE id=?", (theme, language, current_user["id"]))
+    conn.execute("UPDATE users SET theme=?, language=?, currency=? WHERE id=?",
+                 (theme, language, currency, current_user["id"]))
     conn.commit()
     conn.close()
-    return {"theme": theme, "language": language}
+    return {"theme": theme, "language": language, "currency": currency}
 
 @app.put("/api/auth/change-password")
 def change_password(data: dict, current_user: dict = Depends(get_current_user)):

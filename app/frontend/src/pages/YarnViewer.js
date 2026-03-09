@@ -11,10 +11,11 @@ import {
   addYarnColour, deleteYarnColour, yarnColourImageUrl
 } from '../utils/api';
 import YarnUploadModal from '../components/YarnUploadModal';
+import CurrencyInput from '../components/CurrencyInput';
 import './YarnViewer.css';
 
 export default function YarnViewer({ yarnId, onBack, onDeleted }) {
-  const { t } = useApp();
+  const { t, currencySymbol } = useApp();
   const [yarn, setYarn]             = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
@@ -155,7 +156,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
             {yarn.tension      && <SpecRow icon="📐" label={t('tension')}      value={yarn.tension} />}
             {yarn.origin       && <SpecRow icon="🌍" label={t('origin')}       value={yarn.origin} />}
             {yarn.seller       && <SpecRow icon="🏪" label={t('seller')}       value={yarn.seller} />}
-            {yarn.price_per_skein && <SpecRow icon="💰" label={t('pricePerSkein')} value={yarn.price_per_skein} />}
+            {yarn.price_per_skein && <SpecRow icon="💰" label={t('pricePerSkein')} value={`${currencySymbol}${yarn.price_per_skein}`} />}
           </div>
 
           {yarn.product_info && (
@@ -189,12 +190,10 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
                   onKeyDown={e => e.key === 'Enter' && handleAddColour()}
                   autoFocus
                 />
-                <input
-                  type="text"
-                  className="yv-colour-name-input"
-                  placeholder={t('colourPricePlaceholder')}
+                <CurrencyInput
                   value={newColourPrice}
-                  onChange={e => setNewColourPrice(e.target.value)}
+                  onChange={setNewColourPrice}
+                  placeholder="0"
                 />
                 <div className="yv-colour-photo-drop" onClick={() => fileInputRef.current?.click()}>
                   {newColourPreview
@@ -265,7 +264,7 @@ function ColourSwatch({ colour, yarnId, active, onClick, onDelete, t }) {
       <div className="yv-swatch-info">
         <div className="yv-swatch-text">
           <span className="yv-swatch-name">{colour.name}</span>
-          {colour.price && <span className="yv-swatch-price">{colour.price}</span>}
+          {colour.price && <span className="yv-swatch-price">{currencySymbol}{colour.price}</span>}
         </div>
         {confirmDel ? (
           <div className="yv-swatch-confirm">
@@ -292,7 +291,7 @@ function ColourPreview({ yarn, colour, onClose }) {
         : <div className="yv-colour-preview-placeholder">🎨</div>
       }
       <p className="yv-colour-preview-name">
-        {colour.name}{colour.price ? ` · ${colour.price}` : ''}
+        {colour.name}{colour.price ? ` · ${currencySymbol}${colour.price}` : ''}
       </p>
     </div>
   );

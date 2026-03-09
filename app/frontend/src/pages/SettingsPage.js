@@ -75,7 +75,7 @@ export default function SettingsPage({ onBack }) {
 
 /* ─── Appearance Section ──────────────────────────────────────────────────── */
 function AppearanceSection() {
-  const { theme, language, t, updateSettings } = useApp();
+  const { theme, language, currency, t, updateSettings } = useApp();
 
   return (
     <div className="settings-section">
@@ -91,7 +91,7 @@ function AppearanceSection() {
         </div>
         <button
           className={`theme-toggle ${theme === 'dark' ? 'dark' : ''}`}
-          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language)}
+          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language, currency)}
           aria-label="Toggle theme"
         >
           <span className="theme-toggle-knob">
@@ -108,16 +108,39 @@ function AppearanceSection() {
         <div className="lang-switcher">
           <button
             className={`lang-btn ${language === 'en' ? 'active' : ''}`}
-            onClick={() => updateSettings(theme, 'en')}
+            onClick={() => updateSettings(theme, 'en', currency)}
           >
             🇬🇧 English
           </button>
           <button
             className={`lang-btn ${language === 'no' ? 'active' : ''}`}
-            onClick={() => updateSettings(theme, 'no')}
+            onClick={() => updateSettings(theme, 'no', currency)}
           >
             🇳🇴 Norsk
           </button>
+        </div>
+      </div>
+
+      {/* Currency */}
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <p className="settings-row-label">{t('currency')}</p>
+          <p className="settings-row-sub">{t('currencySub')}</p>
+        </div>
+        <div className="lang-switcher">
+          {[
+            { code: 'NOK', label: 'kr' },
+            { code: 'USD', label: '$'  },
+            { code: 'GBP', label: '£'  },
+          ].map(c => (
+            <button
+              key={c.code}
+              className={`lang-btn ${currency === c.code ? 'active' : ''}`}
+              onClick={() => updateSettings(theme, language, c.code)}
+            >
+              {c.label} {c.code}
+            </button>
+          ))}
         </div>
       </div>
     </div>

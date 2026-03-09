@@ -14,6 +14,7 @@ import {
   fetchYarns, yarnColourImageUrl, yarnImageUrl
 } from '../utils/api';
 import YarnUploadModal from '../components/YarnUploadModal';
+import CurrencyInput from '../components/CurrencyInput';
 import './InventoryPage.css';
 
 const TOOL_CATEGORIES = ['needle', 'tool', 'notion', 'other'];
@@ -34,7 +35,7 @@ function logReasonLabel(reason, t) {
 }
 
 // ── Inventory item card ───────────────────────────────────────────────────────
-function InventoryCard({ item, onAdjust, onEdit, onDelete, t, language }) {
+function InventoryCard({ item, onAdjust, onEdit, onDelete, t, language, currencySymbol }) {
   const [showLog, setShowLog]   = useState(false);
   const [log, setLog]           = useState([]);
   const [logLoading, setLogLoading] = useState(false);
@@ -103,7 +104,7 @@ function InventoryCard({ item, onAdjust, onEdit, onDelete, t, language }) {
         {/* Purchase info */}
         {(item.purchase_price || item.purchase_date) && (
           <div className="inv-purchase-row">
-            {item.purchase_price && <span>💰 {item.purchase_price}</span>}
+            {item.purchase_price && <span>💰 {currencySymbol}{item.purchase_price}</span>}
             {item.purchase_date  && <span>📅 {fmtDate(item.purchase_date, language)}</span>}
           </div>
         )}
@@ -357,7 +358,7 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
             </div>
             <div className="inv-field">
               <label className="inv-label">{t('purchasePrice')}</label>
-              <input type="text" className="inv-input" placeholder="e.g. 69 NOK" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} />
+              <CurrencyInput value={purchasePrice} onChange={setPurchasePrice} />
             </div>
           </div>
           <div className="inv-field">
@@ -440,7 +441,7 @@ function ColourChip({ colour, yarnId, selected, onSelect }) {
 
 // ── Main InventoryPage ────────────────────────────────────────────────────────
 export default function InventoryPage({ onRequestAddYarn }) {
-  const { t, language } = useApp();
+  const { t, language, currencySymbol } = useApp();
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -536,7 +537,7 @@ export default function InventoryPage({ onRequestAddYarn }) {
               <div className="inv-grid">
                 {yarnItems.map(item => (
                   <InventoryCard
-                    key={item.id} item={item} t={t} language={language}
+                    key={item.id} item={item} t={t} language={language} currencySymbol={currencySymbol}
                     onAdjust={handleAdjust}
                     onEdit={item => { setEditItem(item); setModalInitialType(item.type); setModalOpen(true); }}
                     onDelete={id => setConfirmDelete(id)}
@@ -551,7 +552,7 @@ export default function InventoryPage({ onRequestAddYarn }) {
               <div className="inv-grid">
                 {toolItems.map(item => (
                   <InventoryCard
-                    key={item.id} item={item} t={t} language={language}
+                    key={item.id} item={item} t={t} language={language} currencySymbol={currencySymbol}
                     onAdjust={handleAdjust}
                     onEdit={item => { setEditItem(item); setModalInitialType(item.type); setModalOpen(true); }}
                     onDelete={id => setConfirmDelete(id)}

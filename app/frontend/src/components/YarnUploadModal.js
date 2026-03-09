@@ -8,6 +8,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, ImagePlus, Link, Loader } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { createYarn, updateYarn, yarnImageUrl, scrapeYarnUrl } from '../utils/api';
+import CurrencyInput from './CurrencyInput';
 import './YarnUploadModal.css';
 
 const EMPTY = {
@@ -261,11 +262,9 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
                 />
               </Field>
               <Field label={t('pricePerSkein')}>
-                <input
-                  type="text" value={fields.price_per_skein}
-                  placeholder="e.g. ca. 100kr"
-                  onChange={(e) => set('price_per_skein', e.target.value)}
-                  className="yum-input"
+                <CurrencyInput
+                  value={fields.price_per_skein}
+                  onChange={val => set('price_per_skein', val)}
                 />
               </Field>
             </div>

@@ -1,0 +1,44 @@
+.currency-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.currency-input-wrap:focus-within {
+  border-color: var(--terracotta);
+}
+
+.currency-input-symbol {
+  padding: 0 10px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  user-select: none;
+  line-height: 42px; /* match input height */
+}
+
+.currency-input-field {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 16px; /* prevent iOS zoom */
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  min-width: 0;
+}
+
+/* Hide browser number arrows */
+.currency-input-field::-webkit-outer-spin-button,
+.currency-input-field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.currency-input-field[type=number] { -moz-appearance: textfield; }
