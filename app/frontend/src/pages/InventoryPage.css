@@ -439,6 +439,35 @@
 
 .inv-or-label { font-size: 12px; color: var(--text-muted); text-align: center; margin: 4px 0 0; }
 
+/* "Not in the database yet?" button */
+.inv-add-to-db-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 9px 14px;
+  width: 100%;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--terracotta);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .inv-add-to-db-btn:hover { background: var(--bg-secondary); border-color: var(--terracotta); }
+}
+
+.inv-yarn-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px;
+}
+
 /* Category pills */
 .inv-category-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .inv-cat-pill {

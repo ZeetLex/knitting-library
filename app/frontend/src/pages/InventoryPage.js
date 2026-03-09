@@ -12,6 +12,7 @@ import {
   adjustInventory, deleteInventoryItem, fetchInventoryLog,
   fetchYarns, yarnColourImageUrl, yarnImageUrl
 } from '../utils/api';
+import YarnUploadModal from '../components/YarnUploadModal';
 import './InventoryPage.css';
 
 const TOOL_CATEGORIES = ['needle', 'tool', 'notion', 'other'];
@@ -158,13 +159,14 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
   const [yarnSearch, setYarnSearch] = useState('');
   const [selectedYarn, setSelectedYarn] = useState(null);
   const [selectedColour, setSelectedColour] = useState(null);
+  const [showYarnUpload, setShowYarnUpload] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
 
+  const loadYarns = () => fetchYarns().then(setYarns).catch(() => {});
+
   useEffect(() => {
-    if (itemType === 'yarn') {
-      fetchYarns().then(setYarns).catch(() => {});
-    }
+    if (itemType === 'yarn') loadYarns();
   }, [itemType]);
 
   // Pre-fill yarn/colour when editing
@@ -186,12 +188,15 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
   );
 
   const handleSave = async () => {
-    if (!name.trim() && !(itemType === 'yarn' && selectedYarn)) {
+    if (itemType === 'yarn' && !selectedYarn) {
+      setError(t('selectYarnFromDatabase')); return;
+    }
+    if (itemType === 'tool' && !name.trim()) {
       setError(t('inventoryItemName') + ' is required'); return;
     }
     setSaving(true); setError('');
     try {
-      const finalName = itemType === 'yarn' && selectedYarn
+      const finalName = itemType === 'yarn'
         ? (selectedColour ? `${selectedYarn.name} — ${selectedColour.name}` : selectedYarn.name)
         : name.trim();
 
@@ -200,7 +205,7 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
         name: finalName,
         quantity: isEdit ? undefined : Number(quantity),
         category: itemType === 'tool' ? category : '',
-        yarn_id: itemType === 'yarn' && selectedYarn ? selectedYarn.id : null,
+        yarn_id: itemType === 'yarn' ? selectedYarn.id : null,
         yarn_colour_id: itemType === 'yarn' && selectedColour ? selectedColour.id : null,
         purchase_date:  purchaseDate,
         purchase_price: purchasePrice,
@@ -222,66 +227,83 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="inv-modal">
-        <div className="inv-modal-header">
-          <h2>{isEdit ? t('edit') : (itemType === 'yarn' ? t('addYarnToInventory') : t('addToolToInventory'))}</h2>
-          <button className="inv-modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
+    <>
+      {/* YarnUploadModal rendered on top when user wants to add a new yarn to the database */}
+      {showYarnUpload && (
+        <YarnUploadModal
+          onClose={() => setShowYarnUpload(false)}
+          onSuccess={(newYarn) => {
+            setShowYarnUpload(false);
+            // Refresh yarn list then auto-select the newly added yarn
+            fetchYarns().then(freshYarns => {
+              setYarns(freshYarns);
+              const added = freshYarns.find(y => y.id === newYarn.id);
+              if (added) { setSelectedYarn(added); setSelectedColour(null); }
+            }).catch(() => {});
+          }}
+        />
+      )}
 
-        {/* Type toggle — only on add */}
-        {!isEdit && (
-          <div className="inv-type-toggle">
-            <button className={`inv-type-btn ${itemType === 'yarn' ? 'active' : ''}`} onClick={() => setItemType('yarn')}>
-              🧵 {t('addYarnToInventory')}
-            </button>
-            <button className={`inv-type-btn ${itemType === 'tool' ? 'active' : ''}`} onClick={() => setItemType('tool')}>
-              🪡 {t('addToolToInventory')}
-            </button>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="inv-modal">
+          <div className="inv-modal-header">
+            <h2>{isEdit ? t('edit') : (itemType === 'yarn' ? t('addYarnToInventory') : t('addToolToInventory'))}</h2>
+            <button className="inv-modal-close" onClick={onClose}><X size={20} /></button>
           </div>
-        )}
 
-        <div className="inv-modal-body">
-
-          {/* ── Yarn type: search yarn database ── */}
-          {itemType === 'yarn' && (
-            <div className="inv-field">
-              <label className="inv-label">{t('selectYarnFromDatabase')}</label>
-              <div className="inv-yarn-search-wrap">
-                <Search size={14} className="inv-yarn-search-icon" />
-                <input
-                  type="search"
-                  className="inv-yarn-search"
-                  placeholder={`${t('search')}…`}
-                  value={yarnSearch}
-                  onChange={e => { setYarnSearch(e.target.value); setSelectedYarn(null); setSelectedColour(null); }}
-                />
-              </div>
-              {/* Yarn list */}
-              <div className="inv-yarn-list">
-                {filteredYarns.map(y => (
-                  <YarnPickRow
-                    key={y.id}
-                    yarn={y}
-                    selected={selectedYarn?.id === y.id}
-                    selectedColour={selectedYarn?.id === y.id ? selectedColour : null}
-                    onSelect={() => { setSelectedYarn(y); setSelectedColour(null); setName(''); }}
-                    onSelectColour={c => setSelectedColour(c)}
-                    t={t}
-                  />
-                ))}
-              </div>
-              {/* Manual name fallback */}
-              <p className="inv-or-label">{t('orAddManually')}</p>
-              <input
-                type="text"
-                className="inv-input"
-                placeholder={t('inventoryItemName')}
-                value={name}
-                onChange={e => { setName(e.target.value); setSelectedYarn(null); setSelectedColour(null); }}
-              />
+          {/* Type toggle — only on add */}
+          {!isEdit && (
+            <div className="inv-type-toggle">
+              <button className={`inv-type-btn ${itemType === 'yarn' ? 'active' : ''}`} onClick={() => setItemType('yarn')}>
+                🧵 {t('addYarnToInventory')}
+              </button>
+              <button className={`inv-type-btn ${itemType === 'tool' ? 'active' : ''}`} onClick={() => setItemType('tool')}>
+                🪡 {t('addToolToInventory')}
+              </button>
             </div>
           )}
+
+          <div className="inv-modal-body">
+
+            {/* ── Yarn type: search yarn database ── */}
+            {itemType === 'yarn' && (
+              <div className="inv-field">
+                <label className="inv-label">{t('selectYarnFromDatabase')}</label>
+                <div className="inv-yarn-search-wrap">
+                  <Search size={14} className="inv-yarn-search-icon" />
+                  <input
+                    type="search"
+                    className="inv-yarn-search"
+                    placeholder={`${t('search')}…`}
+                    value={yarnSearch}
+                    onChange={e => { setYarnSearch(e.target.value); setSelectedYarn(null); setSelectedColour(null); }}
+                  />
+                </div>
+
+                {/* Yarn list */}
+                <div className="inv-yarn-list">
+                  {filteredYarns.map(y => (
+                    <YarnPickRow
+                      key={y.id}
+                      yarn={y}
+                      selected={selectedYarn?.id === y.id}
+                      selectedColour={selectedYarn?.id === y.id ? selectedColour : null}
+                      onSelect={() => { setSelectedYarn(y); setSelectedColour(null); }}
+                      onSelectColour={c => setSelectedColour(c)}
+                      t={t}
+                    />
+                  ))}
+                  {filteredYarns.length === 0 && (
+                    <p className="inv-yarn-empty">{yarnSearch ? t('noResults') || 'No results' : t('inventoryEmpty')}</p>
+                  )}
+                </div>
+
+                {/* Add to database button */}
+                <button className="inv-add-to-db-btn" onClick={() => setShowYarnUpload(true)}>
+                  <Plus size={14} /> {t('addYarn')}
+                </button>
+              </div>
+            )}
 
           {/* ── Tool type ── */}
           {itemType === 'tool' && (
@@ -356,6 +378,7 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
         </div>
       </div>
     </div>
+    </>
   );
 }
 
