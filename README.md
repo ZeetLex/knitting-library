@@ -26,35 +26,37 @@ Just **Docker Desktop** — nothing else.
 
 ## Getting Started
 
-**Option A — Docker Desktop (GUI)**
+### Option A — Docker Desktop (GUI)
 
 1. Open Docker Desktop
 2. Go to the **Compose** section and point it at the `docker-compose.yml` file from this repo
 3. Hit **Start**
 4. Open `http://localhost:3000` in your browser
 
-**Option B — Terminal / Unraid Compose Stack**
+### Option B — Terminal
+
+```bash
+docker-compose up -d
+```
+
+Then open `http://localhost:3000`.
+
+### Option C — Unraid / Home Server (Compose Stack)
 
 Paste this into your compose stack manager (e.g. Unraid's Compose Manager):
 
 ```yaml
 services:
-  backend:
-    image: zeetlex/knitting-library-backend:latest
-    restart: unless-stopped
-    volumes:
-      - /path/to/your/data:/data
-
-  frontend:
-    image: zeetlex/knitting-library-frontend:latest
+  app:
+    image: zeetlex/knitting-library:latest
     restart: unless-stopped
     ports:
       - "3000:80"
-    depends_on:
-      - backend
+    volumes:
+      - /path/to/your/data:/data
 ```
 
-Change `/path/to/your/data` to wherever you want your recipes stored (e.g. `/mnt/user/appdata/knitting-library/data` on Unraid).
+Change `/path/to/your/data` to wherever you want your data stored (e.g. `/mnt/user/appdata/knitting-library/data` on Unraid).
 
 Then start the stack and open `http://YOUR-SERVER-IP:3000`.
 
@@ -73,14 +75,15 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - **Recipe library** — visual grid with thumbnail previews, upload PDFs or images (single files, multi-page scans, or whole folders), automatic thumbnail and PDF-to-image conversion
 - **Recipe viewer** — scrollable PDF pages, swipe/arrow image navigation, fullscreen mode
 - **Annotations** — draw or highlight directly on any page, adjustable brush size/opacity/colour, per-page undo, saved to database
-- **Project tracking** — mark recipes In Progress or Finished, full session history with timestamps and total knitting time, status badges on grid cards
+- **Project tracking** — mark recipes In Progress or Finished, pick which yarn and colour you're using, full session history with timestamps and total knitting time
 - **Recipe search & filters** — search by name/tag, filter by category, tags, or project status, results update instantly
-- **Yarn database** — dedicated Yarns tab with its own grid; store colour, wool type, yardage, needles, tension, origin, seller, price per skein, and product info alongside a photo
-- **Yarn search & filters** — field-specific search (name, colour, material) with autofill from existing values, filter panel for colour, wool type, and seller
+- **Yarn database** — dedicated Yarns tab; each yarn type can have multiple colour variants, each with its own photo and price per skein. Stores wool type, yardage, needles, tension, origin, seller, and product info
+- **Yarn URL import** — paste a yarn shop URL to auto-fill fields (early beta — works best with Sandnes Garn, limited support for other stores)
+- **Yarn search & filters** — field-specific search with autofill, filter by wool type and seller
 - **Categories & tags** — fully custom, no presets, managed directly from the library page
 - **User accounts** — login with username/password, admin can manage users, per-user light/dark mode and English/Norwegian language
 - **Mobile friendly** — responsive layout, touch navigation, swipe between recipe pages, recipe info accessible via a slide-up panel
-- **Backups** — everything in one `/data` folder, export as ZIP from Settings → Data
+- **Backups** — everything in one `/data` folder, export as ZIP from Settings → Data (includes recipes, yarn images, and database)
 
 ---
 
@@ -92,15 +95,16 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - **Filter** — use the search bar or click Filters to narrow by category, tag, or project status
 - **View** — click any card to open it. Scroll through PDF pages, swipe between images
 - **Annotate** — click the pencil button on any page to draw or highlight
-- **Track progress** — use Start Project / Finish Project in the recipe sidebar
+- **Track progress** — use Start Project / Finish Project in the recipe sidebar. You'll be prompted to pick a yarn and colour when starting
 - **On mobile** — tap **Recipe info ▲** at the bottom of the screen to see tags, categories, and project status
 
 ### Yarns
-- **Add a yarn** — click **+ Add yarn** in the header, upload a photo, and fill in the fields you know
-- **Browse** — same grid view as recipes, with colour and seller shown on each card
-- **Search** — use the field dropdown to search specifically by name, colour, or material
-- **Filter** — click Filters to narrow by colour, wool type, or seller
-- **View details** — click any yarn card to see the full spec table and product information
+- **Add a yarn** — click **+ Add yarn**, fill in the spec fields. Optionally paste a shop URL to auto-fill
+- **Add colours** — open any yarn, scroll to the Colours section, click **Add colour**. Enter a name/number, price, and photo. You can paste an image directly from your clipboard
+- **Browse** — grid view with a colour swatch strip at the bottom of each card
+- **Search** — use the field dropdown to search by name or material
+- **Filter** — click Filters to narrow by wool type or seller
+- **View details** — click any yarn card to see the full spec table, product info, and colour gallery
 
 ### General
 - **Mobile** — open `http://YOUR-SERVER-IP:3000` on your phone while on the same Wi-Fi
@@ -109,7 +113,7 @@ Change the password immediately after logging in — go to **Settings → My Acc
 
 ## Backups
 
-Everything lives in your `data/` folder — the database, all recipe files, and all yarn photos. To back up, just copy that folder somewhere safe. To restore, copy it back and restart the container.
+Everything lives in your `data/` folder — the database, all recipe files, and all yarn photos and colour images. To back up, just copy that folder somewhere safe. To restore, copy it back and restart the container.
 
 You can also export directly from the app: **Settings → Data → Export Library** downloads a ZIP of everything.
 
@@ -126,7 +130,7 @@ You can also export directly from the app: **Settings → Data → Export Librar
 | Can't reach it on phone | Make sure your phone is on the same Wi-Fi, use the server's IP not `localhost` |
 | Annotations not saving | Check that the `/data` volume is mounted correctly in your compose file |
 | Yarn photo not showing | Supported formats are JPG, PNG, and WebP only |
-| Yarn filters show no options | Filters only appear for fields that have data — add a yarn with that field filled in |
+| URL import didn't fill everything | The scraper is in early beta — fill in missing fields manually before saving |
 
 ---
 
@@ -159,4 +163,4 @@ If you want remote access, use a **VPN** (like Tailscale or WireGuard) to connec
 
 ---
 
-*Built with FastAPI · React · SQLite · Docker*
+*Built with FastAPI · React · SQLite · nginx · Docker*

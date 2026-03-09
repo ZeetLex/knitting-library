@@ -616,8 +616,16 @@ def export_library(current_user: dict = Depends(get_current_user)):
                 if recipe_dir.is_dir():
                     for file in recipe_dir.rglob("*"):
                         if file.is_file():
-                            # Keep folder structure: recipes/<id>/filename
                             arcname = "recipes/" + str(file.relative_to(DATA_DIR))
+                            zf.write(str(file), arcname=arcname)
+
+        # 3. Include every yarn folder under /data/yarns/
+        if YARN_DIR.exists():
+            for yarn_dir in YARN_DIR.iterdir():
+                if yarn_dir.is_dir():
+                    for file in yarn_dir.rglob("*"):
+                        if file.is_file():
+                            arcname = "yarns/" + str(file.relative_to(YARN_DIR))
                             zf.write(str(file), arcname=arcname)
 
     buf.seek(0)

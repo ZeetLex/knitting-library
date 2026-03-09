@@ -1,42 +1,29 @@
 # docker-compose.yml
 #
-# This is the main file that starts your entire application.
-# Run it with: docker-compose up --build
+# Starts the knitting library as a single container.
+# The image contains both the React frontend (served by nginx)
+# and the Python backend (run by uvicorn), managed by supervisord.
 #
-# It starts two services:
-#   1. backend  - The Python API server (handles uploads, database, files)
-#   2. frontend - The React web interface (what you see in your browser)
+# Usage:
+#   docker-compose up --build      (first time or after updates)
+#   docker-compose up -d           (start in background)
+#   docker-compose down            (stop)
 #
-# Your recipe files and database are stored in the ./data folder on your
-# computer, so they persist even if you update or restart the containers.
+# Your data (recipes, yarns, database) is stored in ./data
+# and persists across restarts and updates.
 
 services:
-
-  # ─── Python Backend API ─────────────────────────────────────────────────────
-  backend:
+  app:
     build:
-      context: ./app/backend
+      context: .
       dockerfile: Dockerfile
-    container_name: knitting-backend
-    restart: unless-stopped
-    volumes:
-      # This mounts your local ./data folder into the container.
-      # All recipe files and the database are stored here.
-      # To back up everything, just copy this folder!
-      - ./data:/data
-    # The backend is NOT exposed directly - all traffic goes through the frontend/nginx
-
-  # ─── React Frontend + Nginx ──────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./app/frontend
-      dockerfile: Dockerfile
-    container_name: knitting-frontend
+    image: zeetlex/knitting-library:latest
+    container_name: knitting-library
     restart: unless-stopped
     ports:
       # Change 3000 to any port you prefer, e.g. "8080:80"
       - "3000:80"
-    depends_on:
-      - backend
-
-# Note: No named volumes needed because we use a direct path (./data)
+    volumes:
+      # All data lives here — recipes, yarn images, and the database.
+      # Back up by copying this folder.
+      - ./data:/data
