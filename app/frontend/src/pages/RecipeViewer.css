@@ -171,17 +171,21 @@
     position: static;
     max-height: none;
     overflow-y: auto;
+    overflow-x: hidden;      /* prevent any child from blowing out the sidebar */
     border-top: none;
     border-left: 1px solid var(--border);
     box-shadow: none;
     padding: 0;
     order: 1;
     gap: 0;
+    min-width: 0;            /* critical: allows grid child to respect column width */
+    width: 100%;             /* fill the grid column exactly */
   }
   .sidebar-mobile-toggle { display: none; }
   .sidebar-content {
     padding: 24px 20px;
     gap: 12px;
+    min-width: 0;
   }
 }
 

@@ -214,6 +214,24 @@ def init_db():
             FOREIGN KEY (session_id) REFERENCES project_sessions(id)
         )
     """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS project_feedback (
+            id           TEXT PRIMARY KEY,
+            recipe_id    TEXT NOT NULL,
+            user_id      TEXT NOT NULL,
+            session_id   TEXT NOT NULL,
+            username     TEXT NOT NULL DEFAULT '',
+            rating_recipe      INTEGER NOT NULL DEFAULT 0,
+            rating_difficulty  INTEGER NOT NULL DEFAULT 0,
+            rating_result      INTEGER NOT NULL DEFAULT 0,
+            notes        TEXT DEFAULT '',
+            created_date TEXT NOT NULL,
+            FOREIGN KEY (recipe_id)  REFERENCES recipes(id),
+            FOREIGN KEY (user_id)    REFERENCES users(id),
+            FOREIGN KEY (session_id) REFERENCES project_sessions(id)
+        )
+    """)
     # currency column migration — add to users if not present
     user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     if "currency" not in user_cols:
@@ -437,7 +455,16 @@ def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags:
             "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id, y.name as yarn_name, yc.name as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id LEFT JOIN yarn_colours yc ON ps.yarn_colour_id = yc.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
             (recipe["id"],)
         ).fetchall()
-        recipe["sessions"] = [dict(s) for s in sessions]
+        session_list = []
+        for s in sessions:
+            sd = dict(s)
+            fb = conn.execute(
+                "SELECT id, user_id, username, rating_recipe, rating_difficulty, rating_result, notes, created_date FROM project_feedback WHERE session_id=?",
+                (sd["id"],)
+            ).fetchall()
+            sd["feedback"] = [dict(f) for f in fb]
+            session_list.append(sd)
+        recipe["sessions"] = session_list
         active = next((s for s in reversed(recipe["sessions"]) if not s["finished_at"]), None)
         if active:
             recipe["project_status"] = "active"
@@ -446,6 +473,18 @@ def list_recipes(search: Optional[str]=None, category: Optional[str]=None, tags:
             recipe["project_status"] = "finished"
         else:
             recipe["project_status"] = "none"
+        # Compute avg_score from all feedback for this recipe
+        all_fb = conn.execute(
+            "SELECT rating_recipe, rating_difficulty, rating_result FROM project_feedback WHERE recipe_id=?",
+            (recipe["id"],)
+        ).fetchall()
+        if all_fb:
+            total_score = sum((f["rating_recipe"] + f["rating_difficulty"] + f["rating_result"]) for f in all_fb)
+            recipe["avg_score"] = round(total_score / (len(all_fb) * 3), 1)
+            recipe["feedback_count"] = len(all_fb)
+        else:
+            recipe["avg_score"] = None
+            recipe["feedback_count"] = 0
         result.append(recipe)
     conn.close()
     # Filter by status if requested
@@ -662,12 +701,68 @@ def finish_project(recipe_id: str, current_user: dict = Depends(get_current_user
     recipe = get_recipe_full(recipe_id, conn); conn.close()
     return recipe
 
+
+@app.post("/api/recipes/{recipe_id}/feedback")
+def save_feedback(recipe_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Save feedback for a session. If finish_session=True, also marks the session as finished."""
+    session_id = data.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    rating_recipe     = int(data.get("rating_recipe", 0))
+    rating_difficulty = int(data.get("rating_difficulty", 0))
+    rating_result     = int(data.get("rating_result", 0))
+    notes = data.get("notes", "").strip()
+    finish_session = bool(data.get("finish_session", False))
+    # Validate ratings are 1-6
+    for r in [rating_recipe, rating_difficulty, rating_result]:
+        if not (1 <= r <= 6):
+            raise HTTPException(status_code=400, detail="Ratings must be between 1 and 6")
+    conn = get_db()
+    # Check session exists and belongs to this recipe
+    sess = conn.execute("SELECT id, finished_at FROM project_sessions WHERE id=? AND recipe_id=?",
+                        (session_id, recipe_id)).fetchone()
+    if not sess:
+        conn.close(); raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow().isoformat()
+    # Optionally finish the session in the same transaction
+    if finish_session and not sess["finished_at"]:
+        conn.execute("UPDATE project_sessions SET finished_at=? WHERE id=?", (now, session_id))
+    # Upsert — one feedback per user per session
+    existing = conn.execute("SELECT id FROM project_feedback WHERE session_id=? AND user_id=?",
+                            (session_id, current_user["id"])).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE project_feedback SET rating_recipe=?, rating_difficulty=?, rating_result=?, notes=?, username=? WHERE id=?",
+            (rating_recipe, rating_difficulty, rating_result, notes, current_user["username"], existing["id"])
+        )
+    else:
+        conn.execute(
+            "INSERT INTO project_feedback (id, recipe_id, user_id, session_id, username, rating_recipe, rating_difficulty, rating_result, notes, created_date) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), recipe_id, current_user["id"], session_id,
+             current_user["username"], rating_recipe, rating_difficulty, rating_result, notes, now)
+        )
+    conn.commit()
+    recipe = get_recipe_full(recipe_id, conn); conn.close()
+    return recipe
+
+@app.get("/api/recipes/{recipe_id}/feedback/{session_id}")
+def get_session_feedback(recipe_id: str, session_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all feedback for a specific session."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, user_id, username, rating_recipe, rating_difficulty, rating_result, notes, created_date FROM project_feedback WHERE session_id=? AND recipe_id=?",
+        (session_id, recipe_id)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 @app.delete("/api/recipes/{recipe_id}/sessions")
 def clear_sessions(recipe_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete all session history for a recipe, resetting it to 'not started'."""
+    """Delete all session history and feedback for a recipe, resetting it to 'not started'."""
     conn = get_db()
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close(); raise HTTPException(status_code=404, detail="Recipe not found")
+    conn.execute("DELETE FROM project_feedback WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM project_sessions WHERE recipe_id=?", (recipe_id,))
     conn.commit()
     recipe = get_recipe_full(recipe_id, conn); conn.close()
@@ -721,12 +816,13 @@ def export_library(current_user: dict = Depends(get_current_user)):
     """
     Export everything needed for a full backup or migration:
       recipes.db          — SQLite database (recipes, tags, categories, users,
-                            annotations, project sessions, yarns, yarn colours,
-                            inventory items, inventory log)
+                            annotations, project sessions, project feedback,
+                            yarns, yarn colours, inventory items, inventory log)
       recipes/<id>/...    — Recipe PDF and image files + thumbnails
       yarns/<id>/...      — Yarn type images and colour variant images
 
-    Inventory data (items + log) lives entirely in the database — no extra files.
+    All data lives in the database — project feedback, scores, inventory,
+    session history, per-user settings and currency preferences are all included.
     """
     buf = io.BytesIO()
 
@@ -1068,7 +1164,28 @@ def get_recipe_full(recipe_id: str, conn) -> dict:
         "SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id, y.name as yarn_name, yc.name as yarn_colour FROM project_sessions ps LEFT JOIN yarns y ON ps.yarn_id = y.id LEFT JOIN yarn_colours yc ON ps.yarn_colour_id = yc.id WHERE ps.recipe_id=? ORDER BY ps.started_at ASC",
         (recipe_id,)
     ).fetchall()
-    recipe["sessions"] = [dict(s) for s in sessions]
+    session_list = []
+    for s in sessions:
+        sd = dict(s)
+        fb = conn.execute(
+            "SELECT id, user_id, username, rating_recipe, rating_difficulty, rating_result, notes, created_date FROM project_feedback WHERE session_id=?",
+            (sd["id"],)
+        ).fetchall()
+        sd["feedback"] = [dict(f) for f in fb]
+        session_list.append(sd)
+    recipe["sessions"] = session_list
+    # Average score across all feedback (for card display)
+    all_fb = conn.execute(
+        "SELECT rating_recipe, rating_difficulty, rating_result FROM project_feedback WHERE recipe_id=?",
+        (recipe_id,)
+    ).fetchall()
+    if all_fb:
+        total = sum((r["rating_recipe"] + r["rating_difficulty"] + r["rating_result"]) for r in all_fb)
+        recipe["avg_score"] = round(total / (len(all_fb) * 3), 1)
+        recipe["feedback_count"] = len(all_fb)
+    else:
+        recipe["avg_score"] = None
+        recipe["feedback_count"] = 0
     # Active session = last session with no finished_at
     active = next((s for s in reversed(recipe["sessions"]) if not s["finished_at"]), None)
     if active:

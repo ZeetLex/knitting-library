@@ -414,3 +414,13 @@ export async function discardImportItem(recipeId) {
   if (!res.ok) throw new Error('Failed to discard import item');
   return res.json();
 }
+
+export async function saveFeedback(recipeId, payload) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/feedback`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to save feedback');
+  return res.json();
+}

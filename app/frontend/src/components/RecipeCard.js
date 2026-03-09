@@ -43,6 +43,11 @@ export default function RecipeCard({ recipe, onClick, style }) {
             <CheckCircle size={10} /> {t('projectFinished')}
           </span>
         )}
+        {recipe.avg_score != null && (
+          <span className="recipe-score-badge">
+            ★ {recipe.avg_score}
+          </span>
+        )}
       </div>
 
       <div className="recipe-card-info">

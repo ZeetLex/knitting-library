@@ -98,6 +98,7 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - Adjustable grid size — small, medium, or large cards
 - Search by name or tag; filter by category, tags, or project status
 - Results update instantly without reloading the page
+- **Score badge** — finished recipes with feedback show a ★ average score on the card
 
 ### 📥 Importing Recipes
 - Upload PDFs or images — single files, multiple images, or an entire folder at once
@@ -126,6 +127,11 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - Pick which yarn type and colour variant you're using when starting a project
 - Optionally deduct skeins directly from your inventory when starting
 - Full session history with start/finish timestamps and total knitting time per recipe
+- **Project feedback** — when finishing a project, rate it on three dimensions (recipe quality, difficulty, end result) on a 1–6 scale and leave free-text notes
+  - Feedback is per-user — multiple users can each leave their own rating
+  - Average score shown as a ★ badge on the recipe card in the grid
+  - Click any finished session in the sidebar to view the feedback left for it
+  - Clearing session history also clears all scores and feedback
 
 ### 🧵 Yarn Database
 - Catalogue of yarn types with full spec fields: wool type, yardage, needle size, tension, origin, seller, price per skein, product info
@@ -144,16 +150,22 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - Full history log per item showing every addition and deduction with timestamps
 - When starting a project, optionally select an inventory yarn and specify how many skeins to deduct — automatically logged
 
+### 💱 Currency
+- Choose your preferred currency in **Settings → Appearance**: Norwegian Krone (kr), US Dollar ($), or British Pound (£)
+- All price fields throughout the app — yarn price per skein, colour variant prices, and inventory purchase prices — show your chosen currency symbol automatically
+- No need to type "NOK" or "$" anywhere; just enter the number
+- Setting is per-user and saved to your profile
+
 ### 👤 User Accounts
 - Login with username and password
 - Admin can create and manage additional users
-- Per-user settings: light/dark mode, English/Norwegian language
+- Per-user settings: light/dark mode, English/Norwegian language, currency
 
 ### 💾 Backups & Export
 - Everything stored in a single `/data` folder — easy to copy for backup or migration
 - Export as ZIP directly from **Settings → Data → Export Library**
 - ZIP contains: full database, all recipe files, all yarn images and colour photos
-- Inventory data is stored in the database — included automatically in every export
+- Database includes all inventory data, session history, project feedback, scores, annotations, and per-user settings
 
 ---
 
@@ -168,6 +180,8 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - **View** — click any card to open it. Scroll through PDF pages or swipe between images
 - **Annotate** — click the pencil button on any page to draw or highlight
 - **Track progress** — use Start Project / Finish Project in the recipe sidebar. You'll be prompted to pick a yarn, colour, and optionally deduct skeins from inventory
+- **Leave feedback** — when you finish a project a popup asks you to rate recipe quality, difficulty, and end result (1–6), and leave any notes. Skip it if you don't want to rate. Your score feeds into the ★ average on the recipe card
+- **View session feedback** — click any finished session in the sidebar to see who rated it and what they said
 
 ### Yarn Database
 
@@ -183,6 +197,14 @@ Change the password immediately after logging in — go to **Settings → My Acc
 - **View history** — click the clock icon on any card to see every change with dates and project links
 - **Deduct when starting a project** — when clicking Start Project on a recipe, after choosing your yarn you'll be offered the option to select a matching inventory item and specify how many skeins to deduct
 
+### Settings
+
+- **Theme** — toggle light/dark mode in **Settings → Appearance**
+- **Language** — switch between English and Norwegian in **Settings → Appearance**
+- **Currency** — choose kr NOK, $ USD, or £ GBP in **Settings → Appearance**. All price fields update immediately
+- **Change password** — **Settings → My Account**
+- **Export data** — **Settings → Data → Export Library**
+
 ### General
 
 - **Mobile** — open `http://YOUR-SERVER-IP:3000` on your phone while on the same Wi-Fi. Works in the browser, or add to your iPhone home screen via Safari → Share → Add to Home Screen for a fullscreen experience
@@ -191,7 +213,7 @@ Change the password immediately after logging in — go to **Settings → My Acc
 
 ## Backups
 
-Everything lives in your `data/` folder — the database, all recipe files, and all yarn and colour images. Inventory items and their history are stored in the database and included automatically.
+Everything lives in your `data/` folder — the database, all recipe files, and all yarn and colour images. Inventory items, session history, project feedback and scores, and annotations are all stored in the database and included automatically.
 
 To back up: copy the `data/` folder somewhere safe.  
 To restore: copy it back and restart the container.
@@ -214,6 +236,8 @@ You can also export from inside the app: **Settings → Data → Export Library*
 | Yarn photo not showing | Supported formats: JPG, PNG, WebP |
 | URL import didn't fill everything | The scraper is early beta — fill in missing fields manually before saving |
 | Inventory quantity went negative | Quantity floors at 0 — it won't go below zero |
+| Old price fields show text instead of a number | Old entries stored text like "100kr" — open and save the item to clean it up automatically |
+| Score badge stuck after clearing history | Make sure you're on v2.70 or later — earlier builds didn't clear feedback on session clear |
 | Old data missing after update | All migrations run automatically on startup — check container logs if something seems wrong |
 
 ---

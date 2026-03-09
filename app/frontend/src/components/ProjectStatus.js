@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search, Minus, Plus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl, fetchInventory } from '../utils/api';
+import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl, fetchInventory, saveFeedback } from '../utils/api';
+import FeedbackModal from './FeedbackModal';
 import './ProjectStatus.css';
 
 function formatDuration(seconds, t) {
@@ -23,8 +24,9 @@ function formatDuration(seconds, t) {
 
 function formatDateTime(iso, lang) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString(lang === 'no' ? 'nb-NO' : 'en-US', {
-    year: 'numeric', month: 'short', day: 'numeric',
+  // Compact format: "9 Mar, 06:29" — saves significant horizontal space
+  return new Date(iso).toLocaleString(lang === 'no' ? 'nb-NO' : 'en-GB', {
+    day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit',
   });
 }
@@ -39,7 +41,6 @@ function totalSeconds(sessions) {
 // ── Yarn Pill — small display of name + colour ───────────────────────────────
 function YarnPill({ name, colour, imageId, colourId }) {
   const [imgErr, setImgErr] = useState(false);
-  // If we have a colour with an image, show that; otherwise show yarn image
   const imgSrc = colourId && imageId
     ? yarnColourImageUrl(imageId, colourId)
     : imageId ? yarnImageUrl(imageId) : null;
@@ -55,8 +56,10 @@ function YarnPill({ name, colour, imageId, colourId }) {
       ) : (
         <span className="ps-yarn-pill-emoji">🧵</span>
       )}
-      <span className="ps-yarn-pill-name">{name}</span>
-      {colour && <span className="ps-yarn-pill-colour">{colour}</span>}
+      <span className="ps-yarn-pill-text">
+        <span className="ps-yarn-pill-name">{name}</span>
+        {colour && <span className="ps-yarn-pill-colour">{colour}</span>}
+      </span>
     </span>
   );
 }
@@ -223,6 +226,10 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [selectedInvItem, setSelectedInvItem] = useState(null);
   const [skeinsToUse, setSkeinsToUse]   = useState(1);
+  // Feedback modal
+  const [feedbackMode, setFeedbackMode] = useState(null);      // 'submit' | 'view' | null
+  const [feedbackSession, setFeedbackSession] = useState(null); // session object for view mode
+  const [pendingFinishSessionId, setPendingFinishSessionId] = useState(null);
 
   const status   = recipe.project_status || 'none';
   const sessions = recipe.sessions || [];
@@ -288,11 +295,49 @@ export default function ProjectStatus({ recipe, onUpdated }) {
     setPendingYarn(null);
   };
 
-  const handleFinish = async () => {
+  // Finish button clicked → find the active session ID, show feedback modal first
+  const handleFinish = () => {
+    const activeSession = sessions.find(s => !s.finished_at);
+    setPendingFinishSessionId(activeSession?.id || null);
+    setFeedbackMode('submit');
+  };
+
+  // User submitted feedback → save it, then finish the project
+  const handleFeedbackSubmit = async ({ recipe: rr, difficulty, result, notes }) => {
+    setLoading(true);
+    try {
+      // Save feedback AND finish the session in one atomic backend call
+      const updated = await saveFeedback(recipe.id, {
+        session_id: pendingFinishSessionId,
+        rating_recipe: rr,
+        rating_difficulty: difficulty,
+        rating_result: result,
+        notes,
+        finish_session: true,   // backend finishes the session atomically
+      });
+      onUpdated(updated);
+    } catch (e) { alert(e.message); }
+    finally {
+      setLoading(false);
+      setFeedbackMode(null);
+      setPendingFinishSessionId(null);
+    }
+  };
+
+  // User skipped feedback → just finish
+  const handleFeedbackSkip = async () => {
+    setFeedbackMode(null);
     setLoading(true);
     try { onUpdated(await finishProject(recipe.id)); }
     catch (e) { alert(e.message); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setPendingFinishSessionId(null); }
+  };
+
+  // Clicking a finished session → show its feedback in view mode
+  const handleSessionClick = (session) => {
+    if (!session.finished_at) return; // only finished sessions
+    setFeedbackSession(session);
+    setFeedbackMode('view');
   };
 
   const handleClear = async () => {
@@ -371,10 +416,20 @@ export default function ProjectStatus({ recipe, onUpdated }) {
               ? (new Date(s.finished_at) - new Date(s.started_at)) / 1000
               : null;
             return (
-              <div key={s.id} className={`ps-session ${!s.finished_at ? 'ps-session--active' : ''}`}>
+              <div
+                key={s.id}
+                className={`ps-session ${!s.finished_at ? 'ps-session--active' : 'ps-session--finished'}`}
+                onClick={() => handleSessionClick(s)}
+                style={s.finished_at ? { cursor: 'pointer' } : {}}
+              >
                 <div className="ps-session-header">
                   <span className="ps-session-num">{t('session')} {i + 1}</span>
                   {!s.finished_at && <span className="ps-session-live">● {t('projectActive')}</span>}
+                  {s.finished_at && s.feedback?.length > 0 && (
+                    <span className="ps-session-has-feedback" title={t('feedbackViewTitle')}>
+                      ★ {((s.feedback.reduce((a, f) => a + f.rating_recipe + f.rating_difficulty + f.rating_result, 0)) / (s.feedback.length * 3)).toFixed(1)}
+                    </span>
+                  )}
                   {dur !== null && <span className="ps-session-dur">{formatDuration(dur, t)}</span>}
                 </div>
 
@@ -502,6 +557,18 @@ export default function ProjectStatus({ recipe, onUpdated }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Feedback modal ──────────────────────────────────────────── */}
+      {feedbackMode && (
+        <FeedbackModal
+          mode={feedbackMode}
+          feedbackList={feedbackMode === 'view' ? (feedbackSession?.feedback || []) : []}
+          onSubmit={handleFeedbackSubmit}
+          onSkip={handleFeedbackSkip}
+          onClose={() => { setFeedbackMode(null); setFeedbackSession(null); }}
+          loading={loading}
+        />
       )}
     </div>
   );
