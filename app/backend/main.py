@@ -821,7 +821,12 @@ async def import_upload_group(
     conn.commit()
     recipe = get_recipe_full(recipe_id, conn)
     conn.close()
-    return {"recipe_id": recipe_id, "recipe": recipe}
+
+    # Include the converted page filenames so the frontend can render immediately
+    # without a second round-trip (avoids race between response and disk flush)
+    pdf_pages = sorted([f.name for f in recipe_dir.glob("page-*.jpg")])
+
+    return {"recipe_id": recipe_id, "recipe": recipe, "pdf_pages": pdf_pages}
 
 
 @app.get("/api/import/queue")

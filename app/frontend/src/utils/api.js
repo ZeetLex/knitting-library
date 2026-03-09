@@ -383,6 +383,7 @@ export async function uploadImportGroup(groupName, files) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Upload failed');
   }
+  // Returns { recipe_id, recipe, pdf_pages }
   return res.json();
 }
 

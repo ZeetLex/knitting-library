@@ -264,10 +264,18 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
 
     if (recipe?.file_type === 'pdf') {
       setPageType('pdf');
-      fetchPdfPages(recipeId)
-        .then(res => setPages(res.pages || []))
-        .catch(() => setPages([]))
-        .finally(() => setPagesLoading(false));
+      // Fresh uploads include pdf_pages directly — use them to avoid a race condition
+      // where the browser might cache a failed request before files are fully flushed.
+      // Resumed items (from getImportQueue) won't have pdf_pages, so fall back to fetch.
+      if (item.pdf_pages && item.pdf_pages.length > 0) {
+        setPages(item.pdf_pages);
+        setPagesLoading(false);
+      } else {
+        fetchPdfPages(recipeId)
+          .then(res => setPages(res.pages || []))
+          .catch(() => setPages([]))
+          .finally(() => setPagesLoading(false));
+      }
     } else if (recipe?.file_type === 'images' && recipe?.images?.length) {
       setPageType('images');
       setPages(recipe.images);
@@ -357,10 +365,10 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
                   {pages.map((pg, i) => (
                     <img
                       key={pg}
-                      src={pageType === 'pdf'
+                      src={(pageType === 'pdf'
                         ? pdfPageUrl(currentItem.recipe_id, pg)
                         : imageUrl(currentItem.recipe_id, pg)
-                      }
+                      ) + `&cb=${currentItem.recipe_id.slice(0,8)}`}
                       alt={`Page ${i + 1}`}
                       className="iw-viewer-page"
                       loading="lazy"
