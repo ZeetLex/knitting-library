@@ -21,8 +21,9 @@ services:
     container_name: knitting-library
     restart: unless-stopped
     ports:
-      # Change 3000 to any port you prefer, e.g. "8080:80"
-      - "3000:80"
+      # Change 3000 to any port you prefer, e.g. "8888:8080"
+      # nginx now runs on 8080 internally (non-root — no port 80 privilege needed)
+      - "3000:8080"
     volumes:
       # All data lives here — recipes, yarn images, and the database.
       # Back up by copying this folder.

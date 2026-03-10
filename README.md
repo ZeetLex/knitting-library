@@ -64,7 +64,7 @@ services:
     image: zeetlex/knitting-library:latest
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:8080"
     volumes:
       - /path/to/your/data:/data
 ```
