@@ -1,0 +1,33 @@
+# .dockerignore
+# Files listed here are NOT sent to Docker when building the image.
+# This keeps the build fast and ensures developer-only files never
+# end up inside the container image.
+
+# Windows batch scripts (developer tools, not needed in the image)
+*.bat
+
+# Data directory (your recipes and database — never bake these into the image)
+data/
+
+# Frontend build artifacts and dependencies (rebuilt fresh inside Docker)
+app/frontend/node_modules/
+app/frontend/build/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Git history
+.git/
+.gitignore
+
+# Documentation
+README.md
+
+# Environment files
+.env
+.env.local

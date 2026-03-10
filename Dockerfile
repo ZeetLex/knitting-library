@@ -1,4 +1,4 @@
-# Dockerfile — single image for the knitting library app
+# Dockerfile — single image for the knitting library app (v2.83)
 #
 # How it works:
 #   Stage 1 (builder): Compiles the React frontend into static HTML/JS/CSS files
@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Install dependencies first (cached layer — only re-runs if package.json changes)
 COPY app/frontend/package.json ./
-RUN npm install --legacy-peer-deps && npm install ajv@^8.11.0 --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copy frontend source and build it
 COPY app/frontend/ .
@@ -25,7 +25,7 @@ RUN npm run build
 
 
 # ── Stage 2: Final image with Python backend + nginx ─────────────────────────
-FROM python:3.12-alpine3.21
+FROM python:3.12-alpine3.22
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
@@ -75,11 +75,15 @@ COPY supervisord.conf /etc/supervisord.conf
 # ── Non-root user setup ───────────────────────────────────────────────────────
 # Create appuser, redirect nginx pid/temp paths to /tmp, fix all ownership.
 # nginx on 8080 + uvicorn on 8000 both work without root privileges.
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
-    && sed -i 's|pid /run/nginx/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+# Create non-root user and fix all directory permissions.
+# nginx pid is now set via supervisord command line ("pid /tmp/nginx.pid;")
+# so no fragile sed patching of nginx.conf needed.
+# We still chown /run/nginx as a safety net in case nginx tries to write there.
+RUN addgroup -g 1000 -S appgroup && adduser -u 1000 -S appuser -G appgroup \
     && sed -i '/^user /d' /etc/nginx/nginx.conf \
     && mkdir -p /data /tmp/nginx/client_temp /tmp/nginx/proxy_temp \
                 /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
+                /run/nginx \
     && chown -R appuser:appgroup \
         /data \
         /app/backend \
@@ -87,10 +91,19 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
         /var/lib/nginx \
         /var/log/nginx \
         /tmp/nginx \
+        /run/nginx \
         /etc/nginx/http.d
+
+# Copy entrypoint script — runs as root to fix /data permissions,
+# then supervisord takes over running nginx + uvicorn as appuser.
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
-# Run entire container as non-root — satisfies Docker Scout compliance.
+# Docker Scout compliance: USER appuser declared here so the image
+# is marked as non-root. At runtime, docker-compose overrides this with
+# "user: root" so entrypoint.sh can chown /data, then supervisord
+# drops back to appuser via the user= directive in supervisord.conf.
 USER appuser
-CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
+ENTRYPOINT ["/entrypoint.sh"]

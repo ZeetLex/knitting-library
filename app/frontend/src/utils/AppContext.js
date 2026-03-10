@@ -21,21 +21,27 @@ export const CURRENCIES = [
 ];
 
 export function AppProvider({ children }) {
-  const [user, setUser]         = useState(null);
-  const [theme, setTheme]       = useState('light');
-  const [language, setLanguage] = useState('en');
-  const [currency, setCurrency] = useState('NOK');
-  const [loading, setLoading]   = useState(true);
+  const [user, setUser]               = useState(null);
+  const [theme, setTheme]             = useState('light');
+  const [colourTheme, setColourTheme] = useState('terracotta');
+  const [language, setLanguage]       = useState('en');
+  const [currency, setCurrency]       = useState('NOK');
+  const [loading, setLoading]         = useState(true);
 
   const t = useT(language);
 
   // Map the currency code to its symbol for convenient use in components
   const currencySymbol = CURRENCY_SYMBOLS[currency] || currency;
 
-  // Apply theme to the document root so CSS variables work globally
+  // Apply light/dark mode to document root
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Apply colour theme to document root
+  useEffect(() => {
+    document.documentElement.setAttribute('data-colour-theme', colourTheme);
+  }, [colourTheme]);
 
   useEffect(() => {
     const token = localStorage.getItem('knitting_token');
@@ -46,6 +52,7 @@ export function AppProvider({ children }) {
         if (userData) {
           setUser(userData);
           setTheme(userData.theme || 'light');
+          setColourTheme(userData.colour_theme || 'terracotta');
           setLanguage(userData.language || 'en');
           setCurrency(userData.currency || 'NOK');
         } else {
@@ -60,6 +67,7 @@ export function AppProvider({ children }) {
     localStorage.setItem('knitting_token', token);
     setUser(userData);
     setTheme(userData.theme || 'light');
+    setColourTheme(userData.colour_theme || 'terracotta');
     setLanguage(userData.language || 'en');
     setCurrency(userData.currency || 'NOK');
   }, []);
@@ -74,30 +82,34 @@ export function AppProvider({ children }) {
     localStorage.removeItem('knitting_token');
     setUser(null);
     setTheme('light');
+    setColourTheme('terracotta');
     setLanguage('en');
     setCurrency('NOK');
   }, []);
 
-  const updateSettings = useCallback(async (newTheme, newLanguage, newCurrency) => {
+  const updateSettings = useCallback(async (newTheme, newLanguage, newCurrency, newColourTheme) => {
     const token = localStorage.getItem('knitting_token');
+    // Use current values as fallback if not provided
+    const ct = newColourTheme || colourTheme;
     try {
       await fetch('/api/auth/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
-        body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency })
+        body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct })
       });
       setTheme(newTheme);
       setLanguage(newLanguage);
       setCurrency(newCurrency);
-      setUser(u => ({ ...u, theme: newTheme, language: newLanguage, currency: newCurrency }));
+      setColourTheme(ct);
+      setUser(u => ({ ...u, theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct }));
     } catch (e) {
       console.error('Failed to save settings', e);
     }
-  }, []);
+  }, [colourTheme]);
 
   return (
     <AppContext.Provider value={{
-      user, theme, language, currency, currencySymbol, t,
+      user, theme, colourTheme, language, currency, currencySymbol, t,
       loading, login, logout, updateSettings
     }}>
       {children}

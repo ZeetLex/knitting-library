@@ -5,20 +5,21 @@
 # and the Python backend (run by uvicorn), managed by supervisord.
 #
 # Usage:
-#   docker-compose up --build      (first time or after updates)
+#   docker-compose pull            (download latest image from Docker Hub)
 #   docker-compose up -d           (start in background)
 #   docker-compose down            (stop)
+#
+# To update to a newer version:
+#   docker-compose down && docker-compose pull && docker-compose up -d
 #
 # Your data (recipes, yarns, database) is stored in ./data
 # and persists across restarts and updates.
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: zeetlex/knitting-library:latest
+    image: zeetlex/knitting-library:beta
     container_name: knitting-library
+    user: root   # overrides Dockerfile USER so entrypoint.sh can chown /data; supervisord then runs nginx+uvicorn as appuser
     restart: unless-stopped
     ports:
       # Change 3000 to any port you prefer, e.g. "8888:8080"

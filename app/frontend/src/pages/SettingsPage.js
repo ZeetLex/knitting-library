@@ -74,14 +74,166 @@ export default function SettingsPage({ onBack }) {
 }
 
 /* ─── Appearance Section ──────────────────────────────────────────────────── */
+
+// Colour theme definitions — used to render the swatch previews
+const COLOUR_THEMES = [
+  {
+    id: 'terracotta',
+    labelKey: 'themeTerracotta',
+    // light swatch colours
+    bg:      '#f5f0e8',
+    card:    '#ffffff',
+    accent:  '#c4714a',
+    // dark swatch colours
+    bgDark:     '#1c1410',
+    cardDark:   '#221810',
+    accentDark: '#d4876a',
+    // SVG flower path (simple 5-petal shape)
+    flower: 'M8,4 C8,4 10,1 12,4 C15,4 15,7 12,8 C15,9 15,12 12,12 C10,15 8,15 8,12 C5,12 5,9 8,8 C5,7 5,4 8,4Z',
+    flowerColour: '#c4714a',
+    flowerColourDark: '#d4876a',
+  },
+  {
+    id: 'rose',
+    labelKey: 'themeRose',
+    bg:      '#fdf5f6',
+    card:    '#ffffff',
+    accent:  '#c2637a',
+    bgDark:     '#1e1216',
+    cardDark:   '#241418',
+    accentDark: '#e08898',
+    flower: 'M10,3 C11,0 13,0 14,3 C17,2 18,4 16,6 C18,8 17,11 14,10 C13,13 11,13 10,10 C7,11 6,8 8,6 C6,4 7,2 10,3Z',
+    flowerColour: '#c2637a',
+    flowerColourDark: '#e08898',
+  },
+  {
+    id: 'lavender',
+    labelKey: 'themeLavender',
+    bg:      '#f7f4fc',
+    card:    '#ffffff',
+    accent:  '#8b6cae',
+    bgDark:     '#16121e',
+    cardDark:   '#1c1626',
+    accentDark: '#b094d4',
+    flower: 'M10,2 C12,0 14,2 13,5 C16,4 17,7 15,9 C17,11 16,14 13,13 C12,16 10,16 9,13 C6,14 5,11 7,9 C5,7 6,4 9,5 C8,2 8,0 10,2Z',
+    flowerColour: '#8b6cae',
+    flowerColourDark: '#b094d4',
+  },
+  {
+    id: 'sage',
+    labelKey: 'themeSage',
+    bg:      '#f4f7f3',
+    card:    '#ffffff',
+    accent:  '#5a8c6a',
+    bgDark:     '#111a13',
+    cardDark:   '#152018',
+    accentDark: '#7aaa8a',
+    flower: 'M9,3 C10,0 12,0 13,3 C16,3 17,5 15,7 C17,9 16,12 13,11 C12,14 10,14 9,11 C6,12 5,9 7,7 C5,5 6,3 9,3Z',
+    flowerColour: '#5a8c6a',
+    flowerColourDark: '#7aaa8a',
+  },
+  {
+    id: 'berry',
+    labelKey: 'themeBerry',
+    bg:      '#fcf4fa',
+    card:    '#ffffff',
+    accent:  '#8e3a6e',
+    bgDark:     '#1a1020',
+    cardDark:   '#201226',
+    accentDark: '#c874a8',
+    flower: 'M10,2 C11,-1 13,0 14,3 C17,3 18,6 15,7 C17,10 16,13 13,12 C12,15 10,15 9,12 C6,13 5,10 7,7 C4,6 5,3 8,3 C9,0 9,-1 10,2Z',
+    flowerColour: '#8e3a6e',
+    flowerColourDark: '#c874a8',
+  },
+];
+
+function ThemeSwatch({ themeData, isSelected, isDark, onClick }) {
+  const bg     = isDark ? themeData.bgDark     : themeData.bg;
+  const card   = isDark ? themeData.cardDark   : themeData.card;
+  const accent = isDark ? themeData.accentDark : themeData.accent;
+  const fc     = isDark ? themeData.flowerColourDark : themeData.flowerColour;
+
+  return (
+    <button
+      className={`theme-swatch ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+      aria-label={themeData.id}
+      title={themeData.id}
+    >
+      {/* Mini app preview */}
+      <div className="swatch-preview" style={{ background: bg }}>
+        {/* Simulated header bar */}
+        <div className="swatch-header" style={{ background: card, borderBottom: `1px solid ${accent}22` }}>
+          <div className="swatch-dot" style={{ background: accent }} />
+          <div className="swatch-line short" style={{ background: accent + '55' }} />
+        </div>
+        {/* Simulated grid cards */}
+        <div className="swatch-grid">
+          {[0,1,2,3].map(i => (
+            <div key={i} className="swatch-card" style={{ background: card, boxShadow: `0 1px 4px ${accent}22` }}>
+              {/* Little flower SVG on first card */}
+              {i === 0 && (
+                <svg viewBox="0 0 20 20" width="14" height="14" style={{ margin: '2px auto', display: 'block' }}>
+                  <circle cx="10" cy="10" r="3" fill={fc} opacity="0.9" />
+                  <circle cx="10" cy="4"  r="2.5" fill={fc} opacity="0.55" />
+                  <circle cx="10" cy="16" r="2.5" fill={fc} opacity="0.55" />
+                  <circle cx="4"  cy="10" r="2.5" fill={fc} opacity="0.55" />
+                  <circle cx="16" cy="10" r="2.5" fill={fc} opacity="0.55" />
+                  <circle cx="5"  cy="5"  r="2"   fill={fc} opacity="0.35" />
+                  <circle cx="15" cy="5"  r="2"   fill={fc} opacity="0.35" />
+                  <circle cx="5"  cy="15" r="2"   fill={fc} opacity="0.35" />
+                  <circle cx="15" cy="15" r="2"   fill={fc} opacity="0.35" />
+                </svg>
+              )}
+              <div className="swatch-line" style={{ background: accent + '33', marginTop: i === 0 ? 2 : 6 }} />
+              <div className="swatch-line short" style={{ background: accent + '22' }} />
+            </div>
+          ))}
+        </div>
+        {/* Accent bar at bottom */}
+        <div className="swatch-accent-bar" style={{ background: accent }} />
+      </div>
+      {/* Selection ring */}
+      {isSelected && (
+        <div className="swatch-check" style={{ background: accent }}>
+          <svg viewBox="0 0 12 12" width="10" height="10">
+            <polyline points="2,6 5,9 10,3" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+    </button>
+  );
+}
+
 function AppearanceSection() {
-  const { theme, language, currency, t, updateSettings } = useApp();
+  const { theme, colourTheme, language, currency, t, updateSettings } = useApp();
 
   return (
     <div className="settings-section">
       <h3 className="section-heading">{t('appearance')}</h3>
 
-      {/* Theme */}
+      {/* ── Colour Theme picker ─────────────────────────────────────────── */}
+      <div className="settings-row settings-row--column">
+        <div className="settings-row-info">
+          <p className="settings-row-label">{t('colourTheme')}</p>
+          <p className="settings-row-sub">{t('colourThemeSub')}</p>
+        </div>
+        <div className="theme-swatch-grid">
+          {COLOUR_THEMES.map(ct => (
+            <div key={ct.id} className="theme-swatch-wrap">
+              <ThemeSwatch
+                themeData={ct}
+                isSelected={colourTheme === ct.id}
+                isDark={theme === 'dark'}
+                onClick={() => updateSettings(theme, language, currency, ct.id)}
+              />
+              <span className="swatch-label">{t(ct.labelKey)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Dark / Light mode toggle ────────────────────────────────────── */}
       <div className="settings-row">
         <div className="settings-row-info">
           <p className="settings-row-label">{t('darkMode')}</p>
@@ -91,7 +243,7 @@ function AppearanceSection() {
         </div>
         <button
           className={`theme-toggle ${theme === 'dark' ? 'dark' : ''}`}
-          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language, currency)}
+          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language, currency, colourTheme)}
           aria-label="Toggle theme"
         >
           <span className="theme-toggle-knob">
@@ -100,7 +252,7 @@ function AppearanceSection() {
         </button>
       </div>
 
-      {/* Language */}
+      {/* ── Language ────────────────────────────────────────────────────── */}
       <div className="settings-row">
         <div className="settings-row-info">
           <p className="settings-row-label">{t('language')}</p>
@@ -108,20 +260,20 @@ function AppearanceSection() {
         <div className="lang-switcher">
           <button
             className={`lang-btn ${language === 'en' ? 'active' : ''}`}
-            onClick={() => updateSettings(theme, 'en', currency)}
+            onClick={() => updateSettings(theme, 'en', currency, colourTheme)}
           >
             🇬🇧 English
           </button>
           <button
             className={`lang-btn ${language === 'no' ? 'active' : ''}`}
-            onClick={() => updateSettings(theme, 'no', currency)}
+            onClick={() => updateSettings(theme, 'no', currency, colourTheme)}
           >
             🇳🇴 Norsk
           </button>
         </div>
       </div>
 
-      {/* Currency */}
+      {/* ── Currency ────────────────────────────────────────────────────── */}
       <div className="settings-row">
         <div className="settings-row-info">
           <p className="settings-row-label">{t('currency')}</p>
@@ -136,7 +288,7 @@ function AppearanceSection() {
             <button
               key={c.code}
               className={`lang-btn ${currency === c.code ? 'active' : ''}`}
-              onClick={() => updateSettings(theme, language, c.code)}
+              onClick={() => updateSettings(theme, language, c.code, colourTheme)}
             >
               {c.label} {c.code}
             </button>

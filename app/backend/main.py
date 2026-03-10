@@ -30,6 +30,12 @@ YARN_DIR.mkdir(parents=True, exist_ok=True)
 def get_db():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    # Use WAL mode and store journal in memory — this fixes write permission
+    # errors that occur with Docker Desktop on Windows bind mounts.
+    # WAL = Write-Ahead Logging: a different way SQLite handles writes
+    # that doesn't require creating extra lock files next to the database.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
     return conn
 
 def hash_password(password: str) -> str:
@@ -237,6 +243,11 @@ def init_db():
     if "currency" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN currency TEXT DEFAULT 'NOK'")
         print("Migration: added 'currency' column to users")
+    # colour_theme column migration — add to users if not present
+    user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "colour_theme" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN colour_theme TEXT DEFAULT 'terracotta'")
+        print("Migration: added 'colour_theme' column to users")
 
     # Clean legacy price strings — extract the first number from values like
     # "100kr", "ca. 100 NOK", "69 NOK", "£49" so they become plain "100", "69", "49".
@@ -286,7 +297,8 @@ def user_dict(u):
     return {
         "id": u["id"], "username": u["username"], "is_admin": bool(u["is_admin"]),
         "theme": u["theme"], "language": u["language"],
-        "currency": u["currency"] if u["currency"] else "NOK"
+        "currency": u["currency"] if u["currency"] else "NOK",
+        "colour_theme": u["colour_theme"] if u["colour_theme"] else "terracotta"
     }
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
@@ -329,21 +341,25 @@ def get_me(current_user: dict = Depends(get_current_user)):
 
 @app.put("/api/auth/settings")
 def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
-    theme    = data.get("theme",    current_user.get("theme", "light"))
-    language = data.get("language", current_user.get("language", "en"))
-    currency = data.get("currency", current_user.get("currency", "NOK"))
+    theme        = data.get("theme",        current_user.get("theme", "light"))
+    language     = data.get("language",     current_user.get("language", "en"))
+    currency     = data.get("currency",     current_user.get("currency", "NOK"))
+    colour_theme = data.get("colour_theme", current_user.get("colour_theme", "terracotta"))
+    valid_colours = ("terracotta", "rose", "lavender", "sage", "berry")
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Theme must be light or dark")
     if language not in ("en", "no"):
         raise HTTPException(status_code=400, detail="Language must be en or no")
     if currency not in ("NOK", "USD", "GBP"):
         raise HTTPException(status_code=400, detail="Currency must be NOK, USD, or GBP")
+    if colour_theme not in valid_colours:
+        raise HTTPException(status_code=400, detail="Invalid colour theme")
     conn = get_db()
-    conn.execute("UPDATE users SET theme=?, language=?, currency=? WHERE id=?",
-                 (theme, language, currency, current_user["id"]))
+    conn.execute("UPDATE users SET theme=?, language=?, currency=?, colour_theme=? WHERE id=?",
+                 (theme, language, currency, colour_theme, current_user["id"]))
     conn.commit()
     conn.close()
-    return {"theme": theme, "language": language, "currency": currency}
+    return {"theme": theme, "language": language, "currency": currency, "colour_theme": colour_theme}
 
 @app.put("/api/auth/change-password")
 def change_password(data: dict, current_user: dict = Depends(get_current_user)):
