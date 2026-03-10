@@ -9,7 +9,7 @@
 # supervisord is a lightweight process manager that keeps both services running.
 
 # ── Stage 1: Build the React frontend ────────────────────────────────────────
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -24,27 +24,34 @@ RUN npm run build
 
 
 # ── Stage 2: Final image with Python backend + nginx ─────────────────────────
-FROM python:3.11-alpine
+# python:3.12-alpine gives us a newer Alpine base with more recent apk packages,
+# reducing the number of OS-level CVEs in poppler, busybox, nss, zlib etc.
+FROM python:3.12-alpine3.21
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
 # Install system dependencies:
 #   nginx        - web server to serve the React frontend
-#   supervisor   - process manager to run both nginx and uvicorn
 #   poppler-utils - converts PDF pages to images
 #   gcc/musl/etc - needed to compile Python packages on Alpine
+# NOTE: supervisor is intentionally NOT installed via apk — the apk version
+# carries CVE-2023-27482 (CVSS 10). We install it via pip instead (see below).
 RUN apk add --no-cache \
     nginx \
-    supervisor \
     poppler-utils \
     gcc \
     musl-dev \
     zlib-dev \
     jpeg-dev \
-    libffi-dev
+    libffi-dev \
+    && apk upgrade --no-cache
 
 # ── Backend setup ─────────────────────────────────────────────────────────────
 WORKDIR /app/backend
+
+# Upgrade pip and wheel, then install all Python deps including supervisor
+# (supervisor via pip is v4.2.5+ which is not affected by CVE-2023-27482)
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
 COPY app/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -68,5 +75,5 @@ COPY supervisord.conf /etc/supervisord.conf
 # Expose port 80 (nginx)
 EXPOSE 80
 
-# Start supervisord — it launches and monitors nginx + uvicorn
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# supervisord is installed via pip into /usr/local/bin/
+CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
