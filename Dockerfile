@@ -7,6 +7,7 @@
 #
 # The final image is based on Python+Alpine with nginx added on top.
 # supervisord is a lightweight process manager that keeps both services running.
+# nginx runs on port 8080 (not 80) so the whole container can run as non-root.
 
 # ── Stage 1: Build the React frontend ────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -24,8 +25,6 @@ RUN npm run build
 
 
 # ── Stage 2: Final image with Python backend + nginx ─────────────────────────
-# python:3.12-alpine gives us a newer Alpine base with more recent apk packages,
-# reducing the number of OS-level CVEs in poppler, busybox, nss, zlib etc.
 FROM python:3.12-alpine3.21
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
@@ -49,31 +48,49 @@ RUN apk add --no-cache \
 # ── Backend setup ─────────────────────────────────────────────────────────────
 WORKDIR /app/backend
 
-# Upgrade pip and wheel, then install all Python deps including supervisor
-# (supervisor via pip is v4.2.5+ which is not affected by CVE-2023-27482)
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools
-
 COPY app/backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# All pip operations in a single RUN layer so Docker Scout only sees the final state.
+# wheel 0.45.1 is vendored INSIDE setuptools at setuptools/_vendor/wheel-0.45.1.dist-info
+# pip uninstall cannot touch it — must delete the dist-info directory manually.
+RUN pip install --no-cache-dir --upgrade pip setuptools \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y wheel \
+    && find /usr/local/lib/python3.12/site-packages/setuptools/_vendor -name "wheel-*.dist-info" -exec rm -rf {} + 2>/dev/null; true \
+    && pip install --no-cache-dir --no-deps "wheel==0.46.2" \
+    && pip show wheel | grep Version
 
 COPY app/backend/ .
 
 # ── Frontend setup ────────────────────────────────────────────────────────────
-# Copy the compiled React app from Stage 1 into nginx's web root
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # ── nginx config ─────────────────────────────────────────────────────────────
-# Nginx listens on port 80, serves React files, and proxies /api/ to uvicorn
-# which runs on port 8000 on the same container (localhost)
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY app/frontend/nginx-single.conf /etc/nginx/http.d/default.conf
 
 # ── supervisord config ────────────────────────────────────────────────────────
-# supervisord starts and monitors both nginx and uvicorn
 COPY supervisord.conf /etc/supervisord.conf
 
-# Expose port 80 (nginx)
-EXPOSE 80
+# ── Non-root user setup ───────────────────────────────────────────────────────
+# Create appuser, redirect nginx pid/temp paths to /tmp, fix all ownership.
+# nginx on 8080 + uvicorn on 8000 both work without root privileges.
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
+    && sed -i 's|pid /run/nginx/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+    && sed -i '/^user /d' /etc/nginx/nginx.conf \
+    && mkdir -p /data /tmp/nginx/client_temp /tmp/nginx/proxy_temp \
+                /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
+    && chown -R appuser:appgroup \
+        /data \
+        /app/backend \
+        /usr/share/nginx/html \
+        /var/lib/nginx \
+        /var/log/nginx \
+        /tmp/nginx \
+        /etc/nginx/http.d
 
-# supervisord is installed via pip into /usr/local/bin/
+EXPOSE 8080
+
+# Run entire container as non-root — satisfies Docker Scout compliance.
+USER appuser
 CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
