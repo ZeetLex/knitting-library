@@ -1,10 +1,35 @@
 #!/bin/sh
-# entrypoint.sh — start nginx + uvicorn without supervisor
+# entrypoint.sh — start nginx + uvicorn
+#
+# Supports PUID / PGID environment variables (standard Unraid/LinuxServer convention).
+# Set these in your Docker container settings to match your Unraid user:
+#   PUID=99   (nobody)
+#   PGID=100  (users)
+# If not set, defaults to the built-in appuser (UID 1000).
 
-set -e
+# ── PUID / PGID handling ──────────────────────────────────────────────────────
+PUID=${PUID:-1000}
+PGID=${PGID:-1000}
 
-# ── Create directories ────────────────────────────────────────────────────────
-mkdir -p /data/recipes /data/yarns /logs
+# Only remap if running as root (i.e. docker-compose user: root or Unraid default)
+if [ "$(id -u)" = "0" ]; then
+    # Update appgroup GID and appuser UID to match host values
+    if [ "$PGID" != "1000" ]; then
+        sed -i "s/^appgroup:x:1000:/appgroup:x:${PGID}:/" /etc/group
+    fi
+    if [ "$PUID" != "1000" ]; then
+        sed -i "s/^appuser:x:1000:1000:/appuser:x:${PUID}:${PGID}:/" /etc/passwd
+    fi
+
+    # Create directories as root, then hand ownership to appuser
+    mkdir -p /data/recipes /data/yarns /logs
+    chown -R "${PUID}:${PGID}" /data /logs /app/backend
+
+    # Drop privileges and re-exec this script as appuser
+    exec su-exec appuser "$0" "$@"
+fi
+
+# ── Running as appuser from here ──────────────────────────────────────────────
 
 # ── Log rotation helper (keeps last 5 × 10 MB per service) ───────────────────
 rotate_log() {
@@ -22,7 +47,7 @@ rotate_log /logs/nginx.log
 rotate_log /logs/uvicorn.log
 
 # ── Write startup marker ──────────────────────────────────────────────────────
-echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  container started (pid $$)" >> /logs/supervisord.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  container started (pid $$, uid $(id -u))" >> /logs/supervisord.log
 
 # ── Start nginx ───────────────────────────────────────────────────────────────
 nginx -g "daemon off; pid /tmp/nginx.pid;" >> /logs/nginx.log 2>&1 &

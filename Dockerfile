@@ -28,6 +28,7 @@ RUN apk add --no-cache \
     zlib-dev \
     jpeg-dev \
     libffi-dev \
+    su-exec \
     && apk upgrade --no-cache
 
 WORKDIR /app/backend

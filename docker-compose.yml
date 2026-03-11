@@ -10,15 +10,21 @@
 #
 # Data (recipes, yarns, database) is stored in ./data and persists across updates.
 # Logs are stored in ./logs — readable from your appdata folder and by fail2ban.
+#
+# PUID / PGID: set these to match your host user so the container can read/write
+# your data and logs folders. On Unraid the standard values are 99 and 100.
+# Check yours with: id YOUR_USERNAME
 
 services:
   app:
     image: zeetlex/knitting-library:latest
     container_name: knitting-library
-    user: root   # needed so entrypoint.sh can create /data and /logs on first run
     restart: unless-stopped
     ports:
       - "3000:8080"
+    environment:
+      - PUID=99
+      - PGID=100
     volumes:
       - ./data:/data
       - ./logs:/logs
