@@ -1,31 +1,24 @@
 # docker-compose.yml
 #
-# Starts the knitting library as a single container.
-# The image contains both the React frontend (served by nginx)
-# and the Python backend (run by uvicorn), managed by supervisord.
-#
 # Usage:
-#   docker-compose pull            (download latest image from Docker Hub)
-#   docker-compose up -d           (start in background)
-#   docker-compose down            (stop)
+#   docker-compose up -d           — start
+#   docker-compose down            — stop
+#   docker-compose pull            — download latest image
 #
-# To update to a newer version:
-#   docker-compose down && docker-compose pull && docker-compose up -d
+# To update:
+#   docker-compose down && docker rmi zeetlex/knitting-library:latest && docker-compose pull && docker-compose up -d
 #
-# Your data (recipes, yarns, database) is stored in ./data
-# and persists across restarts and updates.
+# Data (recipes, yarns, database) is stored in ./data and persists across updates.
+# Logs are stored in ./logs — readable from your appdata folder and by fail2ban.
 
 services:
   app:
-    image: zeetlex/knitting-library:beta
+    image: zeetlex/knitting-library:latest
     container_name: knitting-library
-    user: root   # overrides Dockerfile USER so entrypoint.sh can chown /data; supervisord then runs nginx+uvicorn as appuser
+    user: root   # needed so entrypoint.sh can create /data and /logs on first run
     restart: unless-stopped
     ports:
-      # Change 3000 to any port you prefer, e.g. "8888:8080"
-      # nginx now runs on 8080 internally (non-root — no port 80 privilege needed)
       - "3000:8080"
     volumes:
-      # All data lives here — recipes, yarn images, and the database.
-      # Back up by copying this folder.
       - ./data:/data
+      - ./logs:/logs

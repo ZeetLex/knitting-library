@@ -424,3 +424,85 @@ export async function saveFeedback(recipeId, payload) {
   if (!res.ok) throw new Error('Failed to save feedback');
   return res.json();
 }
+
+// ── Admin: logs ───────────────────────────────────────────────────────────────
+export async function fetchLogs(lines = 200, source = 'all') {
+  const res = await fetch(`${API_BASE}/admin/logs?lines=${lines}&source=${source}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch logs');
+  return res.json();
+}
+
+// ── Admin: mail settings ──────────────────────────────────────────────────────
+export async function fetchMailSettings() {
+  const res = await fetch(`${API_BASE}/admin/mail`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load mail settings');
+  return res.json();
+}
+export async function saveMailSettings(data) {
+  const res = await fetch(`${API_BASE}/admin/mail`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to save mail settings');
+  return res.json();
+}
+export async function testMail(to) {
+  const res = await fetch(`${API_BASE}/admin/mail/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ to }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Mail test failed');
+  return data;
+}
+
+// ── Admin: 2FA management ─────────────────────────────────────────────────────
+export async function fetch2FAStatus() {
+  const res = await fetch(`${API_BASE}/admin/2fa/status`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load 2FA status');
+  return res.json();
+}
+export async function adminReset2FA(userId) {
+  const res = await fetch(`${API_BASE}/admin/2fa/${userId}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to reset 2FA');
+  return res.json();
+}
+
+// ── User: 2FA self-service ────────────────────────────────────────────────────
+export async function setup2FA() {
+  const res = await fetch(`${API_BASE}/auth/2fa/setup`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to start 2FA setup');
+  return res.json();
+}
+export async function verify2FASetup(code) {
+  const res = await fetch(`${API_BASE}/auth/2fa/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ code }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Verification failed');
+  return data;
+}
+export async function disable2FA(password) {
+  const res = await fetch(`${API_BASE}/auth/2fa/disable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to disable 2FA');
+  return data;
+}
+export async function verify2FAChallenge(challengeToken, code) {
+  const res = await fetch(`${API_BASE}/auth/2fa/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge_token: challengeToken, code }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Invalid code');
+  return data;
+}

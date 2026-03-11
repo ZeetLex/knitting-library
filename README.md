@@ -14,12 +14,6 @@ Built for personal use — my wife needed somewhere to store her knitting patter
 
 ---
 
-## ⚠️ Local Use Only
-
-**This app is not designed to be exposed to the internet.** See the security notice at the bottom of this page.
-
----
-
 ## Requirements
 
 Just **Docker Desktop** — nothing else.  
@@ -49,6 +43,7 @@ services:
       - "3000:8080"
     volumes:
       - /path/to/your/data:/data
+      - /path/to/your/logs:/logs
 ```
 
 **iPhone home screen:**  
@@ -115,13 +110,46 @@ Change your password immediately — **Settings → My Account → Change Passwo
 - Per-user setting
 
 ### 👤 User Accounts
-- Username/password login
-- Admin can create and manage additional users
+- Username/password login with bcrypt password hashing
+- Login rate limiting — accounts lock out after repeated failed attempts
+- Two-factor authentication (TOTP) — optional per user, set up in Settings
+- Admin can create, manage, and reset 2FA for any user
 - Per-user settings: theme, colour theme, language (English/Norwegian), currency
+- Sessions expire after 30 days
+
+### 🔐 Admin Panel
+Accessible to admin users under **Settings → Admin**.
+
+- **Users** — create and manage user accounts, reset 2FA
+- **Live Logs** — real-time view of API and nginx logs, filterable by source (API / nginx / system). Auto-refreshes every 3 seconds
+- **Mail Server** — configure SMTP for outgoing email, with a test-send button
+- **Two-Factor Auth** — view and reset 2FA status for all users
 
 ### 💾 Backup & Export
-- Everything lives in a single `data/` folder — copy it to back up
+- Recipe files and database live in `data/` — copy it to back up
+- Logs live in `logs/` — separate folder so log growth never affects your data volume
 - Export as ZIP from **Settings → Data → Export Library**
+
+---
+
+## Folder Structure
+
+After first run, your appdata directory will contain:
+
+```
+your-appdata-folder/
+  docker-compose.yml
+  data/
+    knitting.db       ← database
+    recipes/          ← recipe files and thumbnails
+    yarns/            ← yarn images
+  logs/
+    uvicorn.log       ← API requests and errors
+    nginx.log         ← web server traffic
+    supervisord.log   ← container startup and process events
+```
+
+Logs rotate automatically at 10 MB with 5 backups. The `logs/` folder will never exceed ~120 MB.
 
 ---
 
@@ -129,7 +157,41 @@ Change your password immediately — **Settings → My Account → Change Passwo
 
 Copy the `data/` folder — that's it. The database, all recipe files, yarn images, annotations, session history, and settings are all in there.
 
-To restore: copy it back and restart the container.
+Logs are in `logs/` — these are optional to back up.
+
+To restore: copy `data/` back and restart the container.
+
+---
+
+## Fail2ban (optional, Unraid + Nginx Proxy Manager)
+
+If you expose this app through a reverse proxy, fail2ban can automatically block IPs that repeatedly fail to log in.
+
+**Filter** (`/mnt/user/appdata/fail2ban/filter.d/knitting-library.conf`):
+```ini
+[Definition]
+failregex = ^<HOST> .+ "(POST|GET) /api/auth/login.* (401|429)
+            ^<HOST> .+ "POST /api/auth/2fa/challenge.* (401|429)
+ignoreregex =
+```
+
+**Jail** (`/mnt/user/appdata/fail2ban/jail.d/knitting-library.conf`):
+```ini
+[knitting-library]
+enabled  = true
+filter   = knitting-library
+logpath  = /mnt/user/appdata/knitting-library/logs/nginx.log
+maxretry = 10
+findtime = 900
+bantime  = 3600
+action   = iptables-multiport[name=knitting, port="http,https,3000", protocol=tcp]
+```
+
+Make sure Nginx Proxy Manager is forwarding the real client IP — add this to the **Advanced** tab of your proxy host:
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Real-IP $remote_addr;
+```
 
 ---
 
@@ -138,13 +200,38 @@ To restore: copy it back and restart the container.
 | Problem | Fix |
 |---|---|
 | Blank page or won't load | Make sure Docker Desktop is running and the container is started |
-| "Not logged in" error | Refresh the page — session may have expired |
+| "Not logged in" error | Refresh the page — session may have expired after 30 days |
 | PDF thumbnail not showing | PDF processing can be slow for large files — give it a moment |
 | Can't reach it on phone | Use the server's IP, not `localhost`. Phone must be on the same Wi-Fi |
 | Header hidden under iPhone status bar | Remove and re-add the home screen shortcut after updating |
 | Annotations not saving | Check that the `/data` volume is mounted correctly in your compose file |
 | URL import didn't fill everything | Early beta — fill in missing fields manually |
-| Old data missing after update | Migrations run automatically on startup — check container logs if something looks wrong |
+| Live Logs shows nothing | Check that `./logs:/logs` is mounted in your compose file |
+| All requests show same IP in logs | Set `X-Forwarded-For` header in your reverse proxy (see Fail2ban section) |
+| Old data missing after update | Migrations run automatically on startup — check Live Logs if something looks wrong |
+
+---
+
+## ⚠️ Security
+
+A full security audit was done in v2.93. Current posture:
+
+| Area | Status |
+|---|---|
+| Password hashing | ✅ bcrypt (rounds=12) |
+| Login rate limiting | ✅ 10 attempts per 15 min per IP |
+| Two-factor authentication | ✅ TOTP (Google Authenticator etc.) |
+| Session expiry | ✅ 30 days; 2FA challenges expire in 5 min |
+| File upload validation | ✅ Magic-byte checks + size limits (50 MB PDF, 20 MB image) |
+| CORS | ✅ Same-origin only (set `ALLOWED_ORIGINS` env var if needed) |
+| Security headers | ✅ CSP, X-Frame-Options, HSTS (via nginx) |
+| API documentation | ✅ Disabled in production |
+| SQL injection | ✅ Parameterised queries throughout |
+| Path traversal | ✅ Filename sanitisation on all uploads |
+| SSRF | ✅ Private IP blocking on yarn URL scraper |
+| HTTPS | ⚠️ Not built in — use a reverse proxy (Nginx Proxy Manager) |
+
+**For remote access:** use a VPN (Tailscale or WireGuard) or a reverse proxy with HTTPS. Never forward the port directly.
 
 ---
 
@@ -153,22 +240,6 @@ To restore: copy it back and restart the container.
 Built for personal use. I used Claude (Anthropic) as a coding assistant throughout — the ideas and direction were mine, the AI helped me write and debug the code.
 
 Open an issue if you find bugs or want to suggest something.
-
----
-
-## ⚠️ Security
-
-### Do not expose this app to the internet
-
-- Passwords hashed with SHA-256 (not bcrypt/argon2) — fine for a home network, not for public exposure
-- No rate limiting on login attempts
-- No HTTPS
-- No security audit has been done
-
-✅ Safe to use on your home network, accessed by people you trust.  
-❌ Not safe exposed via port forwarding or a public IP.
-
-For remote access, use a VPN (Tailscale or WireGuard) — never open the port directly.
 
 ---
 
