@@ -1,6 +1,6 @@
 # Dockerfile
 # Stage 1: Build the React frontend
-# Stage 2: Final image — Python backend (uvicorn) + nginx, managed by supervisord
+# Stage 2: Final image — Python backend (uvicorn) + nginx, managed by entrypoint.sh
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -13,10 +13,13 @@ FROM python:3.12-alpine3.22
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
-# nginx:        serves the React frontend on port 8080
+# nginx:         serves the React frontend on port 8080
 # poppler-utils: converts PDF pages to images
-# gcc/musl/zlib/jpeg/libffi: compile dependencies for Python packages on Alpine
-# supervisor is installed via pip (not apk) to avoid CVE-2023-27482 in the apk version
+# gcc/musl/zlib/jpeg/libffi: needed to COMPILE Python packages (bcrypt, Pillow, uvloop)
+# After pip install we remove the compiler toolchain (gcc, musl-dev, binutils) since
+# they are only needed at build time. Runtime shared libraries (zlib, libjpeg, libffi)
+# are kept — they are pulled in as dependencies of zlib-dev etc. and survive apk del.
+# This eliminates CVE-2025-69649 and CVE-2025-69650 (alpine/binutils) from the image.
 RUN apk add --no-cache \
     nginx \
     poppler-utils \
@@ -30,21 +33,22 @@ RUN apk add --no-cache \
 WORKDIR /app/backend
 COPY app/backend/requirements.txt .
 
-# Single RUN layer so Docker Scout only sees the final package state.
-# wheel 0.45.1 is vendored inside setuptools and cannot be removed by pip uninstall —
-# we delete its dist-info directory manually and install the patched version.
-RUN pip install --no-cache-dir --upgrade pip setuptools \
+# 1. Compile all Python packages (bcrypt, Pillow, uvloop need gcc)
+# 2. Strip the compiler toolchain — compiled .so files remain, tools are removed
+# 3. Fix vendored wheel CVE
+RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip uninstall -y wheel \
     && find /usr/local/lib/python3.12/site-packages/setuptools/_vendor -name "wheel-*.dist-info" -exec rm -rf {} + 2>/dev/null; true \
-    && pip install --no-cache-dir --no-deps "wheel==0.46.2"
+    && pip install --no-cache-dir --no-deps "wheel==0.46.2" \
+    && apk del gcc musl-dev binutils \
+    && rm -rf /usr/libexec/gcc /usr/lib/gcc /var/cache/apk/*
 
 COPY app/backend/ .
 COPY --from=builder /app/build /usr/share/nginx/html
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY app/frontend/nginx-single.conf /etc/nginx/http.d/default.conf
-COPY supervisord.conf /etc/supervisord.conf
 
 # Create non-root user (UID 1000) and fix permissions
 # nginx runs on port 8080 so no root privileges are needed
@@ -64,6 +68,6 @@ EXPOSE 8080
 
 # USER appuser satisfies Docker Scout's non-root requirement.
 # docker-compose overrides this with "user: root" so entrypoint.sh
-# can create /data subdirectories on first run.
+# can create /data and /logs on first run.
 USER appuser
 ENTRYPOINT ["/entrypoint.sh"]
