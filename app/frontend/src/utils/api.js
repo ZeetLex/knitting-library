@@ -17,6 +17,19 @@ export async function fetchRecipe(id) {
   if (!res.ok) throw new Error('Recipe not found');
   return res.json();
 }
+export async function checkImportDuplicate(recipeId, title) {
+  const res = await fetch(`${API_BASE}/import/check-duplicate/${recipeId}?title=${encodeURIComponent(title)}`, { headers: authHeaders() });
+  if (!res.ok) return { content_duplicates: [], title_duplicates: [] };
+  return res.json();
+}
+export async function checkDuplicate(files, title) {
+  const fd = new FormData();
+  fd.append('title', title);
+  files.forEach(f => fd.append('files', f));
+  const res = await fetch(`${API_BASE}/recipes/check-duplicate`, { method:'POST', headers: authHeaders(), body: fd });
+  if (!res.ok) return { content_duplicates: [], title_duplicates: [] };
+  return res.json();
+}
 export async function createRecipe(formData) {
   const res = await fetch(`${API_BASE}/recipes`, { method:'POST', headers: authHeaders(), body: formData });
   if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Upload failed'); }

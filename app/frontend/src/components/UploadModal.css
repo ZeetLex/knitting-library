@@ -388,3 +388,25 @@
 .success-icon { color: var(--sage); }
 .upload-success h4 { font-family: 'Playfair Display', serif; font-size: 20px; }
 .upload-success p { font-size: 14px; color: var(--text-secondary); }
+
+/* ── Duplicate warning ───────────────────────────────────────────────────────*/
+.dup-warning {
+  display: flex;
+  gap: 10px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.dup-icon { color: #eab308; flex-shrink: 0; margin-top: 2px; }
+.dup-warning-content { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.dup-warning-content strong { font-size: 0.85rem; color: var(--text-primary); }
+.dup-warning-content p { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
+.dup-warning-content em { color: var(--text-primary); font-style: normal; font-weight: 500; }
+.dup-actions { display: flex; gap: 8px; margin-top: 8px; }
+.btn-sm { padding: 5px 12px; border-radius: var(--radius); font-size: 0.8rem; cursor: pointer; border: none; }
+.btn-ghost { background: var(--bg-hover); color: var(--text-secondary); }
+.btn-ghost:hover { color: var(--text-primary); }
+.btn-warning { background: #eab308; color: #000; font-weight: 600; }
+.btn-warning:hover { background: #ca9f07; }

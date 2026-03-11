@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import {
   X, FileText, Image, ChevronRight, SkipForward, StopCircle,
   CheckCircle, FolderOpen, RefreshCw, AlertCircle, Upload,
-  FolderInput, ArrowLeft,
+  FolderInput, ArrowLeft, AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import {
   uploadImportGroup, getImportQueue, confirmImportItem,
   discardImportItem, fetchCategories, fetchTags, thumbnailUrl,
-  fetchPdfPages, pdfPageUrl, imageUrl,
+  fetchPdfPages, pdfPageUrl, imageUrl, checkImportDuplicate,
 } from '../utils/api';
 import './ImportWizard.css';
 
@@ -333,9 +333,8 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
     setSaving(false);
   }, [cursor]);
 
-  const handleSave = async () => {
-    if (!title.trim()) return;
-    setSaving(true);
+  const doSave = async () => {
+    setSaving(true); setDupWarning(null);
     try {
       await confirmImportItem(items[cursor].recipe_id, {
         title: title.trim(), categories: categories.join(','),
@@ -346,6 +345,19 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
       fetchTags().then(setAllTags).catch(() => {});
       advance();
     } catch (e) { setSaving(false); }
+  };
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+    // Check for duplicates before confirming
+    try {
+      const dupes = await checkImportDuplicate(items[cursor].recipe_id, title.trim());
+      if (dupes.content_duplicates.length > 0 || dupes.title_duplicates.length > 0) {
+        setDupWarning(dupes);
+        return;
+      }
+    } catch (_) {}
+    await doSave();
   };
 
   const handleSkip = async () => {
@@ -461,6 +473,25 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
         </div>
       </div>
       {!skipConfirm && (
+        <>
+        {dupWarning && (
+          <div className="iw-dup-warning">
+            <AlertTriangle size={16} className="dup-icon" />
+            <div className="dup-warning-content">
+              <strong>Possible duplicate</strong>
+              {dupWarning.content_duplicates.length > 0 && (
+                <p>Same file already exists: <em>{dupWarning.content_duplicates.map(d => d.title).join(', ')}</em></p>
+              )}
+              {dupWarning.title_duplicates.length > 0 && (
+                <p>Same title already exists: <em>{dupWarning.title_duplicates.map(d => d.title).join(', ')}</em></p>
+              )}
+              <div className="dup-actions">
+                <button className="btn-sm btn-ghost" onClick={() => setDupWarning(null)}>Go back</button>
+                <button className="btn-sm btn-warning" onClick={doSave}>Save Anyway</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="iw-footer">
           <div className="iw-footer-left">
             <button className="iw-btn-ghost" onClick={()=>setSkipConfirm(true)}><SkipForward size={15}/> {t('importSkip')}</button>
@@ -470,6 +501,7 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
             {saving ? '…' : <>{t('importSaveNext')} <ChevronRight size={15}/></>}
           </button>
         </div>
+        </>
       )}
     </>
   );

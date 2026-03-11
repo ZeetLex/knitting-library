@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen } from 'lucide-react';
+import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen, AlertTriangle } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createRecipe, fetchCategories } from '../utils/api';
+import { createRecipe, checkDuplicate, fetchCategories } from '../utils/api';
 import './UploadModal.css';
 
 export default function UploadModal({ onClose, onSuccess }) {
@@ -16,6 +16,7 @@ export default function UploadModal({ onClose, onSuccess }) {
   const [uploading, setUploading]   = useState(false);
   const [error, setError]           = useState('');
   const [success, setSuccess]       = useState(false);
+  const [dupWarning, setDupWarning] = useState(null);  // { content: [], title: [] }
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
@@ -42,10 +43,8 @@ export default function UploadModal({ onClose, onSuccess }) {
     setSelCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   };
 
-  const handleSubmit = async () => {
-    if (!files.length) return setError(t('uploadErrorNoFile'));
-    if (!title.trim()) return setError(t('uploadErrorNoName'));
-    setError(''); setUploading(true);
+  const doUpload = async () => {
+    setError(''); setUploading(true); setDupWarning(null);
     try {
       const fd = new FormData();
       fd.append('title', title.trim());
@@ -60,6 +59,19 @@ export default function UploadModal({ onClose, onSuccess }) {
       setError(e.message || t('uploadFailed'));
       setUploading(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (!files.length) return setError(t('uploadErrorNoFile'));
+    if (!title.trim()) return setError(t('uploadErrorNoName'));
+    setError('');
+    // Run duplicate check first
+    const dupes = await checkDuplicate(files, title.trim());
+    if (dupes.content_duplicates.length > 0 || dupes.title_duplicates.length > 0) {
+      setDupWarning(dupes);
+      return;
+    }
+    await doUpload();
   };
 
   const fileType  = files.length > 0 ? (files[0].type === 'application/pdf' ? 'pdf' : 'images') : null;
@@ -126,6 +138,25 @@ export default function UploadModal({ onClose, onSuccess }) {
                   </label>
                 </div>
               </div>
+
+              {dupWarning && (
+                <div className="dup-warning">
+                  <AlertTriangle size={18} className="dup-icon" />
+                  <div className="dup-warning-content">
+                    <strong>Possible duplicate detected</strong>
+                    {dupWarning.content_duplicates.length > 0 && (
+                      <p>Same file content already exists as: <em>{dupWarning.content_duplicates.map(d => d.title).join(', ')}</em></p>
+                    )}
+                    {dupWarning.title_duplicates.length > 0 && (
+                      <p>A recipe with this title already exists: <em>{dupWarning.title_duplicates.map(d => d.title).join(', ')}</em></p>
+                    )}
+                    <div className="dup-actions">
+                      <button className="btn-sm btn-ghost" onClick={() => setDupWarning(null)}>Cancel</button>
+                      <button className="btn-sm btn-warning" onClick={doUpload}>Upload Anyway</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {error && (
                 <div className="upload-error">

@@ -770,3 +770,20 @@
   .iw-group-row { padding: 8px 16px; }
   .iw-uploading { padding: 24px 20px; }
 }
+
+/* ── Duplicate warning ───────────────────────────────────────────────────────*/
+.iw-dup-warning {
+  display: flex;
+  gap: 10px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin: 0 0 10px 0;
+}
+.iw-dup-warning .dup-icon { color: #eab308; flex-shrink: 0; margin-top: 2px; }
+.iw-dup-warning .dup-warning-content { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.iw-dup-warning strong { font-size: 0.82rem; color: var(--text-primary); }
+.iw-dup-warning p { font-size: 0.78rem; color: var(--text-secondary); margin: 0; }
+.iw-dup-warning em { color: var(--text-primary); font-style: normal; font-weight: 500; }
+.iw-dup-warning .dup-actions { display: flex; gap: 8px; margin-top: 6px; }

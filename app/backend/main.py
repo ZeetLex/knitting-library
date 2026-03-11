@@ -184,6 +184,11 @@ def get_db() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("PRAGMA foreign_keys=ON")
+    # Migration: add content_hash column if missing (added in v2.104)
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(recipes)").fetchall()]
+    if "content_hash" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+        conn.commit()
     return conn
 
 
@@ -196,6 +201,7 @@ def init_db():
             description    TEXT NOT NULL DEFAULT '',
             file_type      TEXT NOT NULL,
             thumbnail_path TEXT NOT NULL DEFAULT '',
+            content_hash   TEXT NOT NULL DEFAULT '',
             created_date   TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS categories (
@@ -595,6 +601,40 @@ def reset_password(user_id: str, data: dict, admin: dict = Depends(require_admin
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
+
+def _slugify(title: str) -> str:
+    """Convert a recipe title to a safe folder name.
+    'My Cozy Socks Pattern!' -> 'my-cozy-socks-pattern'
+    """
+    slug = title.lower().strip()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug or "recipe"
+
+
+def _unique_recipe_dir(title: str):
+    """Return (recipe_id, recipe_dir) using a slug-based folder name.
+    If the slug is already taken, appends -2, -3, etc.
+    """
+    base = _slugify(title)
+    candidate = base
+    counter = 2
+    while (DATA_DIR / candidate).exists():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate, DATA_DIR / candidate
+
+
+def _hash_files(file_data_list: list) -> str:
+    """SHA-256 fingerprint of a set of files (order-independent).
+    Same files always produce the same hash regardless of upload order.
+    """
+    individual = sorted(hashlib.sha256(data).hexdigest() for data in file_data_list)
+    combined = hashlib.sha256("".join(individual).encode()).hexdigest()
+    return combined
+
+
 def _save_cats_tags(conn, recipe_id: str, categories: str, tags: str):
     for name in [c.strip() for c in categories.split(",") if c.strip()]:
         conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
@@ -785,6 +825,50 @@ def get_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)):
     return recipe
 
 
+@app.post("/api/recipes/check-duplicate")
+async def check_duplicate(
+    files: List[UploadFile] = File(...),
+    title: str = Form(""),
+    current_user: dict = Depends(get_current_user)
+):
+    """Check uploaded files for duplicate content or title before saving.
+    Returns lists of content duplicates and title duplicates so the frontend
+    can warn the user and let them decide whether to proceed.
+    """
+    # Read all file data
+    file_data_list = []
+    for upload in files:
+        ext = Path(upload.filename.lower()).suffix
+        if ext in IMAGE_EXTS or ext == ".pdf":
+            data = await upload.read()
+            file_data_list.append(data)
+
+    results = {"content_duplicates": [], "title_duplicates": []}
+    if not file_data_list:
+        return results
+
+    conn = get_db()
+
+    # Content duplicate check — hash the uploaded files and compare to DB
+    upload_hash = _hash_files(file_data_list)
+    content_matches = conn.execute(
+        "SELECT id, title FROM recipes WHERE content_hash=? AND content_hash!=''",
+        (upload_hash,)
+    ).fetchall()
+    results["content_duplicates"] = [{"id": r["id"], "title": r["title"]} for r in content_matches]
+
+    # Title duplicate check — case-insensitive exact match
+    if title.strip():
+        title_matches = conn.execute(
+            "SELECT id, title FROM recipes WHERE LOWER(title)=LOWER(?)",
+            (title.strip(),)
+        ).fetchall()
+        results["title_duplicates"] = [{"id": r["id"], "title": r["title"]} for r in title_matches]
+
+    conn.close()
+    return results
+
+
 @app.post("/api/recipes")
 async def create_recipe(
     title:       str = Form(...),
@@ -794,15 +878,17 @@ async def create_recipe(
     files:       List[UploadFile] = File(...),
     current_user: dict = Depends(get_current_user)
 ):
-    recipe_id  = str(uuid.uuid4())
-    recipe_dir = DATA_DIR / recipe_id
+    # Use slug-based folder name instead of UUID for clean, readable paths
+    recipe_id, recipe_dir = _unique_recipe_dir(title)
     recipe_dir.mkdir(parents=True)
+
     saved, file_type = [], "images"
+    all_file_data = []  # collect for hashing
+
     for upload in files:
         ext = Path(upload.filename.lower()).suffix
         if ext not in IMAGE_EXTS and ext != ".pdf":
             continue
-        # Read the file data first so we can validate it
         file_data = await upload.read()
         size_limit = MAX_PDF_BYTES if ext == ".pdf" else MAX_IMAGE_BYTES
         if len(file_data) > size_limit:
@@ -814,21 +900,26 @@ async def create_recipe(
         if ext == ".pdf":
             file_type, dest_name = "pdf", "recipe.pdf"
         else:
-            # Use only the bare filename — no path components
             dest_name = Path(upload.filename).name
         with open(recipe_dir / dest_name, "wb") as f:
             f.write(file_data)
         saved.append(dest_name)
+        all_file_data.append(file_data)
+
     if not saved:
         shutil.rmtree(recipe_dir)
         raise HTTPException(status_code=400, detail="No valid files uploaded")
+
     if file_type == "pdf":
         _convert_pdf_to_pages(recipe_dir)
+
     thumb = _generate_thumbnail(recipe_dir, file_type)
-    conn  = get_db()
+    content_hash = _hash_files(all_file_data)
+
+    conn = get_db()
     conn.execute(
-        "INSERT INTO recipes (id,title,description,file_type,thumbnail_path,created_date) VALUES (?,?,?,?,?,?)",
-        (recipe_id, title, description, file_type, thumb, datetime.utcnow().isoformat())
+        "INSERT INTO recipes (id,title,description,file_type,thumbnail_path,created_date,content_hash) VALUES (?,?,?,?,?,?,?)",
+        (recipe_id, title, description, file_type, thumb, datetime.utcnow().isoformat(), content_hash)
     )
     _save_cats_tags(conn, recipe_id, categories, tags)
     conn.commit()
@@ -1187,6 +1278,39 @@ def import_get_queue(current_user: dict = Depends(get_current_user)):
     return {"items": items, "count": len(items)}
 
 
+@app.get("/api/import/check-duplicate/{recipe_id}")
+def import_check_duplicate(recipe_id: str, title: str = "", current_user: dict = Depends(get_current_user)):
+    """Check a staged recipe for content/title duplicates before confirming."""
+    conn = get_db()
+    results = {"content_duplicates": [], "title_duplicates": []}
+
+    # Hash the staged files and compare against confirmed recipes
+    recipe_dir = DATA_DIR / recipe_id
+    if recipe_dir.exists():
+        file_data_list = []
+        for f in sorted(recipe_dir.iterdir()):
+            if f.is_file() and f.name not in ("thumbnail.jpg",) and not f.name.startswith("."):
+                file_data_list.append(f.read_bytes())
+        if file_data_list:
+            staged_hash = _hash_files(file_data_list)
+            matches = conn.execute(
+                "SELECT id, title FROM recipes WHERE content_hash=? AND content_hash!='' AND id!=?",
+                (staged_hash, recipe_id)
+            ).fetchall()
+            results["content_duplicates"] = [{"id": r["id"], "title": r["title"]} for r in matches]
+
+    # Title check
+    if title.strip():
+        title_matches = conn.execute(
+            "SELECT id, title FROM recipes WHERE LOWER(title)=LOWER(?) AND id!=?",
+            (title.strip(), recipe_id)
+        ).fetchall()
+        results["title_duplicates"] = [{"id": r["id"], "title": r["title"]} for r in title_matches]
+
+    conn.close()
+    return results
+
+
 @app.post("/api/import/confirm/{recipe_id}")
 def import_confirm(recipe_id: str, data: dict, current_user: dict = Depends(get_current_user)):
     title = data.get("title", "").strip()
@@ -1196,14 +1320,38 @@ def import_confirm(recipe_id: str, data: dict, current_user: dict = Depends(get_
     if not conn.execute("SELECT recipe_id FROM import_queue WHERE recipe_id=? AND status='staged'", (recipe_id,)).fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Staged recipe not found")
-    conn.execute("UPDATE recipes SET title=?, description=? WHERE id=?", (title, data.get("description", ""), recipe_id))
-    conn.execute("DELETE FROM recipe_categories WHERE recipe_id=?", (recipe_id,))
-    conn.execute("DELETE FROM recipe_tags       WHERE recipe_id=?", (recipe_id,))
-    _save_cats_tags(conn, recipe_id, data.get("categories", ""), data.get("tags", ""))
-    conn.execute("UPDATE import_queue SET status='done' WHERE recipe_id=?", (recipe_id,))
+
+    # Rename folder from temporary UUID to slug-based name
+    new_id, new_dir = _unique_recipe_dir(title)
+    old_dir = DATA_DIR / recipe_id
+    if old_dir.exists() and not new_dir.exists():
+        old_dir.rename(new_dir)
+    else:
+        new_id = recipe_id  # fallback: keep original id if rename not possible
+        new_dir = old_dir
+
+    # Compute and store content hash
+    file_data_list = []
+    for f in sorted(new_dir.iterdir()):
+        if f.is_file() and f.name not in ("thumbnail.jpg",) and not f.name.startswith("."):
+            file_data_list.append(f.read_bytes())
+    content_hash = _hash_files(file_data_list) if file_data_list else ""
+
+    # Update recipe record with new id, title, and hash
+    conn.execute("UPDATE recipes SET id=?, title=?, description=?, content_hash=? WHERE id=?",
+                 (new_id, title, data.get("description", ""), content_hash, recipe_id))
+    conn.execute("UPDATE import_queue    SET recipe_id=?, status='done' WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("UPDATE recipe_categories SET recipe_id=? WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("UPDATE recipe_tags       SET recipe_id=? WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("UPDATE project_sessions  SET recipe_id=? WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("UPDATE project_feedback  SET recipe_id=? WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("UPDATE annotations       SET recipe_id=? WHERE recipe_id=?", (new_id, recipe_id))
+    conn.execute("DELETE FROM recipe_categories WHERE recipe_id=?", (new_id,))
+    conn.execute("DELETE FROM recipe_tags       WHERE recipe_id=?", (new_id,))
+    _save_cats_tags(conn, new_id, data.get("categories", ""), data.get("tags", ""))
     conn.commit()
     conn.close()
-    return {"status": "confirmed", "recipe_id": recipe_id}
+    return {"status": "confirmed", "recipe_id": new_id}
 
 
 @app.post("/api/import/discard/{recipe_id}")
