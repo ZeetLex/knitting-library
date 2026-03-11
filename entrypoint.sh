@@ -1,40 +1,26 @@
 #!/bin/sh
-# entrypoint.sh — start nginx + uvicorn
+# entrypoint.sh — start nginx + uvicorn with PUID/PGID support
 #
-# Supports PUID / PGID environment variables (standard Unraid/LinuxServer convention).
-# Set these in your Docker container settings to match your Unraid user:
-#   PUID=99   (nobody)
-#   PGID=100  (users)
-# If not set, defaults to the built-in appuser (UID 1000).
+# Set PUID and PGID in your Docker container settings to match your host user.
+# Unraid standard: PUID=99, PGID=100
+# If not set, runs as UID/GID 1000.
 
-# ── PUID / PGID handling ──────────────────────────────────────────────────────
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-# Only remap if running as root (i.e. docker-compose user: root or Unraid default)
+# ── If running as root, create dirs and re-exec as the correct UID/GID ────────
 if [ "$(id -u)" = "0" ]; then
-    # Update appgroup GID and appuser UID to match host values
-    if [ "$PGID" != "1000" ]; then
-        sed -i "s/^appgroup:x:1000:/appgroup:x:${PGID}:/" /etc/group
-    fi
-    if [ "$PUID" != "1000" ]; then
-        sed -i "s/^appuser:x:1000:1000:/appuser:x:${PUID}:${PGID}:/" /etc/passwd
-    fi
-
-    # Create directories as root, then hand ownership to appuser
     mkdir -p /data/recipes /data/yarns /logs
-    chown -R "${PUID}:${PGID}" /data /logs /app/backend
-
-    # Drop privileges and re-exec this script as appuser
-    exec su-exec appuser "$0" "$@"
+    chown "${PUID}:${PGID}" /data /data/recipes /data/yarns /logs
+    exec su-exec "${PUID}:${PGID}" "$0" "$@"
 fi
 
-# ── Running as appuser from here ──────────────────────────────────────────────
+# ── From here we are running as PUID:PGID ─────────────────────────────────────
 
-# ── Log rotation helper (keeps last 5 × 10 MB per service) ───────────────────
+# ── Log rotation helper ───────────────────────────────────────────────────────
 rotate_log() {
     log="$1"
-    max_bytes=10485760   # 10 MB
+    max_bytes=10485760
     if [ -f "$log" ] && [ "$(wc -c < "$log")" -gt "$max_bytes" ]; then
         for i in 4 3 2 1; do
             [ -f "${log}.${i}" ] && mv "${log}.${i}" "${log}.$((i+1))"
@@ -46,8 +32,7 @@ rotate_log() {
 rotate_log /logs/nginx.log
 rotate_log /logs/uvicorn.log
 
-# ── Write startup marker ──────────────────────────────────────────────────────
-echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  container started (pid $$, uid $(id -u))" >> /logs/supervisord.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  container started (uid=$(id -u) gid=$(id -g))" >> /logs/supervisord.log
 
 # ── Start nginx ───────────────────────────────────────────────────────────────
 nginx -g "daemon off; pid /tmp/nginx.pid;" >> /logs/nginx.log 2>&1 &
@@ -60,27 +45,24 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --access-log >> /logs/uvicorn.log 2>
 UVICORN_PID=$!
 echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  uvicorn started (pid $UVICORN_PID)" >> /logs/supervisord.log
 
-# ── Give processes time to start before watchdog begins ──────────────────────
 sleep 3
 
-# ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────────
+# ── Graceful shutdown ─────────────────────────────────────────────────────────
 shutdown() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  shutting down..." >> /logs/supervisord.log
-    kill "$NGINX_PID"   2>/dev/null
-    kill "$UVICORN_PID" 2>/dev/null
+    kill "$NGINX_PID" "$UVICORN_PID" 2>/dev/null
     wait
     exit 0
 }
 trap shutdown TERM INT
 
-# ── Watchdog — restart either process if it exits unexpectedly ───────────────
+# ── Watchdog ──────────────────────────────────────────────────────────────────
 while true; do
     if ! kill -0 "$NGINX_PID" 2>/dev/null; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') WARN  nginx exited — restarting" >> /logs/supervisord.log
         rotate_log /logs/nginx.log
         nginx -g "daemon off; pid /tmp/nginx.pid;" >> /logs/nginx.log 2>&1 &
         NGINX_PID=$!
-        echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  nginx restarted (pid $NGINX_PID)" >> /logs/supervisord.log
     fi
 
     if ! kill -0 "$UVICORN_PID" 2>/dev/null; then
@@ -89,7 +71,6 @@ while true; do
         cd /app/backend
         uvicorn main:app --host 0.0.0.0 --port 8000 --access-log >> /logs/uvicorn.log 2>&1 &
         UVICORN_PID=$!
-        echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  uvicorn restarted (pid $UVICORN_PID)" >> /logs/supervisord.log
     fi
 
     sleep 10

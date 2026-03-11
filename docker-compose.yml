@@ -19,6 +19,7 @@ services:
   app:
     image: zeetlex/knitting-library:latest
     container_name: knitting-library
+    user: root
     restart: unless-stopped
     ports:
       - "3000:8080"
