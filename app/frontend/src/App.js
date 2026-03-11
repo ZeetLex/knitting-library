@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AppProvider, useApp } from './utils/AppContext';
 import LoginPage from './pages/LoginPage';
 import Library from './pages/Library';
@@ -9,7 +9,9 @@ import InventoryPage from './pages/InventoryPage';
 import SettingsPage from './pages/SettingsPage';
 import UploadModal from './components/UploadModal';
 import YarnUploadModal from './components/YarnUploadModal';
+import ImportWizard from './components/ImportWizard';
 import Header from './components/Header';
+import { getImportQueue } from './utils/api';
 import './App.css';
 
 function AppInner() {
@@ -20,9 +22,17 @@ function AppInner() {
   const [viewingYarnId, setViewingYarnId]     = useState(null);
   const [uploadOpen, setUploadOpen]           = useState(false);
   const [yarnUploadOpen, setYarnUploadOpen]   = useState(false);
+  const [importOpen, setImportOpen]           = useState(false);
+  const [importCount, setImportCount]         = useState(0);
   const [showSettings, setShowSettings]       = useState(false);
   const [refreshKey, setRefreshKey]           = useState(0);
   const [yarnRefreshKey, setYarnRefreshKey]   = useState(0);
+
+  const checkImport = useCallback(() => {
+    getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
+  }, []);
+
+  useEffect(() => { checkImport(); }, [checkImport]);
 
   const handleUploadSuccess = useCallback(() => {
     setUploadOpen(false);
@@ -45,7 +55,7 @@ function AppInner() {
     setViewingYarnId(null);
   };
 
-  // Header + button label
+  // Header button label
   const addLabel = activeTab === 'yarns' && yarnSubTab === 'yarndatabase'
     ? t('addYarn')
     : activeTab === 'recipes' ? t('addRecipe')
@@ -55,8 +65,10 @@ function AppInner() {
     activeTab,
     onTabChange: handleTabChange,
     onUploadClick: handleAddClick,
+    onBulkImportClick: () => setImportOpen(true),
     onSettingsClick: () => setShowSettings(true),
     addLabel,
+    importCount,
     yarnSubTab,
     onYarnSubTabChange: handleYarnSubTabChange,
   };
@@ -134,6 +146,12 @@ function AppInner() {
         <YarnUploadModal
           onClose={() => setYarnUploadOpen(false)}
           onSuccess={() => { setYarnUploadOpen(false); setYarnRefreshKey(k => k + 1); }}
+        />
+      )}
+      {importOpen && (
+        <ImportWizard
+          onClose={() => { setImportOpen(false); checkImport(); }}
+          onRecipeAdded={() => { setRefreshKey(k => k + 1); checkImport(); }}
         />
       )}
     </div>

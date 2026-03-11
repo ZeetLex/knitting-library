@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, Play, CheckCircle, FolderDown } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, Play, CheckCircle } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CategoryManager from '../components/CategoryManager';
-import ImportWizard from '../components/ImportWizard';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipes, fetchCategories, fetchTags, getImportQueue } from '../utils/api';
+import { fetchRecipes, fetchCategories, fetchTags } from '../utils/api';
 import './Library.css';
 
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
@@ -28,17 +27,6 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [gridSize, setGridSize]       = useState('medium');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [catRefreshKey, setCatRefreshKey] = useState(0);
-  const [importCount, setImportCount] = useState(0);
-  const [showImport, setShowImport]   = useState(false);
-
-  // Check for pending import items on mount and after wizard closes
-  const checkImport = useCallback(() => {
-    getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    checkImport();
-  }, [checkImport]);
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
@@ -121,16 +109,6 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               </button>
             ))}
           </div>
-
-          {/* Import folder button — always visible, badge shows pending count */}
-          <button
-            className={`import-folder-btn ${importCount > 0 ? 'has-pending' : ''}`}
-            onClick={() => setShowImport(true)}
-            title={t('importFolder')}
-          >
-            <FolderDown size={18} />
-            {importCount > 0 && <span className="import-badge">{importCount}</span>}
-          </button>
         </div>
 
         {filtersOpen && (
@@ -260,14 +238,6 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
           ))
         )}
       </div>
-
-      {/* Bulk import wizard */}
-      {showImport && (
-        <ImportWizard
-          onClose={() => { setShowImport(false); checkImport(); }}
-          onRecipeAdded={() => { loadRecipes(); checkImport(); }}
-        />
-      )}
     </div>
   );
 }

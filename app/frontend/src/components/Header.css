@@ -135,6 +135,163 @@
 .header-upload-btn:hover  { background: var(--terracotta-light); }
 .header-upload-btn:active { opacity: 0.8; }
 
+/* ── Split button (Add Recipe with dropdown) ─────────────────────────────── */
+.header-split-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header-split-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.header-split-main span { display: none; }
+
+.header-split-chevron {
+  display: none; /* hidden on mobile — dropdown still accessible via long press isn't needed, single button is enough */
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.25);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  width: 28px;
+  height: 38px;
+  padding: 0;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .header-split-main {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    width: auto;
+    height: 38px;
+    padding: 0 14px;
+  }
+  .header-split-main span { display: inline; }
+  .header-split-chevron  { display: flex; }
+}
+
+.header-split-main:hover,
+.header-split-chevron:hover { background: var(--terracotta-light); }
+.header-split-main:active,
+.header-split-chevron:active { opacity: 0.8; }
+
+.header-split-chevron.has-pending { background: var(--terracotta-light); }
+
+.split-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+/* ── Dropdown menu ── */
+.header-split-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  min-width: 220px;
+  z-index: 200;
+  overflow: hidden;
+  animation: dropdownFadeIn 0.12s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.split-drop-item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  color: var(--text);
+}
+
+.split-drop-item:last-child { border-bottom: none; }
+.split-drop-item:hover      { background: var(--bg-hover); }
+
+.split-drop-item svg {
+  grid-row: 1 / 3;
+  color: var(--accent);
+  align-self: center;
+}
+
+.split-drop-item span:not(.split-drop-hint):not(.split-drop-badge) {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.split-drop-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  grid-column: 2;
+  grid-row: 2;
+  font-weight: 400;
+}
+
+.split-drop-badge {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  background: var(--terracotta);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  align-self: center;
+}
+
 /* Icon-only buttons */
 .header-icon-btn {
   width: 36px;

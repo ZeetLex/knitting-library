@@ -1,18 +1,30 @@
-import React from 'react';
-import { Plus, Settings, BarChart2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Plus, Settings, BarChart2, ChevronDown, FolderDown, FileUp } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './Header.css';
 
 export default function Header({
   activeTab, onTabChange,
-  onUploadClick, onLogoClick, onSettingsClick,
-  addLabel,
+  onUploadClick, onBulkImportClick, onLogoClick, onSettingsClick,
+  addLabel, importCount,
   // Sub-tab props — only used when activeTab === 'yarns'
   yarnSubTab, onYarnSubTabChange,
 }) {
   const { t, language } = useApp();
   const appSub = language === 'no' ? 'Bibliotek' : 'Library';
   const showSubTabs = activeTab === 'yarns';
+  const [dropOpen, setDropOpen] = useState(false);
+  const dropRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!dropOpen) return;
+    const handler = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dropOpen]);
+
+  const isRecipes = activeTab === 'recipes';
 
   return (
     <header className={`header ${showSubTabs ? 'header--with-subtabs' : ''}`}>
@@ -43,10 +55,46 @@ export default function Header({
 
         <div className="header-right">
           {addLabel && (
-            <button className="header-upload-btn" onClick={onUploadClick}>
-              <Plus size={18} />
-              <span>{addLabel}</span>
-            </button>
+            isRecipes ? (
+              /* ── Split button: left = single upload, right = dropdown ── */
+              <div className="header-split-btn" ref={dropRef}>
+                <button className="header-split-main" onClick={onUploadClick} title={t('addRecipe')}>
+                  <Plus size={18} />
+                  <span>{addLabel}</span>
+                </button>
+                <button
+                  className={`header-split-chevron ${importCount > 0 ? 'has-pending' : ''}`}
+                  onClick={() => setDropOpen(o => !o)}
+                  title="More options"
+                  aria-label="Add recipe options"
+                >
+                  <ChevronDown size={14} />
+                  {importCount > 0 && <span className="split-badge">{importCount}</span>}
+                </button>
+
+                {dropOpen && (
+                  <div className="header-split-dropdown">
+                    <button className="split-drop-item" onClick={() => { setDropOpen(false); onUploadClick(); }}>
+                      <FileUp size={15} />
+                      <span>{t('addRecipe')}</span>
+                      <span className="split-drop-hint">PDF or images</span>
+                    </button>
+                    <button className="split-drop-item" onClick={() => { setDropOpen(false); onBulkImportClick(); }}>
+                      <FolderDown size={15} />
+                      <span>{t('importFolder')}</span>
+                      {importCount > 0 && <span className="split-drop-badge">{importCount} pending</span>}
+                      <span className="split-drop-hint">Work through a folder one by one</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Plain button for Yarn Database ── */
+              <button className="header-upload-btn" onClick={onUploadClick}>
+                <Plus size={18} />
+                <span>{addLabel}</span>
+              </button>
+            )
           )}
           <button className="header-icon-btn" onClick={onSettingsClick} title={t('settings')} aria-label={t('settings')}>
             <Settings size={20} />
