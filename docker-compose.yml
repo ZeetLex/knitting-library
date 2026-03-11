@@ -6,20 +6,19 @@
 #   docker-compose pull            — download latest image
 #
 # To update:
-#   docker-compose down && docker rmi zeetlex/knitting-library:latest && docker-compose pull && docker-compose up -d
+#   docker-compose down && docker-compose pull && docker-compose up -d
 #
 # Data (recipes, yarns, database) is stored in ./data and persists across updates.
-# Logs are stored in ./logs — readable from your appdata folder and by fail2ban.
+# Logs are stored in ./logs
 #
-# PUID / PGID: set these to match your host user so the container can read/write
-# your data and logs folders. On Unraid the standard values are 99 and 100.
-# Check yours with: id YOUR_USERNAME
+# PUID / PGID: files written to ./data and ./logs will be owned by this uid/gid
+# on the host. Unraid default is 99/100. Linux: check with: id YOUR_USERNAME
+# Windows/Mac Docker Desktop: set to 0 or remove these lines.
 
 services:
   app:
     image: zeetlex/knitting-library:latest
     container_name: knitting-library
-    user: root
     restart: unless-stopped
     ports:
       - "3000:8080"

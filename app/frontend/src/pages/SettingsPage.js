@@ -441,7 +441,6 @@ function LogsSection() {
     if (l.includes(' 4') || l.includes(' 5') || l.includes('error') || l.includes('failed') || l.includes('exception')) return 'log-line--error';
     if (l.includes('200') || l.includes('started') || l.includes('success')) return 'log-line--ok';
     if (l.includes('warn') || l.includes('warning') || l.includes('429')) return 'log-line--warn';
-    if (line.startsWith('[nginx]')) return 'log-line--nginx';
     return '';
   };
 
@@ -460,9 +459,9 @@ function LogsSection() {
 
       {/* Source tabs */}
       <div className="log-source-tabs">
-        {['all', 'uvicorn', 'nginx', 'supervisord'].map(s => (
+        {['all', 'uvicorn', 'supervisord'].map(s => (
           <button key={s} className={`log-tab ${source === s ? 'active' : ''}`} onClick={() => setSource(s)}>
-            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'nginx' ? '🌐 nginx' : '🔧 System'}
+            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : '🔧 System'}
           </button>
         ))}
       </div>

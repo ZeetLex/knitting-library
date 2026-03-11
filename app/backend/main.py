@@ -24,7 +24,8 @@ import httpx
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 import sqlite3
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -52,13 +53,13 @@ async def security_headers(request: Request, call_next):
     # Disable browser features we don't use
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     # Content-Security-Policy: tighten what the API can load
-    # (The React frontend has its own CSP served by nginx — this covers the /api/ responses)
+    # (This CSP covers /api/ responses; the React frontend is served by the SPA middleware below)
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     return response
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Restrict to same-origin only. Requests from the React app are same-origin
-# because nginx proxies /api/ internally. allow_origins=["*"] is replaced
+# because uvicorn serves everything on the same port. allow_origins=["*"] is replaced
 # with an explicit empty list — the app is not a public API.
 # If you expose this behind a named domain, add it here.
 _ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
@@ -72,9 +73,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Session-Token"],
 )
 
-DATA_DIR = Path("/data/recipes")
-YARN_DIR = Path("/data/yarns")
-DB_PATH  = Path("/data/recipes.db")
+DATA_DIR   = Path("/data/recipes")
+YARN_DIR   = Path("/data/yarns")
+DB_PATH    = Path("/data/recipes.db")
+STATIC_DIR = Path("/app/frontend/build")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 YARN_DIR.mkdir(parents=True, exist_ok=True)
@@ -185,10 +187,14 @@ def get_db() -> sqlite3.Connection:
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("PRAGMA foreign_keys=ON")
     # Migration: add content_hash column if missing (added in v2.104)
-    cols = [r["name"] for r in conn.execute("PRAGMA table_info(recipes)").fetchall()]
-    if "content_hash" not in cols:
-        conn.execute("ALTER TABLE recipes ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
-        conn.commit()
+    # Only run if the recipes table already exists (skip on fresh install —
+    # init_db() will create the column in the CREATE TABLE statement instead).
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    if "recipes" in tables:
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(recipes)").fetchall()]
+        if "content_hash" not in cols:
+            conn.execute("ALTER TABLE recipes ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+            conn.commit()
     return conn
 
 
@@ -1908,13 +1914,12 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
 @app.get("/api/admin/logs")
 def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(require_admin)):
     """Return the last N lines from the persistent log files in /logs/.
-    source: 'all' | 'uvicorn' | 'nginx' | 'supervisord'
+    source: 'all' | 'uvicorn' | 'supervisord'
     """
     lines = max(10, min(lines, 1000))
 
     log_files = {
-        "uvicorn":    Path("/logs/uvicorn.log"),
-        "nginx":      Path("/logs/nginx.log"),
+        "uvicorn":     Path("/logs/uvicorn.log"),
         "supervisord": Path("/logs/supervisord.log"),
     }
 
@@ -2131,3 +2136,37 @@ def verify_2fa_login(data: dict):
     conn.commit()
     conn.close()
     return {"token": challenge, "user": _user_dict(dict(row))}
+
+# ── Static file serving (replaces nginx) ─────────────────────────────────────
+# Mount the compiled React build so FastAPI serves the frontend directly.
+# This eliminates nginx entirely — one process, no permission issues.
+# The SPA catch-all must be registered LAST so /api/ routes take priority.
+
+# ── SPA middleware: serves React frontend without blocking /api/ routes ───────
+# Problem: StaticFiles mounted at "/" intercepts ALL requests including /api/.
+# Solution: custom middleware that only serves static files for non-API paths.
+# Any path starting with /api/ or /data/ is passed through to FastAPI's router.
+
+_static_app = StaticFiles(directory=str(STATIC_DIR)) if STATIC_DIR.exists() else None
+
+@app.middleware("http")
+async def spa_static_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Always pass API and data requests to FastAPI's router
+    if path.startswith("/api/") or path.startswith("/data/"):
+        return await call_next(request)
+
+    # Try to serve as a static file
+    if _static_app is not None:
+        static_path = path.lstrip("/") or "index.html"
+        candidate = STATIC_DIR / static_path
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+
+    # SPA fallback: return index.html for all other paths (React Router handles routing)
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+
+    return await call_next(request)

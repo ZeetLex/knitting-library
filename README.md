@@ -137,7 +137,7 @@ Change your password immediately — **Settings → My Account → Change Passwo
 Accessible to admin users under **Settings → Admin**.
 
 - **Users** — create and manage user accounts, reset 2FA
-- **Live Logs** — real-time view of API and nginx logs, filterable by source (API / nginx / system). Auto-refreshes every 3 seconds
+- **Live Logs** — real-time view of API logs, filterable by source. Auto-refreshes every 3 seconds
 - **Mail Server** — configure SMTP for outgoing email, with a test-send button
 - **Two-Factor Auth** — view and reset 2FA status for all users
 
@@ -161,7 +161,6 @@ your-appdata-folder/
     yarns/            ← yarn images
   logs/
     uvicorn.log       ← API requests and errors
-    nginx.log         ← web server traffic
     supervisord.log   ← container startup and process events
 ```
 
@@ -196,7 +195,6 @@ ignoreregex =
 [knitting-library]
 enabled  = true
 filter   = knitting-library
-logpath  = /mnt/user/appdata/knitting-library/logs/nginx.log
 maxretry = 10
 findtime = 900
 bantime  = 3600
@@ -225,6 +223,7 @@ proxy_set_header X-Real-IP $remote_addr;
 | Live Logs shows nothing | Check that `./logs:/logs` is mounted in your compose file |
 | All requests show same IP in logs | Set `X-Forwarded-For` header in your reverse proxy (see Fail2ban section) |
 | Old data missing after update | Data persists in the `./data` volume and is not affected by container updates. If something looks wrong, check Live Logs for errors on startup |
+| Port 8080 shows nothing | Check container logs — `docker logs knitting-library`. The app serves on port 8080 directly (no separate web server) |
 
 ---
 
@@ -240,7 +239,7 @@ Security measures in place:
 | Session expiry | ✅ 30 days; 2FA challenges expire in 5 min |
 | File upload validation | ✅ Magic-byte checks + size limits (50 MB PDF, 20 MB image) |
 | CORS | ✅ Same-origin only (set `ALLOWED_ORIGINS` env var if needed) |
-| Security headers | ✅ CSP, X-Frame-Options, HSTS (via nginx) |
+| Security headers | ✅ CSP, X-Frame-Options, Referrer-Policy |
 | API documentation | ✅ Disabled in production |
 | SQL injection | ✅ Parameterised queries throughout |
 | Path traversal | ✅ Filename sanitisation on all uploads |
@@ -259,4 +258,4 @@ Open an issue if you find bugs or want to suggest something.
 
 ---
 
-*Built with FastAPI · React · SQLite · nginx · Docker*
+*Built with FastAPI · React · SQLite · Docker*
