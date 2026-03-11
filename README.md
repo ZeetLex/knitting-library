@@ -8,6 +8,22 @@
 
 ---
 
+> ## 🔒 SECURITY DISCLAIMER — PLEASE READ
+>
+> This application was built by a hobbyist, not a professional software developer or security engineer. The code was written with AI assistance (Claude by Anthropic) and has **not** been reviewed or audited by a qualified security professional.
+>
+> Security measures have been implemented in good faith, but **no guarantees can be made about the security of this application.**
+>
+> **You run this software entirely at your own risk.**
+>
+> - ✅ Recommended: run on a local home network, accessed only by people you trust
+> - ✅ Acceptable: remote access via a private VPN tunnel (Tailscale, WireGuard)
+> - ❌ Not recommended: exposed to the public internet via port forwarding or a public domain
+>
+> If you choose to expose this app publicly, you do so at your own risk. The author takes no responsibility for data loss, unauthorised access, or any other issues that may result.
+
+---
+
 Built for personal use — my wife needed somewhere to store her knitting patterns (PDFs, scanned magazine pages, photos) without paying a subscription or giving her data to someone else. It runs on your own machine and you own everything.
 
 > **Runs with Docker — no coding required.**
@@ -208,13 +224,13 @@ proxy_set_header X-Real-IP $remote_addr;
 | URL import didn't fill everything | Early beta — fill in missing fields manually |
 | Live Logs shows nothing | Check that `./logs:/logs` is mounted in your compose file |
 | All requests show same IP in logs | Set `X-Forwarded-For` header in your reverse proxy (see Fail2ban section) |
-| Old data missing after update | Migrations run automatically on startup — check Live Logs if something looks wrong |
+| Old data missing after update | Data persists in the `./data` volume and is not affected by container updates. If something looks wrong, check Live Logs for errors on startup |
 
 ---
 
 ## ⚠️ Security
 
-A full security audit was done in v2.93. Current posture:
+Security measures in place:
 
 | Area | Status |
 |---|---|
