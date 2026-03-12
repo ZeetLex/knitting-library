@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, Play, CheckCircle } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
-import CategoryManager from '../components/CategoryManager';
+
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchCategories, fetchTags } from '../utils/api';
 import './Library.css';
@@ -26,11 +26,10 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [allTags, setAllTags]         = useState([]);
   const [gridSize, setGridSize]       = useState('medium');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [catRefreshKey, setCatRefreshKey] = useState(0);
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(console.error);
-  }, [refreshKey, catRefreshKey]);
+  }, [refreshKey]);
 
   useEffect(() => {
     fetchTags().then(setAllTags).catch(console.error);
@@ -188,7 +187,6 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
       <div className="library-meta">
         {!loading && <p className="recipe-count">{recipeCountLabel()}</p>}
-        <CategoryManager onCategoriesChanged={() => setCatRefreshKey(k => k + 1)} />
       </div>
 
       <div className={`recipe-grid ${GRID_SIZES[gridSize].cols}`}>

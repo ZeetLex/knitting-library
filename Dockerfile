@@ -8,6 +8,9 @@ WORKDIR /app
 COPY app/frontend/package.json ./
 RUN npm install --legacy-peer-deps
 COPY app/frontend/ .
+
+# Fonts are bundled via @fontsource npm packages (imported in index.js).
+# No external font downloads needed — they are included in node_modules.
 RUN npm run build
 
 FROM python:3.12-alpine3.22

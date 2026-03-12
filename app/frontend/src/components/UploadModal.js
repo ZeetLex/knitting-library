@@ -1,25 +1,80 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen, AlertTriangle } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createRecipe, checkDuplicate, fetchCategories } from '../utils/api';
+import { createRecipe, checkDuplicate, fetchCategories, fetchTags } from '../utils/api';
 import './UploadModal.css';
+
+// ── PillInput — type and press Space/Enter/comma to add a tag pill ────────────
+// Works for both categories and tags. Shows a suggestion dropdown of existing
+// values so the user can pick one rather than re-typing it.
+function PillInput({ label, hint, values, allOptions, onChange, placeholder }) {
+  const [input, setInput] = useState('');
+  const filtered = allOptions.filter(
+    o => o.toLowerCase().includes(input.toLowerCase()) && !values.includes(o)
+  );
+  const add = (val) => {
+    const v = val.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setInput('');
+  };
+  const remove = (v) => onChange(values.filter(x => x !== v));
+
+  return (
+    <div className="form-field" style={{ position: 'relative' }}>
+      <label className="form-label">
+        {label}{hint && <span className="form-hint"> — {hint}</span>}
+      </label>
+      <div className="pill-input-wrap" onClick={e => e.currentTarget.querySelector('input')?.focus()}>
+        {values.map(v => (
+          <span key={v} className="pill-token">
+            {v}
+            <button type="button" className="pill-token-x" onClick={() => remove(v)}>×</button>
+          </span>
+        ))}
+        <input
+          type="text"
+          className="pill-bare-input"
+          placeholder={values.length === 0 ? placeholder : ''}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            // Space, Enter, or comma all confirm the current word as a pill
+            if ((e.key === ' ' || e.key === 'Enter' || e.key === ',') && input.trim()) {
+              e.preventDefault();
+              add(input);
+            }
+            // Backspace on empty input removes the last pill
+            if (e.key === 'Backspace' && !input && values.length) remove(values[values.length - 1]);
+          }}
+        />
+      </div>
+      {input && filtered.length > 0 && (
+        <ul className="pill-suggestions">
+          {filtered.map(s => <li key={s} onMouseDown={() => add(s)}>{s}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function UploadModal({ onClose, onSuccess }) {
   const { t } = useApp();
   const [files, setFiles]           = useState([]);
   const [title, setTitle]           = useState('');
   const [description, setDesc]      = useState('');
-  const [categories, setCategories] = useState([]);
-  const [selCats, setSelCats]       = useState([]);
-  const [tagInput, setTagInput]     = useState('');
+  const [selCats, setSelCats]       = useState([]);   // selected category pills
+  const [selTags, setSelTags]       = useState([]);   // selected tag pills
+  const [allCats, setAllCats]       = useState([]);   // existing categories for suggestions
+  const [allTags, setAllTags]       = useState([]);   // existing tags for suggestions
   const [dragging, setDragging]     = useState(false);
   const [uploading, setUploading]   = useState(false);
   const [error, setError]           = useState('');
   const [success, setSuccess]       = useState(false);
-  const [dupWarning, setDupWarning] = useState(null);  // { content: [], title: [] }
+  const [dupWarning, setDupWarning] = useState(null);
 
   useEffect(() => {
-    fetchCategories().then(setCategories).catch(console.error);
+    fetchCategories().then(setAllCats).catch(console.error);
+    fetchTags().then(setAllTags).catch(console.error);
   }, []);
 
   const handleFiles = useCallback((newFiles) => {
@@ -39,10 +94,6 @@ export default function UploadModal({ onClose, onSuccess }) {
     e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files);
   }, [handleFiles]);
 
-  const toggleCat = (cat) => {
-    setSelCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  };
-
   const doUpload = async () => {
     setError(''); setUploading(true); setDupWarning(null);
     try {
@@ -50,7 +101,7 @@ export default function UploadModal({ onClose, onSuccess }) {
       fd.append('title', title.trim());
       fd.append('description', description.trim());
       fd.append('categories', selCats.join(','));
-      fd.append('tags', tagInput);
+      fd.append('tags', selTags.join(','));
       files.forEach(f => fd.append('files', f));
       await createRecipe(fd);
       setSuccess(true);
@@ -178,26 +229,22 @@ export default function UploadModal({ onClose, onSuccess }) {
                   onChange={e => setDesc(e.target.value)} placeholder={t('notesPlaceholder')} rows={2} />
               </div>
 
-              <div className="form-field">
-                <label className="form-label">{t('categoryLabel')}</label>
-                <div className="form-pills">
-                  {categories.map(cat => (
-                    <button key={cat} type="button"
-                      className={`pill ${selCats.includes(cat) ? 'pill-active' : ''}`}
-                      onClick={() => toggleCat(cat)}>
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <PillInput
+                label={t('categoryLabel')}
+                values={selCats}
+                allOptions={allCats}
+                onChange={setSelCats}
+                placeholder="Add a category…"
+              />
 
-              <div className="form-field">
-                <label className="form-label">
-                  {t('tagsLabel')} <span className="form-hint">— {t('tagsSeparator')}</span>
-                </label>
-                <input className="form-input" value={tagInput}
-                  onChange={e => setTagInput(e.target.value)} placeholder={t('tagsPlaceholder')} />
-              </div>
+              <PillInput
+                label={t('tagsLabel')}
+                hint="space or enter to add"
+                values={selTags}
+                allOptions={allTags}
+                onChange={setSelTags}
+                placeholder="Add a tag…"
+              />
             </div>
 
             <div className="modal-footer">

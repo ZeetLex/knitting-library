@@ -39,24 +39,37 @@ app = FastAPI(
     openapi_url=None,
 )
 
-# ── Security headers middleware ────────────────────────────────────────────────
+# ── Security headers ──────────────────────────────────────────────────────────────────────────────
+
+# CSP for HTML pages: allow own assets + Google Fonts. Strict for API responses.
+_CSP_HTML = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self'; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'"
+)
+_CSP_API = "default-src 'none'; frame-ancestors 'none'"
+
+def _apply_security_headers(response, is_html=False):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = _CSP_HTML if is_html else _CSP_API
+    response.headers["Server"] = "webserver"
+    return response
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    # Prevent the browser from sniffing content types (stops e.g. JS in a PNG)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    # Don't allow this app to be embedded in iframes on other domains
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    # Only send referrer info to same-origin requests
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # Disable browser features we don't use
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    # Content-Security-Policy: tighten what the API can load
-    # (This CSP covers /api/ responses; the React frontend is served by the SPA middleware below)
-    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    ct = response.headers.get("content-type", "")
+    _apply_security_headers(response, is_html="text/html" in ct)
     return response
-
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Restrict to same-origin only. Requests from the React app are same-origin
 # because uvicorn serves everything on the same port. allow_origins=["*"] is replaced
@@ -2162,11 +2175,14 @@ async def spa_static_middleware(request: Request, call_next):
         static_path = path.lstrip("/") or "index.html"
         candidate = STATIC_DIR / static_path
         if candidate.is_file():
-            return FileResponse(str(candidate))
+            resp = FileResponse(str(candidate))
+            ct = resp.media_type or ""
+            return _apply_security_headers(resp, is_html="text/html" in ct)
 
     # SPA fallback: return index.html for all other paths (React Router handles routing)
     index = STATIC_DIR / "index.html"
     if index.exists():
-        return FileResponse(str(index), media_type="text/html")
+        resp = FileResponse(str(index), media_type="text/html")
+        return _apply_security_headers(resp, is_html=True)
 
     return await call_next(request)

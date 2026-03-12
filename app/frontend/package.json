@@ -9,7 +9,9 @@
     "react-pdf": "^7.7.3",
     "react-dropzone": "^14.2.3",
     "lucide-react": "^0.379.0",
-    "ajv": "^8.11.0"
+    "ajv": "^8.11.0",
+    "@fontsource/playfair-display": "^5.0.0",
+    "@fontsource/dm-sans": "^5.0.0"
   },
   "resolutions": {
     "ajv": "^8.11.0"
@@ -19,8 +21,16 @@
     "build": "react-scripts build"
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   },
   "proxy": "http://backend:8000"
 }
