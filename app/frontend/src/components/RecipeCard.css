@@ -190,3 +190,91 @@
 /* Card border tint for active/finished projects */
 .recipe-card--active  { box-shadow: 0 0 0 2px rgba(78, 154, 244, 0.5); }
 .recipe-card--finished { box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.4); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Selection mode
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* The select button sits in the top-left of the thumbnail */
+.recipe-select-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(26, 26, 46, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  /* Hidden by default — slides in when selectionMode is active */
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  pointer-events: none;
+}
+
+/* Show the button when selection mode is on */
+.recipe-select-btn.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* The empty circle (unselected state) */
+.recipe-select-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  display: block;
+}
+
+/* Checked state — terracotta fill */
+.recipe-select-btn.checked {
+  background: var(--terracotta);
+  color: white;
+}
+
+.recipe-select-btn.checked svg {
+  color: white;
+}
+
+/* Subtle scale-down on hover so the button feels pressable */
+@media (hover: hover) and (pointer: fine) {
+  .recipe-select-btn:hover {
+    transform: scale(1.1);
+  }
+}
+
+/* Card border highlight when selected */
+.recipe-card--selected {
+  border-color: var(--terracotta) !important;
+  box-shadow: 0 0 0 2px rgba(196, 113, 74, 0.45) !important;
+}
+
+/* Dim the thumbnail slightly when selected so the checkbox pops */
+.recipe-card--selected .recipe-card-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(196, 113, 74, 0.12);
+  pointer-events: none;
+}
+
+/* In selection mode, suppress the normal hover lift so click = select */
+.recipe-card--selectable:hover {
+  transform: none !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-color: var(--border) !important;
+}
+.recipe-card--selectable.recipe-card--selected:hover {
+  border-color: var(--terracotta) !important;
+  box-shadow: 0 0 0 2px rgba(196, 113, 74, 0.45) !important;
+}

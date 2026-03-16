@@ -439,3 +439,179 @@
   align-items: center;
   gap: 5px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Library meta row (recipe count + select-all button)
+══════════════════════════════════════════════════════════════════════════════ */
+.library-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 4px;
+  min-height: 32px;
+}
+
+.select-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.select-all-btn:hover {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+}
+
+.select-all-btn.active {
+  border-color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.08);
+  color: var(--terracotta);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Floating selection toolbar
+   Slides up from the bottom when 1 or more recipes are selected.
+══════════════════════════════════════════════════════════════════════════════ */
+.selection-toolbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  /* Animate in from below */
+  animation: toolbar-slide-up 0.2s ease forwards;
+  /* Don't let it get too wide or go off-screen on mobile */
+  width: calc(100% - 32px);
+  max-width: 600px;
+}
+
+@keyframes toolbar-slide-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0);    }
+}
+
+.selection-toolbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* Wrap on very small screens */
+  flex-wrap: wrap;
+}
+
+.selection-count {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.selection-count svg {
+  color: var(--terracotta);
+  flex-shrink: 0;
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.selection-confirm-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Base button style */
+.selection-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.selection-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.selection-btn--ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.selection-btn--ghost:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.selection-btn--cancel {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.selection-btn--cancel:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+}
+
+.selection-btn--danger {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: white;
+}
+.selection-btn--danger:hover:not(:disabled) {
+  background: #a93226;
+  border-color: #a93226;
+}
+
+/* ── Mobile adjustments ──────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .selection-toolbar {
+    bottom: 16px;
+    width: calc(100% - 24px);
+  }
+  .selection-toolbar-inner {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .selection-confirm-label {
+    font-size: 12px;
+    white-space: normal;
+  }
+  .selection-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}

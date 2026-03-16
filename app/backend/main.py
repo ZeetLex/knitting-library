@@ -376,6 +376,15 @@ def init_db():
     conn.execute("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?",
                  (datetime.utcnow().isoformat(),))
 
+    # Clean up stale import_queue entries: if a recipe was already confirmed
+    # (exists in the recipes table) but its queue entry is still 'staged',
+    # mark it done. This can happen if the container restarted mid-confirm.
+    conn.execute("""
+        UPDATE import_queue SET status='done'
+        WHERE status='staged'
+        AND recipe_id IN (SELECT id FROM recipes)
+    """)
+
     # Seed default admin on fresh install
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         conn.execute(

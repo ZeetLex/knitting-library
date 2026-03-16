@@ -4,15 +4,35 @@ import { thumbnailUrl } from '../utils/api';
 import { useApp } from '../utils/AppContext';
 import './RecipeCard.css';
 
-export default function RecipeCard({ recipe, onClick, style }) {
+export default function RecipeCard({ recipe, onClick, style, selectionMode, selected, onToggleSelect }) {
   const { t } = useApp();
   const [imgError, setImgError] = useState(false);
   const status = recipe.project_status || 'none';
 
+  const handleCardClick = () => {
+    if (selectionMode) {
+      // In selection mode the whole card acts as a toggle
+      onToggleSelect(recipe.id);
+    } else {
+      onClick();
+    }
+  };
+
+  const handleCheckboxClick = (e) => {
+    // Prevent the click from bubbling up to handleCardClick
+    e.stopPropagation();
+    onToggleSelect(recipe.id);
+  };
+
   return (
     <button
-      className={`recipe-card fade-in ${status !== 'none' ? `recipe-card--${status}` : ''}`}
-      onClick={onClick}
+      className={[
+        'recipe-card fade-in',
+        status !== 'none' ? `recipe-card--${status}` : '',
+        selectionMode ? 'recipe-card--selectable' : '',
+        selected       ? 'recipe-card--selected'   : '',
+      ].join(' ')}
+      onClick={handleCardClick}
       style={style}
       aria-label={`Open ${recipe.title}`}
     >
@@ -29,10 +49,28 @@ export default function RecipeCard({ recipe, onClick, style }) {
             <span>{recipe.file_type === 'pdf' ? '📄' : '🖼️'}</span>
           </div>
         )}
+
+        {/* ── Selection checkbox — top-left of thumbnail ── */}
+        {/* Always in the DOM so CSS can animate it in/out smoothly */}
+        <button
+          className={[
+            'recipe-select-btn',
+            selectionMode ? 'visible' : '',
+            selected      ? 'checked' : '',
+          ].join(' ')}
+          onClick={handleCheckboxClick}
+          aria-label={selected ? 'Deselect recipe' : 'Select recipe'}
+          tabIndex={selectionMode ? 0 : -1}
+        >
+          {selected
+            ? <CheckCircle size={16} />
+            : <span className="recipe-select-circle" />
+          }
+        </button>
+
         <span className="recipe-type-badge">
           {recipe.file_type === 'pdf' ? 'PDF' : 'IMG'}
         </span>
-        {/* Project status overlay badge */}
         {status === 'active' && (
           <span className="recipe-status-badge recipe-status-badge--active">
             <Play size={10} /> {t('projectActive')}

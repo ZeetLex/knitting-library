@@ -32,7 +32,8 @@ function AppInner() {
     getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
   }, []);
 
-  useEffect(() => { checkImport(); }, [checkImport]);
+  // Only poll import queue once user is confirmed logged in.
+  useEffect(() => { if (user) checkImport(); }, [user, checkImport]);
 
   const handleUploadSuccess = useCallback(() => {
     setUploadOpen(false);

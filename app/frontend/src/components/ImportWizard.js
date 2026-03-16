@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X, FileText, Image, ChevronRight, SkipForward, StopCircle,
@@ -12,6 +12,31 @@ import {
   fetchPdfPages, pdfPageUrl, imageUrl, checkImportDuplicate,
 } from '../utils/api';
 import './ImportWizard.css';
+
+// ── Error boundary ────────────────────────────────────────────────────────────
+// MUST come after imports. Catches any JS crash inside the wizard and shows
+// the error message instead of a white screen.
+class WizardErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '32px', color: 'var(--text)', fontFamily: 'monospace' }}>
+          <h3 style={{ color: 'red', marginBottom: 12 }}>Wizard crashed — error details:</h3>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: 'var(--bg-hover)', padding: 16, borderRadius: 8, overflowX: 'auto' }}>
+            {this.state.error.message}{'\n\n'}{this.state.error.stack}
+          </pre>
+          <button style={{ marginTop: 16, padding: '8px 16px', cursor: 'pointer' }}
+            onClick={() => this.setState({ error: null })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const PDF_EXT    = '.pdf';
@@ -93,19 +118,14 @@ function PillInput({ label, values, allOptions, onChange, placeholder }) {
 }
 
 // ── ViewerPage — single page with spinner until loaded ────────────────────────
-// Using a component (not inline img) ensures React treats each page as a
-// distinct element with its own lifecycle. This prevents the "blank on first
-// mount" issue caused by lazy loading and React reconciliation timing.
 function ViewerPage({ src, alt }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError]   = useState(false);
   const imgRef = useRef(null);
 
-  // Force a reload if the image src changes (e.g. cursor moves to next item)
   useEffect(() => {
     setLoaded(false);
     setError(false);
-    // If the browser already has this in cache, onLoad won't fire — check immediately
     if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
       setLoaded(true);
     }
@@ -284,6 +304,7 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
   const [description, setDescription] = useState('');
   const [saving, setSaving]         = useState(false);
   const [skipConfirm, setSkipConfirm] = useState(false);
+  const [dupWarning, setDupWarning] = useState(null);
 
   // Preview pages for the current item
   const [pages, setPages]           = useState([]);
@@ -307,9 +328,6 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
 
     if (recipe?.file_type === 'pdf') {
       setPageType('pdf');
-      // Fresh uploads include pdf_pages directly — use them to avoid a race condition
-      // where the browser might cache a failed request before files are fully flushed.
-      // Resumed items (from getImportQueue) won't have pdf_pages, so fall back to fetch.
       if (item.pdf_pages && item.pdf_pages.length > 0) {
         setPages(item.pdf_pages);
         setPagesLoading(false);
@@ -328,10 +346,31 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
     }
   }, [cursor, items]);
 
+  // ── advance: remove the current item and move to the next one ────────────
+  // FIX: setCursor must NEVER be called inside a setItems updater function.
+  // Doing so causes React to process the two state updates in separate render
+  // cycles, producing one frame where items has shrunk but cursor still points
+  // at the old (now out-of-bounds) index. That undefined currentItem then
+  // cascades into a ReferenceError crash during render.
+  //
+  // The correct pattern is:
+  //   1. setItems — remove the finished item
+  //   2. A separate useEffect clamps the cursor after every items change
   const advance = useCallback(() => {
     setItems(prev => prev.filter((_, i) => i !== cursor));
     setSaving(false);
+    setDupWarning(null);
   }, [cursor]);
+
+  // Clamp cursor after every items change so it is always a valid index.
+  // This replaces the old inline setCursor-inside-setItems pattern.
+  useEffect(() => {
+    if (items.length === 0) {
+      setCursor(0);
+    } else {
+      setCursor(prev => Math.min(prev, items.length - 1));
+    }
+  }, [items.length]);
 
   const doSave = async () => {
     setSaving(true); setDupWarning(null);
@@ -349,7 +388,6 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
 
   const handleSave = async () => {
     if (!title.trim()) return;
-    // Check for duplicates before confirming
     try {
       const dupes = await checkImportDuplicate(items[cursor].recipe_id, title.trim());
       if (dupes.content_duplicates.length > 0 || dupes.title_duplicates.length > 0) {
@@ -380,6 +418,10 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
 
   const currentItem = items[cursor];
 
+  // Safety guard: cursor and items can be briefly out of sync during the
+  // React state update cycle. Return null for that single frame.
+  if (!currentItem) return null;
+
   return (
     <>
       <div className="iw-progress-track">
@@ -405,7 +447,7 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
               ))}
             </div>
           </div>
-          {/* Edit panel — split into viewer (top/left) + form (bottom/right) */}
+          {/* Edit panel */}
           <div className="iw-edit-panel">
 
             {/* ── Page viewer ── */}
@@ -474,33 +516,33 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
       </div>
       {!skipConfirm && (
         <>
-        {dupWarning && (
-          <div className="iw-dup-warning">
-            <AlertTriangle size={16} className="dup-icon" />
-            <div className="dup-warning-content">
-              <strong>Possible duplicate</strong>
-              {dupWarning.content_duplicates.length > 0 && (
-                <p>Same file already exists: <em>{dupWarning.content_duplicates.map(d => d.title).join(', ')}</em></p>
-              )}
-              {dupWarning.title_duplicates.length > 0 && (
-                <p>Same title already exists: <em>{dupWarning.title_duplicates.map(d => d.title).join(', ')}</em></p>
-              )}
-              <div className="dup-actions">
-                <button className="btn-sm btn-ghost" onClick={() => setDupWarning(null)}>Go back</button>
-                <button className="btn-sm btn-warning" onClick={doSave}>Save Anyway</button>
+          {dupWarning && (
+            <div className="iw-dup-warning">
+              <AlertTriangle size={16} className="dup-icon" />
+              <div className="dup-warning-content">
+                <strong>Possible duplicate</strong>
+                {dupWarning.content_duplicates.length > 0 && (
+                  <p>Same file already exists: <em>{dupWarning.content_duplicates.map(d => d.title).join(', ')}</em></p>
+                )}
+                {dupWarning.title_duplicates.length > 0 && (
+                  <p>Same title already exists: <em>{dupWarning.title_duplicates.map(d => d.title).join(', ')}</em></p>
+                )}
+                <div className="dup-actions">
+                  <button className="btn-sm btn-ghost" onClick={() => setDupWarning(null)}>Go back</button>
+                  <button className="btn-sm btn-warning" onClick={doSave}>Save Anyway</button>
+                </div>
               </div>
             </div>
+          )}
+          <div className="iw-footer">
+            <div className="iw-footer-left">
+              <button className="iw-btn-ghost" onClick={()=>setSkipConfirm(true)}><SkipForward size={15}/> {t('importSkip')}</button>
+              <button className="iw-btn-ghost" onClick={onClose}><StopCircle size={15}/> {t('importStopForNow')}</button>
+            </div>
+            <button className="iw-btn-primary" onClick={handleSave} disabled={!title.trim()||saving}>
+              {saving ? '…' : <>{t('importSaveNext')} <ChevronRight size={15}/></>}
+            </button>
           </div>
-        )}
-        <div className="iw-footer">
-          <div className="iw-footer-left">
-            <button className="iw-btn-ghost" onClick={()=>setSkipConfirm(true)}><SkipForward size={15}/> {t('importSkip')}</button>
-            <button className="iw-btn-ghost" onClick={onClose}><StopCircle size={15}/> {t('importStopForNow')}</button>
-          </div>
-          <button className="iw-btn-primary" onClick={handleSave} disabled={!title.trim()||saving}>
-            {saving ? '…' : <>{t('importSaveNext')} <ChevronRight size={15}/></>}
-          </button>
-        </div>
         </>
       )}
     </>
@@ -548,7 +590,9 @@ export default function ImportWizard({ onClose, onRecipeAdded }) {
           <UploadPhase onGroupsReady={items => { setQueueItems(items); setPhase('wizard'); }} onClose={onClose} t={t} />
         )}
         {phase === 'wizard' && (
-          <WizardPhase initialItems={queueItems} onClose={onClose} onRecipeAdded={onRecipeAdded} t={t} />
+          <WizardErrorBoundary>
+            <WizardPhase initialItems={queueItems} onClose={onClose} onRecipeAdded={onRecipeAdded} t={t} />
+          </WizardErrorBoundary>
         )}
       </div>
     </div>,
