@@ -1,0 +1,431 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   KnittingToolbar.css  — Row counter (with saves) + Notes panel
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── FAB ────────────────────────────────────────────────────────────────────── */
+.kt-fab {
+  position: fixed;
+  bottom: 72px;
+  right: 16px;
+  z-index: 120;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--terracotta);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.kt-fab:hover { background: var(--terracotta-light); transform: scale(1.07); }
+.kt-fab--active { background: var(--navy); }
+.kt-fab--active:hover { background: var(--navy-mid); }
+@media (min-width: 769px) { .kt-fab { bottom: 24px; } }
+
+/* ── Backdrop ───────────────────────────────────────────────────────────────── */
+.kt-backdrop {
+  position: fixed; inset: 0; z-index: 118;
+  background: rgba(0,0,0,0.38);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+@media (min-width: 769px) { .kt-backdrop { display: none; } }
+
+/* ── Panel ──────────────────────────────────────────────────────────────────── */
+.kt-panel {
+  position: fixed;
+  top: 60px; bottom: 0; right: 0;
+  z-index: 119;
+  width: min(340px, 92vw);
+  background: var(--card-bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -6px 0 32px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(110%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: calc(100dvh - 60px);
+}
+@media (min-width: 641px) { .kt-panel { top: 72px; max-height: calc(100dvh - 72px); } }
+.kt-panel--open { transform: translateX(0); }
+
+/* ── Panel header ───────────────────────────────────────────────────────────── */
+.kt-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+}
+.kt-panel-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--terracotta);
+}
+.kt-close {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--text-secondary);
+  transition: var(--transition);
+}
+.kt-close:hover { border-color: var(--navy); color: var(--navy); }
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+.kt-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary); flex-shrink: 0;
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.kt-tabs::-webkit-scrollbar { display: none; }
+.kt-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 10px 6px; border: none; background: none; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500;
+  color: var(--text-secondary); transition: var(--transition);
+  position: relative; white-space: nowrap; min-width: 80px;
+}
+.kt-tab:hover { color: var(--terracotta); background: var(--bg-hover); }
+.kt-tab--active { color: var(--terracotta); font-weight: 700; }
+.kt-tab--active::after {
+  content: ''; position: absolute; bottom: 0; left: 15%; right: 15%;
+  height: 2.5px; background: var(--terracotta); border-radius: 2px 2px 0 0;
+}
+.kt-tab-badge {
+  position: absolute; top: 6px; right: 8px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  background: var(--terracotta); color: #fff;
+  border-radius: 100px; font-size: 9px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────────── */
+.kt-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── Tool container ─────────────────────────────────────────────────────────── */
+.kt-tool {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 20px; padding: 28px 20px 32px;
+}
+.kt-tool--notes { align-items: stretch; padding: 16px; gap: 14px; }
+
+/* ── Counter display ────────────────────────────────────────────────────────── */
+.kt-counter-display {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
+}
+.kt-counter-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-light);
+}
+.kt-counter-number {
+  font-family: 'Playfair Display', serif;
+  font-size: 72px; font-weight: 700; line-height: 1;
+  color: var(--text-primary); letter-spacing: -2px;
+  min-width: 3ch; text-align: center;
+}
+
+/* ── Large +/- buttons ──────────────────────────────────────────────────────── */
+.kt-counter-btns { display: flex; gap: 14px; width: 100%; justify-content: center; }
+
+.kt-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-weight: 600;
+  transition: var(--transition); min-height: 44px;
+}
+.kt-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.kt-btn--lg { width: 100px; height: 64px; font-size: 26px; border-radius: 12px; }
+
+.kt-btn--down { background: var(--bg-secondary); color: var(--text-primary); }
+.kt-btn--down:not(:disabled):hover { background: var(--bg-hover); }
+.kt-btn--down:not(:disabled):active { transform: scale(0.94); }
+
+.kt-btn--up { background: var(--terracotta); color: #fff; }
+.kt-btn--up:not(:disabled):hover { background: var(--terracotta-light); }
+.kt-btn--up:not(:disabled):active { transform: scale(0.94); }
+
+.kt-btn--sm { gap: 5px; padding: 8px 14px; font-size: 12px; }
+
+.kt-btn--ghost {
+  background: var(--bg-secondary); color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+}
+.kt-btn--ghost:not(:disabled):hover { border-color: var(--navy); color: var(--navy); }
+
+.kt-btn--locked {
+  background: rgba(196,113,74,0.12); color: var(--terracotta);
+  border: 1.5px solid var(--terracotta);
+}
+.kt-btn--locked:hover { background: rgba(196,113,74,0.2); }
+
+/* Save button — teal/navy accent so it stands out from Reset */
+.kt-btn--save {
+  background: var(--navy);
+  color: #fff;
+  gap: 5px; padding: 8px 14px; font-size: 12px;
+  border: 1.5px solid var(--navy);
+}
+.kt-btn--save:hover { opacity: 0.85; }
+
+.kt-btn--accent {
+  background: var(--terracotta); color: #fff;
+  padding: 10px 16px; font-size: 13px; border-radius: var(--radius-sm); flex-shrink: 0;
+}
+.kt-btn--accent:not(:disabled):hover { background: var(--terracotta-light); }
+.kt-btn--accent:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.kt-counter-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+.kt-locked-notice {
+  font-size: 12px; color: var(--terracotta); text-align: center;
+  background: rgba(196,113,74,0.08); border-radius: var(--radius-sm);
+  padding: 8px 12px; width: 100%;
+}
+
+/* ── Saved rows section ─────────────────────────────────────────────────────── */
+.kt-saves-section {
+  width: 100%;
+  display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+.kt-saves-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-light);
+}
+.kt-saves-count {
+  background: var(--bg-secondary); color: var(--text-secondary);
+  border-radius: 100px; font-size: 11px; font-weight: 700;
+  padding: 1px 8px;
+}
+.kt-saves-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+
+/* ── Save card ──────────────────────────────────────────────────────────────── */
+.kt-save-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.kt-save-card-main {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: none; border: none; cursor: pointer;
+  gap: 8px; text-align: left; transition: var(--transition);
+}
+.kt-save-card-main:hover { background: var(--bg-hover); }
+
+.kt-save-card-left { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.kt-save-card-name {
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kt-save-card-cat {
+  font-size: 11px; color: var(--terracotta); font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.kt-save-card-right {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-secondary); flex-shrink: 0;
+}
+.kt-save-card-row {
+  font-size: 13px; color: var(--text-secondary); white-space: nowrap;
+}
+.kt-save-card-row strong { color: var(--text-primary); font-weight: 700; }
+
+/* Expanded detail */
+.kt-save-card-detail {
+  padding: 0 12px 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  border-top: 1px solid var(--border);
+}
+.kt-save-card-note {
+  font-size: 13px; color: var(--text-primary); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  margin: 8px 0 0;
+}
+.kt-save-card-note--empty { color: var(--text-light); font-style: italic; }
+
+.kt-save-card-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.kt-save-card-ts { font-size: 11px; color: var(--text-light); }
+.kt-save-card-btns { display: flex; gap: 4px; }
+
+.kt-icon-btn {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; color: var(--text-secondary); transition: var(--transition);
+}
+.kt-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-secondary); }
+.kt-icon-btn--danger:hover { background: rgba(224,85,85,0.08); color: #e05555; border-color: #e05555; }
+
+/* ── Save modal ─────────────────────────────────────────────────────────────── */
+.kt-modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0;
+}
+@media (min-width: 641px) {
+  .kt-modal-overlay { align-items: center; padding: 20px; }
+}
+.kt-modal {
+  background: var(--card-bg);
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%; max-width: 480px;
+  max-height: 92dvh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: ktSlideUp 0.22s ease;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (min-width: 641px) {
+  .kt-modal { border-radius: var(--radius); padding-bottom: 0; }
+}
+@keyframes ktSlideUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.kt-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 16px 0;
+}
+.kt-modal-title {
+  font-family: 'Playfair Display', serif; font-size: 18px;
+  font-weight: 700; color: var(--text-primary);
+}
+.kt-modal-row-badge {
+  margin: 10px 16px 0;
+  display: inline-flex; align-self: flex-start;
+  padding: 4px 12px;
+  background: rgba(196,113,74,0.12); color: var(--terracotta);
+  border-radius: 100px; font-size: 13px; font-weight: 700;
+}
+.kt-modal-body {
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.kt-modal-label {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 4px; display: block;
+}
+.kt-modal-input {
+  width: 100%; padding: 10px 12px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif; font-size: 16px;
+  color: var(--text-primary); background: var(--input-bg);
+  outline: none; transition: var(--transition);
+  -webkit-appearance: none; box-sizing: border-box;
+}
+.kt-modal-input:focus { border-color: var(--terracotta); box-shadow: 0 0 0 3px rgba(196,113,74,0.1); }
+.kt-modal-textarea { resize: vertical; min-height: 80px; }
+
+/* ── PillInput (category field in Save modal) ───────────────────────────────── */
+.kt-pill-wrap {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  background: var(--input-bg); border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 10px;
+  cursor: text; min-height: 42px; transition: var(--transition);
+}
+.kt-pill-wrap:focus-within {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196,113,74,0.1);
+}
+.kt-pill-token {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--terracotta); color: #fff;
+  font-size: 12px; font-weight: 600;
+  padding: 3px 8px 3px 10px; border-radius: 20px; white-space: nowrap;
+}
+.kt-pill-token-x {
+  background: none; border: none; color: rgba(255,255,255,0.75);
+  cursor: pointer; font-size: 15px; padding: 0; line-height: 1;
+}
+.kt-pill-token-x:hover { color: #fff; }
+.kt-pill-bare-input {
+  flex: 1; min-width: 80px; border: none; background: none;
+  font-size: 14px; color: var(--text-primary); padding: 0;
+  outline: none; font-family: 'DM Sans', sans-serif;
+}
+.kt-pill-suggestions {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 300; list-style: none; margin: 3px 0 0; padding: 4px 0;
+  max-height: 160px; overflow-y: auto;
+}
+.kt-pill-suggestions li {
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+  color: var(--text-primary);
+}
+.kt-pill-suggestions li:hover { background: var(--bg-hover); }
+
+.kt-modal-footer {
+  padding: 12px 16px 16px;
+  display: flex; justify-content: flex-end; gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Notes ──────────────────────────────────────────────────────────────────── */
+.kt-note-compose {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 10px;
+}
+.kt-note-input {
+  width: 100%; resize: none;
+  font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text-primary);
+  background: var(--input-bg); border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 10px;
+  outline: none; transition: var(--transition); box-sizing: border-box;
+  -webkit-appearance: none;
+}
+.kt-note-input:focus { border-color: var(--terracotta); box-shadow: 0 0 0 3px rgba(196,113,74,0.1); }
+.kt-note-input::placeholder { color: var(--text-light); }
+
+.kt-note-compose-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+}
+.kt-attach-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;
+}
+.kt-attach-label input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--terracotta); cursor: pointer; }
+
+.kt-notes-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.kt-notes-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 32px 16px; color: var(--text-light); font-size: 13px; text-align: center;
+}
+.kt-note-card {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.kt-note-row-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  background: rgba(196,113,74,0.12); color: var(--terracotta);
+  border-radius: 100px; font-size: 11px; font-weight: 700; align-self: flex-start;
+}
+.kt-note-text {
+  font-size: 14px; color: var(--text-primary); line-height: 1.5;
+  word-break: break-word; white-space: pre-wrap; margin: 0;
+}
+.kt-note-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kt-note-ts { font-size: 11px; color: var(--text-light); }
+.kt-note-delete {
+  background: none; border: none; cursor: pointer; color: var(--text-light);
+  display: flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 4px; transition: var(--transition);
+  min-height: 28px; min-width: 28px;
+}
+.kt-note-delete:hover { color: #e05555; background: rgba(224,85,85,0.08); }

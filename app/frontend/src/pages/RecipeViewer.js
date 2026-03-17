@@ -4,6 +4,7 @@ import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
+import KnittingToolbar from '../components/KnittingToolbar';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
@@ -286,6 +287,9 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           </div>
         </div>
       )}
+
+      {/* ── Knitting tools panel (row/stitch/repeat/notes) ── */}
+      <KnittingToolbar recipeId={recipeId} t={t} />
     </div>
   );
 }
