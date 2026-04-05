@@ -1,0 +1,30 @@
+# docker-compose.yml
+#
+# Usage:
+#   docker-compose up -d           — start
+#   docker-compose down            — stop
+#   docker-compose pull            — download latest image
+#
+# To update:
+#   docker-compose down && docker-compose pull && docker-compose up -d
+#
+# Data (recipes, yarns, database) is stored in ./data and persists across updates.
+# Logs are stored in ./logs
+#
+# PUID / PGID: files written to ./data and ./logs will be owned by this uid/gid
+# on the host. Unraid default is 99/100. Linux: check with: id YOUR_USERNAME
+# Windows/Mac Docker Desktop: set to 0 or remove these lines.
+
+services:
+  app:
+    image: zeetlex/knitting-library:latest
+    container_name: knitting-library
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - PUID=99
+      - PGID=100
+    volumes:
+      - ./data:/data
+      - ./logs:/logs

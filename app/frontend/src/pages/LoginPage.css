@@ -1,0 +1,152 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Login Page
+══════════════════════════════════════════════════════════════════════════════ */
+.login-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  background: var(--bg-primary);
+  overflow-x: hidden;
+}
+
+.login-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.3s ease;
+  text-align: center;
+}
+
+@media (min-width: 480px) {
+  .login-card { padding: 44px 36px; }
+}
+
+.login-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.login-logo-icon { font-size: 44px; line-height: 1; }
+
+@media (min-width: 480px) {
+  .login-logo-icon { font-size: 48px; }
+}
+
+.login-app-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+@media (min-width: 480px) {
+  .login-app-name { font-size: 26px; }
+}
+
+.login-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+}
+
+.login-field { display: flex; flex-direction: column; gap: 5px; }
+
+.login-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.login-field input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  outline: none;
+  transition: var(--transition);
+  -webkit-appearance: none;
+  max-width: 100%;
+}
+
+.login-field input:focus {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196,113,74,0.12);
+}
+
+.login-field input:disabled { opacity: 0.6; }
+
+.login-error {
+  font-size: 13px;
+  color: #e05555;
+  background: rgba(224,85,85,0.08);
+  border: 1px solid rgba(224,85,85,0.2);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.login-btn {
+  width: 100%;
+  height: 50px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 4px;
+}
+
+.login-btn:hover:not(:disabled) { background: var(--terracotta-light); }
+.login-btn:active { opacity: 0.85; }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 2FA step extras ───────────────────────────────────────────────────────── */
+.login-2fa-hint {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+.login-totp-input {
+  font-size: 1.8rem !important;
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.login-back-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  width: 100%;
+  text-align: center;
+}
+.login-back-link:hover { color: var(--accent); }

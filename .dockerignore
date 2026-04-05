@@ -1,0 +1,47 @@
+# Developer tools and scripts
+*.bat
+
+# Data volumes (never bake personal data into an image)
+data/
+data-test/
+
+# Logs
+logs/
+logs-test/
+*.log
+
+# Frontend build artifacts and dependencies (rebuilt fresh inside Docker)
+app/frontend/node_modules/
+app/frontend/build/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Test compose files
+docker-compose.test*.yml
+docker-compose.test*.yaml
+
+# Documentation (no value inside the image)
+README.md
+CODE_OF_CONDUCT.md
+LICENSE
+CLAUDE.md
+MEMORY.md
+
+# Environment files (secrets come via runtime env vars, never baked in)
+.env
+.env.local
+
+# AI tooling
+.claude/

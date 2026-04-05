@@ -1,0 +1,41 @@
+# Dependencies
+app/frontend/node_modules/
+
+# Build output
+app/frontend/build/
+
+# Data volumes — recipes, yarns, database (your personal files, never commit)
+data/
+data-test/
+
+# Logs
+logs/
+logs-test/
+*.log
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local development and deployment scripts
+*.bat
+
+# Local test compose file
+docker-compose.test*.yml
+docker-compose.test*.yaml
+
+# AI tooling and session files
+.claude/
+CLAUDE.md
+MEMORY.md
+TODO.md

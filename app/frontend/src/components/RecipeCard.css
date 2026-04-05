@@ -1,0 +1,280 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Recipe Card
+══════════════════════════════════════════════════════════════════════════════ */
+.recipe-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  text-align: left;
+  padding: 0;
+  /* Full grid cell width, no overflow */
+  width: 100%;
+  min-width: 0;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hover lift — only on devices that have a pointer (not touch) */
+@media (hover: hover) and (pointer: fine) {
+  .recipe-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--terracotta);
+  }
+  .recipe-card:hover .recipe-card-thumb img { transform: scale(1.04); }
+}
+
+.recipe-card:active { transform: scale(0.98); }
+
+/* ── Thumbnail ─────────────────────────────────────────────────────────────── */
+.recipe-card-thumb {
+  position: relative;
+  /* 3:4 portrait ratio — good for pattern pages */
+  aspect-ratio: 3 / 4;
+  background: var(--bg-secondary);
+  overflow: hidden;
+  /* Contain the image strictly */
+  flex-shrink: 0;
+}
+
+.recipe-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  display: block;
+}
+
+.recipe-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+
+.recipe-type-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(26,26,46,0.75);
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 100px;
+  backdrop-filter: blur(4px);
+  /* Never overflow the card */
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Info ──────────────────────────────────────────────────────────────────── */
+.recipe-card-info {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  /* Hard clamp so long text can't push width */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.recipe-card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+  /* Clamp to 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+@media (min-width: 641px) {
+  .recipe-card-title { font-size: 14px; }
+}
+
+.recipe-card-categories {
+  font-size: 11px;
+  color: var(--terracotta);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recipe-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+  /* Don't let tags overflow card */
+  overflow: hidden;
+}
+
+.recipe-tag {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.recipe-tag-more {
+  font-size: 10px;
+  color: var(--text-light);
+  padding: 2px 2px;
+  white-space: nowrap;
+}
+
+/* ── Project status overlay badge ─────────────────────────────────────────── */
+.recipe-status-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.recipe-status-badge--active {
+  background: rgba(78, 154, 244, 0.85);
+  color: white;
+}
+.recipe-status-badge--finished {
+  background: rgba(76, 175, 80, 0.85);
+  color: white;
+}
+
+/* Score badge — bottom-right of thumbnail, shows on any recipe with feedback */
+.recipe-score-badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(180, 80, 40, 0.90);
+  color: white;
+  line-height: 1;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  letter-spacing: 0.02em;
+}
+
+/* Card border tint for active/finished projects */
+.recipe-card--active  { box-shadow: 0 0 0 2px rgba(78, 154, 244, 0.5); }
+.recipe-card--finished { box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.4); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Selection mode
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* The select button sits in the top-left of the thumbnail */
+.recipe-select-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(26, 26, 46, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  /* Hidden by default — slides in when selectionMode is active */
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  pointer-events: none;
+}
+
+/* Show the button when selection mode is on */
+.recipe-select-btn.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* The empty circle (unselected state) */
+.recipe-select-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  display: block;
+}
+
+/* Checked state — terracotta fill */
+.recipe-select-btn.checked {
+  background: var(--terracotta);
+  color: white;
+}
+
+.recipe-select-btn.checked svg {
+  color: white;
+}
+
+/* Subtle scale-down on hover so the button feels pressable */
+@media (hover: hover) and (pointer: fine) {
+  .recipe-select-btn:hover {
+    transform: scale(1.1);
+  }
+}
+
+/* Card border highlight when selected */
+.recipe-card--selected {
+  border-color: var(--terracotta) !important;
+  box-shadow: 0 0 0 2px rgba(196, 113, 74, 0.45) !important;
+}
+
+/* Dim the thumbnail slightly when selected so the checkbox pops */
+.recipe-card--selected .recipe-card-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(196, 113, 74, 0.12);
+  pointer-events: none;
+}
+
+/* In selection mode, suppress the normal hover lift so click = select */
+.recipe-card--selectable:hover {
+  transform: none !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-color: var(--border) !important;
+}
+.recipe-card--selectable.recipe-card--selected:hover {
+  border-color: var(--terracotta) !important;
+  box-shadow: 0 0 0 2px rgba(196, 113, 74, 0.45) !important;
+}

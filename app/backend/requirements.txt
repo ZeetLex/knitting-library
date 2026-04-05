@@ -1,0 +1,10 @@
+fastapi==0.135.1
+uvicorn[standard]==0.34.3
+python-multipart==0.0.22
+Pillow==12.1.1
+pdf2image==1.17.0
+httpx==0.28.1
+beautifulsoup4==4.13.4
+pyotp==2.9.0
+qrcode==8.0
+bcrypt==4.2.1

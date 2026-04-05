@@ -1,0 +1,105 @@
+/**
+ * StatisticsPage.css
+ * Styles for the statistics overview page.
+ * Matches the theme from index.css using CSS variables.
+ */
+
+.stats-page {
+  padding: 24px;
+  min-height: 100%;
+}
+
+.stats-header {
+  margin-bottom: 32px;
+}
+
+.stats-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.stats-header-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.stats-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-muted);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.stats-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  background: var(--gradient, var(--bg-secondary));
+  color: var(--text-primary);
+}
+
+.stats-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0 0 4px 0;
+}
+
+.stats-card-value {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.stats-card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Gradient colors for each card type */
+.stats-card--from-orange-to-red      { --gradient: linear-gradient(135deg, #FF9A5E 0%, #FF6B6B 100%); }
+.stats-card--from-green-to-emerald   { --gradient: linear-gradient(135deg, #86EFAC 0%, #34D399 100%); }
+.stats-card--from-blue-to-indigo     { --gradient: linear-gradient(135deg, #60A5FA 0%, #4F46E5 100%); }
+.stats-card--from-purple-to-pink     { --gradient: linear-gradient(135deg, #C084FC 0%, #F472B6 100%); }
+.stats-card--from-teal-to-blue       { --gradient: linear-gradient(135deg, #2DD4BF 0%, #06B6D4 100%); }
+.stats-card--from-cyan-to-blue       { --gradient: linear-gradient(135deg, #22D3EE 0%, #3B82F6 100%); }
+.stats-card--from-indigo-to-purple   { --gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); }
+.stats-card--from-violet-to-fuchsia  { --gradient: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%); }

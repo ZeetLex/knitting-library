@@ -1,0 +1,92 @@
+/* ══════════════════════════════════════════════════════════════════
+   Perspective Crop Modal — shared component
+   ══════════════════════════════════════════════════════════════════ */
+.crop-modal-overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+.crop-modal {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  max-width: 95vw;
+  max-height: 95vh;
+  overflow: hidden;
+}
+
+.crop-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.crop-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.crop-modal-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  flex-basis: 100%;
+  order: 3;
+}
+
+.crop-modal-header .modal-close {
+  margin-left: auto;
+  order: 2;
+}
+
+.crop-canvas-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  /* 24px gives desktop handles breathing room away from the modal edge */
+  padding: 24px;
+  flex: 1;
+  background: #111;
+}
+
+.crop-base-img {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.crop-overlay-canvas {
+  position: absolute;
+  top: 24px;   /* must match .crop-canvas-wrap padding */
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.crop-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  /* 44px gives a thumb-sized safe zone around every corner handle */
+  .crop-canvas-wrap  { padding: 44px; }
+  .crop-overlay-canvas { top: 44px; }  /* must match padding above */
+  .crop-modal-header { padding: 10px 14px 8px; }
+  .crop-modal-footer { padding: 8px 14px; }
+}

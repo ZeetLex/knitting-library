@@ -1,0 +1,182 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Yarn Library — extends Library.css shared styles
+   Only yarn-specific overrides are here.
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* Allow the field dropdown to escape the sticky controls bar (yarn page only) */
+.yarn-library .library-controls {
+  overflow: visible;
+}
+.yarn-library .library-controls-inner {
+  overflow: visible;
+}
+
+/* ── Combined search: field selector + input in one bar ─────────────────── */
+.yarn-search-combined {
+  display: flex !important;
+  align-items: center;
+  padding: 0 !important;
+  overflow: visible;
+  /* Match exact recipe search-input appearance */
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  height: 40px;
+}
+
+.yarn-field-selector {
+  position: relative;
+  flex-shrink: 0;
+  /* Must be above filter panel */
+  z-index: 200;
+}
+
+.yarn-field-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px 0 14px;
+  height: 38px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.yarn-field-btn:hover { color: var(--terracotta); }
+.yarn-field-btn .rotated { transform: rotate(180deg); transition: transform 0.15s; }
+
+.yarn-field-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.yarn-field-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.22);
+  /* High z-index so it always floats above filter panel */
+  z-index: 300;
+  min-width: 150px;
+  animation: slideUp 0.14s ease;
+}
+
+.yarn-field-option {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.yarn-field-option:hover  { background: var(--bg-secondary); color: var(--text-primary); }
+.yarn-field-option.active { background: rgba(196,113,74,0.12); color: var(--terracotta); font-weight: 600; }
+
+/* Input area — its own relative container so .search-icon positions correctly */
+.yarn-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* .search-icon inside yarn-input-wrap uses Library.css absolute positioning — works correctly */
+.yarn-search-input {
+  padding-left: 36px !important;
+  border: none !important;
+  border-radius: 0 var(--radius) var(--radius) 0 !important;
+  height: 38px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 100%;
+}
+/* Focus ring on the wrapper, not the input */
+.yarn-search-combined:focus-within {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 113, 74, 0.12);
+}
+.yarn-search-input:focus {
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+/* ── Colour badge on yarn card thumbnail ─────────────────────────────────── */
+.yarn-colour-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  background: rgba(0,0,0,0.52);
+  color: white;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Yarn card thumb uses same ratio as recipe cards ─────────────────────── */
+.yarn-card-item .recipe-card-thumb {
+  aspect-ratio: 4/3;
+}
+
+/* ── Colour swatch strip on yarn cards ────────────────────────────────────── */
+.yarn-card-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.yarn-card-swatch-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  background: var(--surface-alt, var(--surface));
+  flex-shrink: 0;
+}
+.yarn-card-swatch-dot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.yarn-card-swatches-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}

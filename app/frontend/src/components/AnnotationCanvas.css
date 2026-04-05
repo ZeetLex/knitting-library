@@ -1,0 +1,165 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Annotation Canvas
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Image canvas wrapper ─────────────────────────────────────────────────── */
+.iac-wrap {
+  position: relative;  /* toolbar button anchors here */
+  width: 100%;
+}
+
+/* The canvas IS the image — fills full width, height grows naturally */
+.iac-canvas {
+  display: block;
+  width: 100%;   /* fill container */
+  height: auto;  /* aspect ratio set via JS (canvas.style.height) */
+  border-radius: 4px;
+  cursor: default;
+  touch-action: auto;   /* allow scroll/pinch by default */
+  user-select: none;
+}
+
+/* In drawing mode: block scroll so brush strokes register instead */
+.iac-canvas.drawing {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* ── PDF annotation layer ─────────────────────────────────────────────────── */
+.pdf-annotation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.pdf-annotation-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  touch-action: none;
+}
+.pdf-annotation-canvas.drawing {
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+/* ── Toggle button ────────────────────────────────────────────────────────── */
+/* Sticks to the bottom-right of .iac-wrap / .pdf-annotation-layer */
+.annotation-toggle {
+  pointer-events: all;
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  background: rgba(26,26,46,0.85);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+  white-space: nowrap;
+}
+.annotation-toggle:hover  { background: rgba(26,26,46,0.98); }
+.annotation-toggle.active { background: var(--terracotta); border-color: var(--terracotta-light); }
+.annotation-toggle.has-marks:not(.active) { border-color: var(--terracotta); }
+
+.annotation-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  flex-shrink: 0;
+}
+.annotation-toggle.active .annotation-dot { background: white; }
+
+/* ── Toolbar panel ────────────────────────────────────────────────────────── */
+/* Opens upward from the toggle button */
+.annotation-toolbar {
+  pointer-events: all;
+  position: absolute;
+  bottom: 50px;   /* just above the toggle button */
+  right: 10px;
+  background: rgba(18,18,30,0.96);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 20;
+  min-width: 210px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  animation: slideUp 0.18s ease;
+}
+
+.at-divider { height: 1px; background: rgba(255,255,255,0.1); }
+.at-group { display: flex; gap: 6px; align-items: center; }
+
+.at-tool-btn {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.7);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.at-tool-btn:hover  { background: rgba(255,255,255,0.15); color: white; }
+.at-tool-btn.active { background: var(--terracotta); border-color: var(--terracotta-light); color: white; }
+
+.at-colors { flex-wrap: wrap; gap: 6px; }
+.at-color-btn {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  padding: 0; flex-shrink: 0; display: block;
+}
+.at-color-btn:hover  { transform: scale(1.18); }
+.at-color-btn.active { border-color: white; transform: scale(1.18); }
+.at-color-custom { position: relative; cursor: pointer; display: flex; }
+.at-color-custom input[type="color"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  width: 100%; height: 100%; padding: 0; border: none;
+}
+
+.at-sliders { flex-direction: column; align-items: stretch; gap: 5px; }
+.at-slider-label {
+  display: flex; justify-content: space-between;
+  color: rgba(255,255,255,0.65); font-size: 11px; font-weight: 500;
+}
+.at-slider-val { color: white; }
+.at-slider { width: 100%; accent-color: var(--terracotta); cursor: pointer; height: 4px; }
+
+.at-actions { gap: 6px; }
+.at-action-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 7px 8px;
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  border-radius: 8px; color: rgba(255,255,255,0.7);
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.at-action-btn:hover:not(:disabled)       { background: rgba(255,255,255,0.15); color: white; }
+.at-action-btn:disabled                   { opacity: 0.3; cursor: not-allowed; }
+.at-action-btn.danger:hover:not(:disabled){ background: rgba(224,85,85,0.3); border-color: #e05555; color: #ff8080; }
+
+@media (max-width: 640px) {
+  .annotation-toolbar { right: 6px; min-width: 190px; padding: 10px; }
+  .annotation-toggle  { right: 6px; padding: 6px 9px; font-size: 11px; }
+}

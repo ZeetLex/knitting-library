@@ -1,0 +1,503 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   Header
+══════════════════════════════════════════════════════════════════════════════ */
+.header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  background: var(--header-bg);
+  box-shadow: 0 2px 20px rgba(0,0,0,0.3);
+  max-width: 100vw;
+  /* overflow: hidden removed — it clips dropdowns that extend below the header */
+  /* Push header below iOS status bar in PWA / standalone mode */
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(14px, env(safe-area-inset-right, 14px)) 0 max(14px, env(safe-area-inset-left, 14px));
+  gap: 8px;
+  /* overflow: hidden removed — clips the split-button dropdown */
+}
+
+@media (min-width: 641px) {
+  .header-inner {
+    height: 72px;
+    padding: 0 24px;
+    gap: 12px;
+  }
+}
+
+/* ── Logo ─────────────────────────────────────────────────────────────────── */
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 1;      /* allow shrinking if right side needs space */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.header-logo-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .header-logo-icon { font-size: 26px; }
+}
+
+.header-logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.header-logo-main {
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 641px) {
+  .header-logo-main { font-size: 19px; }
+}
+
+.header-logo-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--terracotta-light);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Right cluster ──────────────────────────────────────────────────────────── */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .header-right { gap: 8px; }
+}
+
+/* Upload button — icon only on mobile, icon+text on desktop */
+.header-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.header-upload-btn span { display: none; }
+
+@media (min-width: 641px) {
+  .header-upload-btn {
+    border-radius: var(--radius-sm);
+    width: auto;
+    height: auto;
+    padding: 9px 16px;
+  }
+  .header-upload-btn span { display: inline; }
+}
+
+.header-upload-btn:hover  { background: var(--terracotta-light); }
+.header-upload-btn:active { opacity: 0.8; }
+
+/* ── Split button (Add Recipe with dropdown) ─────────────────────────────── */
+.header-split-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header-split-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.header-split-main span { display: none; }
+
+.header-split-chevron {
+  display: none; /* hidden on mobile — dropdown still accessible via long press isn't needed, single button is enough */
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.25);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  width: 28px;
+  height: 38px;
+  padding: 0;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .header-split-main {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    width: auto;
+    height: 38px;
+    padding: 0 14px;
+  }
+  .header-split-main span { display: inline; }
+  .header-split-chevron  { display: flex; }
+}
+
+.header-split-main:hover,
+.header-split-chevron:hover { background: var(--terracotta-light); }
+.header-split-main:active,
+.header-split-chevron:active { opacity: 0.8; }
+
+.header-split-chevron.has-pending { background: var(--terracotta-light); }
+
+.split-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+/* ── Dropdown menu ── */
+.header-split-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
+  min-width: 220px;
+  z-index: 500;
+  overflow: hidden;
+  animation: dropdownFadeIn 0.12s ease;
+  /* Force opaque — prevent any parent transparency bleeding through */
+  opacity: 1;
+  isolation: isolate;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.split-drop-item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  color: var(--text);
+}
+
+.split-drop-item:last-child { border-bottom: none; }
+.split-drop-item:hover      { background: var(--bg-hover); }
+
+.split-drop-item svg {
+  grid-row: 1 / 3;
+  color: var(--accent);
+  align-self: center;
+}
+
+.split-drop-item span:not(.split-drop-hint):not(.split-drop-badge) {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.split-drop-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  grid-column: 2;
+  grid-row: 2;
+  font-weight: 400;
+}
+
+.split-drop-badge {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  background: var(--terracotta);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* Icon-only buttons (Settings, Stats) — hidden on mobile, shown on desktop */
+.header-icon-btn {
+  display: none; /* hidden on mobile — accessible via hamburger menu */
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .header-icon-btn {
+    display: flex;
+    width: 40px;
+    height: 40px;
+  }
+}
+
+.header-icon-btn:hover  { background: rgba(255,255,255,0.18); color: white; }
+.header-icon-btn:active { opacity: 0.7; }
+
+/* ── Mobile hamburger button ─────────────────────────────────────────────── */
+.header-mobile-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.header-mobile-menu-btn:hover  { background: rgba(255,255,255,0.18); color: white; }
+.header-mobile-menu-btn:active { opacity: 0.7; }
+
+/* Only show on mobile */
+@media (min-width: 641px) {
+  .header-mobile-menu-btn { display: none; }
+}
+
+/* ── Mobile nav dropdown ─────────────────────────────────────────────────── */
+/* .header is position:fixed, so this absolute child spans the full viewport width */
+.header-mobile-dropdown {
+  position: absolute;
+  top: 100%;          /* directly below the last header row */
+  left: 0;
+  right: 0;
+  background: var(--header-bg);
+  border-top: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  z-index: 200;
+  padding: 6px 0 12px;
+  animation: mobileMenuFadeIn 0.15s ease;
+}
+
+@keyframes mobileMenuFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Only show on mobile — on desktop the hamburger doesn't render at all */
+@media (min-width: 641px) {
+  .header-mobile-dropdown { display: none; }
+}
+
+.mobile-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 20px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.70);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+
+.mobile-nav-item:hover  { background: rgba(255,255,255,0.07); color: white; }
+.mobile-nav-item:active { background: rgba(255,255,255,0.12); }
+
+.mobile-nav-item.active {
+  color: white;
+  font-weight: 700;
+  background: rgba(255,255,255,0.06);
+  border-left: 3px solid var(--accent);
+  padding-left: 17px; /* compensate for border */
+}
+
+.mobile-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  font-size: 18px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.mobile-nav-item.active .mobile-nav-icon { color: var(--accent); }
+
+.mobile-nav-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 6px 0;
+}
+
+/* ── Tab navigation ──────────────────────────────────────────────────────── */
+.header-tabs {
+  display: none; /* hidden on mobile — use hamburger menu instead */
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+  flex: 1;
+  justify-content: center;
+  max-width: 280px;
+}
+
+@media (min-width: 641px) {
+  .header-tabs { display: flex; }
+}
+
+.header-tab {
+  padding: 0 16px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: rgba(255,255,255,0.55);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  text-transform: uppercase;
+}
+.header-tab:hover  { color: rgba(255,255,255,0.85); }
+.header-tab.active {
+  color: white;
+  border-bottom-color: var(--terracotta);
+}
+
+@media (max-width: 400px) {
+  .header-tabs { max-width: 160px; }
+  .header-tab  { padding: 0 10px; font-size: 11px; }
+}
+
+/* ── Sub-tab row (Inventory / Yarn Database) ─────────────────────────────── */
+.header--with-subtabs {
+  /* header grows to fit both rows */
+}
+
+.header-subtabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: var(--header-bg);
+}
+
+@media (min-width: 641px) {
+  .header-subtabs { padding: 0 24px; }
+}
+
+.header-subtab {
+  padding: 8px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.header-subtab.active {
+  color: white;
+  border-bottom-color: var(--terracotta);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .header-subtab:not(.active):hover { color: rgba(255,255,255,0.8); }
+}
