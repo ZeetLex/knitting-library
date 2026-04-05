@@ -8,6 +8,7 @@ import YarnViewer from './pages/YarnViewer';
 import InventoryPage from './pages/InventoryPage';
 import SettingsPage from './pages/SettingsPage';
 import StatisticsPage from './pages/StatisticsPage';
+import HelpPage from './pages/HelpPage';
 import UploadModal from './components/UploadModal';
 import YarnUploadModal from './components/YarnUploadModal';
 import ImportWizard from './components/ImportWizard';
@@ -28,6 +29,7 @@ function AppInner() {
   const [importCount, setImportCount]         = useState(0);
   const [showSettings, setShowSettings]       = useState(false);
   const [showStats, setShowStats]             = useState(false);
+  const [showHelp, setShowHelp]               = useState(false);
   const [refreshKey, setRefreshKey]           = useState(0);
   const [yarnRefreshKey, setYarnRefreshKey]   = useState(0);
 
@@ -100,6 +102,7 @@ function AppInner() {
     yarnSubTab,
     onYarnSubTabChange: handleYarnSubTabChange,
     onStatsClick: () => { setShowSettings(false); setShowStats(true); },
+    onHelpClick: () => { setShowHelp(true); setShowSettings(false); setShowStats(false); },
   };
 
   if (loading) return (
@@ -130,6 +133,15 @@ function AppInner() {
       <Header {...sharedHeaderProps} onLogoClick={() => { setShowStats(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
       <main className="app-main">
         <StatisticsPage />
+      </main>
+    </div>
+  );
+
+  if (showHelp) return (
+    <div className="app">
+      <Header {...sharedHeaderProps} onLogoClick={() => { setShowHelp(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
+      <main className="app-main">
+        <HelpPage onBack={() => setShowHelp(false)} />
       </main>
     </div>
   );

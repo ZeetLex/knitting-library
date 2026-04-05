@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, BarChart2, ChevronDown, FolderDown, FileUp, Menu, X } from 'lucide-react';
+import { Plus, Settings, BarChart2, HelpCircle, ChevronDown, FolderDown, FileUp, Menu, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './Header.css';
 
 export default function Header({
   activeTab, onTabChange,
   onUploadClick, onBulkImportClick, onLogoClick, onSettingsClick,
-  onStatsClick,
+  onStatsClick, onHelpClick,
   addLabel, importCount,
   // Sub-tab props — only used when activeTab === 'yarns'
   yarnSubTab, onYarnSubTabChange,
@@ -126,12 +126,15 @@ export default function Header({
               </button>
             )
           )}
-          {/* Settings + Stats — desktop only, available in hamburger on mobile */}
+          {/* Settings + Stats + Help — desktop only, available in hamburger on mobile */}
           <button className="header-icon-btn" onClick={onSettingsClick} title={t('settings')} aria-label={t('settings')}>
             <Settings size={20} />
           </button>
           <button className="header-icon-btn" onClick={onStatsClick} title={t('statistics')} aria-label={t('statistics')}>
             <BarChart2 size={20} />
+          </button>
+          <button className="header-icon-btn" onClick={onHelpClick} title={t('helpTooltip')} aria-label={t('helpTooltip')}>
+            <HelpCircle size={20} />
           </button>
         </div>
       </div>
@@ -164,6 +167,10 @@ export default function Header({
           <button className="mobile-nav-item" onClick={() => { setMobileMenuOpen(false); onStatsClick(); }}>
             <span className="mobile-nav-icon"><BarChart2 size={18} /></span>
             <span>{t('statistics')}</span>
+          </button>
+          <button className="mobile-nav-item" onClick={() => { setMobileMenuOpen(false); onHelpClick(); }}>
+            <span className="mobile-nav-icon"><HelpCircle size={18} /></span>
+            <span>{t('helpTooltip')}</span>
           </button>
           <button className="mobile-nav-item" onClick={() => { setMobileMenuOpen(false); onSettingsClick(); }}>
             <span className="mobile-nav-icon"><Settings size={18} /></span>
