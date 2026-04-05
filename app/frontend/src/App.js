@@ -74,7 +74,8 @@ function AppInner() {
     setActiveTab(tab);
     setViewingRecipeId(null);
     setViewingYarnId(null);
-    setShowStats(false); // Hide stats when switching tabs
+    setShowStats(false);
+    setShowSettings(false);
   };
 
   const handleYarnSubTabChange = (sub) => {
@@ -98,7 +99,7 @@ function AppInner() {
     importCount,
     yarnSubTab,
     onYarnSubTabChange: handleYarnSubTabChange,
-    onStatsClick: () => setShowStats(true),
+    onStatsClick: () => { setShowSettings(false); setShowStats(true); },
   };
 
   if (loading) return (
