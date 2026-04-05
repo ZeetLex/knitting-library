@@ -518,6 +518,46 @@ function LogsSection() {
   );
 }
 
+/* ─── Mail default templates (mirrors backend _DEFAULT_* constants) ──────── */
+const DEFAULT_FORGOT_SUBJECT = 'Your new Knitting Library password';
+const DEFAULT_FORGOT_BODY =
+`Hi {USERNAME},
+
+We received a password reset request for your Knitting Library account. A temporary password has been generated for you.
+
+────────────────────────────
+  Temporary password: {PASSWORD}
+────────────────────────────
+
+To get back in:
+  1. Log in with your temporary password
+  2. Go to Settings → Account → Change Password
+  3. Set a new password you will remember
+
+If you did not request a password reset, you can safely ignore this email — your existing password has not been changed.
+
+Happy knitting,
+Knitting Library`;
+
+const DEFAULT_WELCOME_SUBJECT = 'Welcome to your Knitting Library!';
+const DEFAULT_WELCOME_BODY =
+`Hi {USERNAME},
+
+Your Knitting Library account is ready. Here are your login details:
+
+────────────────────────────
+  Username: {USERNAME}
+  Password: {PASSWORD}
+  App URL:  {APP_URL}
+────────────────────────────
+
+Once you are logged in, we recommend changing your password right away. You can do this under Settings → Account → Change Password.
+
+Knitting Library lets you store and organise your patterns, track your projects, and keep an inventory of your yarn stash — all in one place.
+
+Happy knitting,
+Knitting Library`;
+
 /* ─── Mail Section (Admin) ────────────────────────────────────────────────── */
 function MailSection() {
   const { t } = useApp();
@@ -572,6 +612,19 @@ function MailSection() {
       <p className="settings-row-sub" style={{ marginBottom: '1.5rem' }}>{t('mailDesc')}</p>
 
       <div className="form-stack">
+        <div className="settings-row" style={{ padding: '0.5rem 0', marginBottom: '0.25rem' }}>
+          <div className="settings-row-info">
+            <p className="settings-row-label">Enable email</p>
+            <p className="settings-row-sub">Master switch. Mail will only be sent when this is on.</p>
+          </div>
+          <button className={`theme-toggle ${cfg.mail_enabled === 'true' ? 'dark' : ''}`}
+            onClick={() => f('mail_enabled', cfg.mail_enabled === 'true' ? 'false' : 'true')}>
+            <span className="theme-toggle-knob" />
+          </button>
+        </div>
+
+        <div className="settings-divider" style={{ margin: '0.25rem 0 0.75rem' }} />
+
         <div className="form-row-two">
           <div className="form-field">
             <label className="form-label">{t('mailHost')}</label>
@@ -669,8 +722,8 @@ function MailSection() {
           title="Forgot Password Email"
           subjectKey="mail_tmpl_forgot_subject"
           bodyKey="mail_tmpl_forgot_body"
-          subject={cfg.mail_tmpl_forgot_subject}
-          body={cfg.mail_tmpl_forgot_body}
+          subject={cfg.mail_tmpl_forgot_subject || DEFAULT_FORGOT_SUBJECT}
+          body={cfg.mail_tmpl_forgot_body || DEFAULT_FORGOT_BODY}
           requiredTokens={['{USERNAME}', '{PASSWORD}']}
           availableTokens={['{USERNAME}', '{PASSWORD}']}
           onClose={() => setTemplateModal(null)}
@@ -683,8 +736,8 @@ function MailSection() {
           title="Welcome Email"
           subjectKey="mail_tmpl_welcome_subject"
           bodyKey="mail_tmpl_welcome_body"
-          subject={cfg.mail_tmpl_welcome_subject}
-          body={cfg.mail_tmpl_welcome_body}
+          subject={cfg.mail_tmpl_welcome_subject || DEFAULT_WELCOME_SUBJECT}
+          body={cfg.mail_tmpl_welcome_body || DEFAULT_WELCOME_BODY}
           requiredTokens={['{USERNAME}', '{PASSWORD}']}
           availableTokens={['{USERNAME}', '{PASSWORD}', '{APP_URL}']}
           onClose={() => setTemplateModal(null)}
