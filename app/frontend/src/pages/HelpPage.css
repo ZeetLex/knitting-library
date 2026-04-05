@@ -1,0 +1,407 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   HelpPage — Wikipedia-style user guide
+   Uses CSS variables from index.css (--accent, --bg-primary, --card-bg, etc.)
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page shell ─────────────────────────────────────────────────────────────── */
+.help-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 60px);
+  background: var(--bg-primary);
+}
+
+@media (min-width: 641px) {
+  .help-page { min-height: calc(100dvh - 72px); }
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────────── */
+.help-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  gap: 8px;
+}
+
+@media (min-width: 641px) {
+  .help-topbar { padding: 16px 24px; }
+}
+
+.help-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.help-back:hover { color: var(--accent); }
+
+.help-topbar-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.help-topbar-spacer { width: 80px; flex-shrink: 0; }
+
+/* ── Body layout ─────────────────────────────────────────────────────────────── */
+.help-body {
+  display: flex;
+  flex-direction: column;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 12px 60px;
+  gap: 24px;
+}
+
+@media (min-width: 769px) {
+  .help-body {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 32px 24px 80px;
+    gap: 32px;
+  }
+}
+
+/* ── Sidebar TOC ─────────────────────────────────────────────────────────────── */
+.help-toc {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  flex-shrink: 0;
+  width: 100%;
+  /* Horizontal scroll on mobile so it doesn't push layout */
+  overflow-x: auto;
+}
+
+@media (min-width: 769px) {
+  .help-toc {
+    width: 230px;
+    position: sticky;
+    top: calc(72px + 20px); /* below fixed header */
+    max-height: calc(100dvh - 72px - 40px);
+    overflow-y: auto;
+    overflow-x: visible;
+    /* Custom scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
+.help-toc-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* On mobile the TOC shows as a horizontal scrolling row of chips */
+.help-toc nav {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.help-toc nav::-webkit-scrollbar { display: none; }
+
+@media (min-width: 769px) {
+  .help-toc nav {
+    flex-direction: column;
+    gap: 2px;
+    overflow-x: visible;
+  }
+}
+
+.help-toc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+@media (min-width: 769px) {
+  .help-toc-item {
+    white-space: normal;
+    flex-shrink: 1;
+  }
+}
+
+.help-toc-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.help-toc-item.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.help-toc-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.help-toc-label { flex: 1; }
+
+.help-toc-arrow {
+  color: var(--text-light);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.help-toc-item:hover .help-toc-arrow,
+.help-toc-item.active .help-toc-arrow { opacity: 1; }
+
+/* ── Article ─────────────────────────────────────────────────────────────────── */
+.help-article {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Hero banner ─────────────────────────────────────────────────────────────── */
+.help-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card-bg));
+  border: 1.5px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.help-hero-icon {
+  font-size: 36px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.help-hero-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+@media (min-width: 641px) {
+  .help-hero-title { font-size: 26px; }
+}
+
+.help-hero-intro {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Section ─────────────────────────────────────────────────────────────────── */
+.help-section {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  scroll-margin-top: 90px; /* compensate for fixed header */
+}
+
+/* Heading row — clickable accordion toggle */
+.help-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.help-section-heading:hover { background: var(--bg-hover); }
+
+.help-section-num {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.help-section-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  display: flex;
+}
+
+.help-section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+@media (min-width: 641px) {
+  .help-section-title { font-size: 18px; }
+}
+
+.help-section-chevron {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.22s ease;
+}
+
+.help-section-chevron.open { transform: rotate(180deg); }
+
+/* ── Section body — accordion ── */
+/*
+  Grid-template-rows trick: outer div animates from 0fr → 1fr.
+  The single direct child (.help-section-body-inner) must have overflow:hidden
+  and min-height:0 so the content is clipped during the animation.
+*/
+.help-section-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.help-section-body.expanded {
+  grid-template-rows: 1fr;
+  border-top: 1px solid var(--border);
+}
+
+.help-section-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.help-item {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-item:last-child { border-bottom: none; }
+
+/* Intro item — no label, slightly different style */
+.help-item--intro {
+  background: color-mix(in srgb, var(--bg-primary) 40%, var(--card-bg));
+}
+
+.help-item--intro .help-item-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0;
+  line-height: 1.65;
+}
+
+/* Labelled item */
+.help-item--labelled {}
+
+.help-item-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.help-item-label svg { flex-shrink: 0; }
+
+.help-item--labelled .help-item-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.65;
+}
+
+/* ── Footer note ─────────────────────────────────────────────────────────────── */
+.help-footer-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* ── Accordion body inner scroll fix ─────────────────────────────────────────── */
+/*
+  The grid-template-rows trick requires a single direct child that can shrink.
+  We wrap items in a plain <div> in the JS so overflow:hidden works correctly.
+  The CSS below applies to that inner wrapper.
+*/
+.help-section-body-inner {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Active section highlight in TOC ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .help-section-body,
+  .help-section-chevron,
+  .help-toc-arrow { transition: none; }
+}
