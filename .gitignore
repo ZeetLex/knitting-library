@@ -39,3 +39,4 @@ docker-compose.test*.yaml
 CLAUDE.md
 MEMORY.md
 TODO.md
+CHANGES-unreleased.md

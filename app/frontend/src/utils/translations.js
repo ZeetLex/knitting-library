@@ -33,6 +33,11 @@ const translations = {
     loginError: "Incorrect username or password",
     loginWelcome: "Welcome back",
     loginSubtitle: "Sign in to your knitting library",
+    forgotPassword: "Forgot password?",
+    forgotPasswordBack: "Back to sign in",
+    forgotPasswordDesc: "Enter your username or email address. If an account is found, a new temporary password will be sent.",
+    forgotPasswordSent: "If an account exists with that username or email, a new password has been sent.",
+    forgotPasswordSubmit: "Send New Password",
 
     // Header
     addRecipe: "Add Recipe",
@@ -447,6 +452,11 @@ const translations = {
     password: "Passord",
     signingIn: "Logger inn…",
     loginError: "Feil brukernavn eller passord",
+    forgotPassword: "Glemt passord?",
+    forgotPasswordBack: "Tilbake til innlogging",
+    forgotPasswordDesc: "Skriv inn brukernavn eller e-postadresse. Hvis en konto finnes, sendes et nytt midlertidig passord.",
+    forgotPasswordSent: "Hvis en konto finnes med det brukernavnet eller den e-posten, er et nytt passord sendt.",
+    forgotPasswordSubmit: "Send nytt passord",
     statistics: "Statistikk",
     feedbackTitle: "Hvordan gikk det?",
     feedbackViewTitle: "Prosjekttilbakemelding",

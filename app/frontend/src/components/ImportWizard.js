@@ -4,7 +4,7 @@ import {
   X, FileText, Image, ChevronRight, ChevronLeft, SkipForward, StopCircle,
   CheckCircle, FolderOpen, RefreshCw, AlertCircle, Upload,
   FolderInput, ArrowLeft, AlertTriangle, RotateCcw, RotateCw, Scissors,
-  Trash2, GripVertical, ChevronUp, ChevronDown,
+  Trash2, GripVertical, ChevronUp, ChevronDown, HelpCircle,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import {
@@ -158,11 +158,145 @@ function ViewerPage({ src, alt }) {
   );
 }
 
+/// ── Import Help Modal ─────────────────────────────────────────────────────────
+function ImportHelpModal({ onClose }) {
+  return createPortal(
+    <div className="iw-help-overlay" onClick={onClose}>
+      <div className="iw-help-modal" onClick={e => e.stopPropagation()}>
+        <div className="iw-help-header">
+          <span className="iw-help-header-title">
+            <HelpCircle size={17} /> How import works
+          </span>
+          <button className="iw-close" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div className="iw-help-body">
+          <p className="iw-help-intro">
+            Select a folder and Knitting Library will automatically detect your recipes. Here's how it reads your files:
+          </p>
+
+          {/* Rule cards */}
+          <div className="iw-help-rules">
+            <div className="iw-help-rule">
+              <div className="iw-help-rule-icon iw-help-rule-icon--pdf">
+                <FileText size={20} />
+              </div>
+              <div className="iw-help-rule-text">
+                <strong>Loose PDFs</strong>
+                <span>Each PDF file directly in your folder becomes its own recipe. The filename is used as the recipe name.</span>
+              </div>
+            </div>
+            <div className="iw-help-rule">
+              <div className="iw-help-rule-icon iw-help-rule-icon--folder">
+                <FolderOpen size={20} />
+              </div>
+              <div className="iw-help-rule-text">
+                <strong>Image folders</strong>
+                <span>Each sub-folder becomes one recipe. All images inside it become the pages of that recipe. The folder name becomes the recipe name.</span>
+              </div>
+            </div>
+            <div className="iw-help-rule">
+              <div className="iw-help-rule-icon iw-help-rule-icon--mix">
+                <CheckCircle size={20} />
+              </div>
+              <div className="iw-help-rule-text">
+                <strong>Mix freely</strong>
+                <span>You can have both PDFs and image folders in the same parent folder. They'll all be picked up together.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Visual tree */}
+          <div className="iw-help-tree-wrap">
+            <p className="iw-help-tree-label">Example folder structure</p>
+            <div className="iw-help-tree">
+              <div className="iw-tree-row iw-tree-root">
+                <span className="iw-tree-icon">📁</span>
+                <span className="iw-tree-name">My Patterns</span>
+                <span className="iw-tree-tag iw-tree-tag--select">← select this</span>
+              </div>
+
+              <div className="iw-tree-row">
+                <span className="iw-tree-indent">├─</span>
+                <span className="iw-tree-icon">📄</span>
+                <span className="iw-tree-name">Flurry Sweater.pdf</span>
+                <span className="iw-tree-arrow">→</span>
+                <span className="iw-tree-tag iw-tree-tag--recipe">1 recipe</span>
+              </div>
+
+              <div className="iw-tree-row">
+                <span className="iw-tree-indent">├─</span>
+                <span className="iw-tree-icon">📄</span>
+                <span className="iw-tree-name">Cosy Socks.pdf</span>
+                <span className="iw-tree-arrow">→</span>
+                <span className="iw-tree-tag iw-tree-tag--recipe">1 recipe</span>
+              </div>
+
+              <div className="iw-tree-row iw-tree-folder-start">
+                <span className="iw-tree-indent">├─</span>
+                <span className="iw-tree-icon">📁</span>
+                <span className="iw-tree-name">Dag og Dagny</span>
+                <span className="iw-tree-arrow">→</span>
+                <span className="iw-tree-tag iw-tree-tag--recipe">1 recipe</span>
+              </div>
+              <div className="iw-tree-row iw-tree-child">
+                <span className="iw-tree-indent">│ ├─</span>
+                <span className="iw-tree-icon">🖼</span>
+                <span className="iw-tree-name">page-1.jpg</span>
+              </div>
+              <div className="iw-tree-row iw-tree-child">
+                <span className="iw-tree-indent">│ └─</span>
+                <span className="iw-tree-icon">🖼</span>
+                <span className="iw-tree-name">page-2.jpg</span>
+              </div>
+
+              <div className="iw-tree-row iw-tree-folder-start">
+                <span className="iw-tree-indent">└─</span>
+                <span className="iw-tree-icon">📁</span>
+                <span className="iw-tree-name">Astridgenseren</span>
+                <span className="iw-tree-arrow">→</span>
+                <span className="iw-tree-tag iw-tree-tag--recipe">1 recipe</span>
+              </div>
+              <div className="iw-tree-row iw-tree-child">
+                <span className="iw-tree-indent">  ├─</span>
+                <span className="iw-tree-icon">🖼</span>
+                <span className="iw-tree-name">front.jpg</span>
+              </div>
+              <div className="iw-tree-row iw-tree-child">
+                <span className="iw-tree-indent">  └─</span>
+                <span className="iw-tree-icon">🖼</span>
+                <span className="iw-tree-name">back.jpg</span>
+              </div>
+            </div>
+            <div className="iw-help-tree-result">
+              <CheckCircle size={14} /> Result: <strong>4 recipes</strong> detected and ready to review
+            </div>
+          </div>
+
+          {/* Mobile tip */}
+          <div className="iw-help-tip">
+            <span className="iw-help-tip-icon">📱</span>
+            <div>
+              <strong>On mobile?</strong> Use <em>Select files</em> to pick individual PDFs or images. Folder selection is not supported in most mobile browsers — but you can still import one recipe at a time.
+            </div>
+          </div>
+        </div>
+
+        <div className="iw-help-footer">
+          <button className="iw-btn-primary" onClick={onClose}>Got it!</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Phase 1: Choose files ─────────────────────────────────────────────────────
 function UploadPhase({ onGroupsReady, onClose, t }) {
   const folderInputRef = useRef(null);
   const fileInputRef   = useRef(null);
   const [dragOver, setDragOver]   = useState(false);
+  const [showHelp, setShowHelp]   = useState(false);
   const [groups, setGroups]       = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress]   = useState({ done: 0, total: 0 });
@@ -221,27 +355,33 @@ function UploadPhase({ onGroupsReady, onClose, t }) {
   return (
     <div className="iw-upload-phase">
       {!groups && (
-        <div
-          className={`iw-drop-zone ${dragOver ? 'drag-over' : ''}`}
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-        >
-          <FolderInput size={52} className="iw-drop-icon" />
-          <h3 className="iw-drop-title">{t('importDropTitle')}</h3>
-          <p className="iw-drop-hint">{t('importDropHint')}</p>
-          <div className="iw-drop-btns">
-            <button className="iw-btn-primary" onClick={() => folderInputRef.current?.click()}>
-              <FolderOpen size={16} /> {t('importSelectFolder')}
+        <>
+          <div
+            className={`iw-drop-zone ${dragOver ? 'drag-over' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <FolderInput size={52} className="iw-drop-icon" />
+            <h3 className="iw-drop-title">{t('importDropTitle')}</h3>
+            <p className="iw-drop-hint">{t('importDropHint')}</p>
+            <div className="iw-drop-btns">
+              <button className="iw-btn-primary" onClick={() => folderInputRef.current?.click()}>
+                <FolderOpen size={16} /> {t('importSelectFolder')}
+              </button>
+              <button className="iw-btn-secondary" onClick={() => fileInputRef.current?.click()}>
+                <Upload size={15} /> {t('importSelectFiles')}
+              </button>
+            </div>
+            <p className="iw-drop-formats">PDF · JPG · PNG · WebP</p>
+            <button className="iw-help-btn" onClick={e => { e.stopPropagation(); setShowHelp(true); }}>
+              <HelpCircle size={15} /> How does import work?
             </button>
-            <button className="iw-btn-secondary" onClick={() => fileInputRef.current?.click()}>
-              <Upload size={15} /> {t('importSelectFiles')}
-            </button>
+            <input ref={folderInputRef} type="file" style={{display:'none'}} webkitdirectory="true" directory="true" multiple onChange={handleFolderSelect} />
+            <input ref={fileInputRef} type="file" style={{display:'none'}} multiple accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={handleFileSelect} />
           </div>
-          <p className="iw-drop-formats">PDF · JPG · PNG · WebP</p>
-          <input ref={folderInputRef} type="file" style={{display:'none'}} webkitdirectory="true" directory="true" multiple onChange={handleFolderSelect} />
-          <input ref={fileInputRef} type="file" style={{display:'none'}} multiple accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={handleFileSelect} />
-        </div>
+          {showHelp && <ImportHelpModal onClose={() => setShowHelp(false)} />}
+        </>
       )}
 
       {groups && !uploading && (
