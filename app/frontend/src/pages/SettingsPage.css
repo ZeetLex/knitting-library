@@ -1021,3 +1021,89 @@
   font-size: 11px;
   color: var(--text-light);
 }
+
+/* ── Mail template extras ──────────────────────────────────────────────────── */
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.25rem 0;
+}
+
+.section-subheading {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.75rem;
+}
+
+.btn-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.form-textarea {
+  height: auto;
+  resize: vertical;
+  line-height: 1.6;
+  padding: 10px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+}
+
+.template-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0.75rem;
+}
+
+.template-tokens-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: 2px;
+}
+
+.template-tokens-hint {
+  font-size: 11px;
+  color: var(--text-light);
+  width: 100%;
+  margin-top: 2px;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: 'DM Mono', 'Courier New', monospace;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.token-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.token-chip--required {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+  font-weight: 600;
+}
+
+.settings-modal--wide {
+  max-width: 600px;
+}

@@ -9,10 +9,13 @@ import logging.handlers
 import os
 import re
 import shutil
+import smtplib
+import string
 import uuid
 import zipfile
 import hashlib
 import secrets
+from email.mime.text import MIMEText
 import ipaddress
 import socket
 import time
@@ -239,6 +242,11 @@ def get_db() -> sqlite3.Connection:
         if "image_order" not in cols:
             conn.execute("ALTER TABLE recipes ADD COLUMN image_order TEXT NOT NULL DEFAULT ''")
             conn.commit()
+    if "users" in tables:
+        user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if "email" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            conn.commit()
     return conn
 
 
@@ -283,6 +291,7 @@ def init_db():
             username      TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             is_admin      INTEGER NOT NULL DEFAULT 0,
+            email         TEXT NOT NULL DEFAULT '',
             theme         TEXT NOT NULL DEFAULT 'light',
             language      TEXT NOT NULL DEFAULT 'en',
             currency      TEXT NOT NULL DEFAULT 'NOK',
@@ -641,13 +650,50 @@ def change_password(data: dict, current_user: dict = Depends(get_current_user)):
     conn.close()
     return {"message": "Password changed"}
 
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(data: dict, request: Request):
+    """Generate a temporary password and email it. Always returns the same response
+    to avoid leaking whether an account exists."""
+    username_or_email = data.get("username_or_email", "").strip().lower()
+    if not username_or_email:
+        raise HTTPException(status_code=400, detail="Username or email required")
+    conn = get_db()
+    user = conn.execute(
+        "SELECT id, username, email FROM users "
+        "WHERE lower(username)=? OR (email != '' AND lower(email)=?)",
+        (username_or_email, username_or_email)
+    ).fetchone()
+    _GENERIC = {"message": "If an account with that username or email exists and has an address on file, a new password has been sent."}
+    if not user or not user["email"]:
+        conn.close()
+        return _GENERIC
+    # Build email before committing the DB change so a send failure leaves the password intact
+    temp_pw  = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+    base_url = str(request.base_url).rstrip("/")
+    cfg_rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_tmpl_%'").fetchall()
+    cfg      = {r["key"]: r["value"] for r in cfg_rows}
+    subject  = cfg.get("mail_tmpl_forgot_subject", _DEFAULT_FORGOT_SUBJECT)
+    body     = cfg.get("mail_tmpl_forgot_body",    _DEFAULT_FORGOT_BODY)
+    tokens   = {"USERNAME": user["username"], "PASSWORD": temp_pw, "APP_URL": base_url}
+    try:
+        _send_app_mail(user["email"], _render_template(subject, tokens), _render_template(body, tokens))
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Could not send email: {e}")
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash_password(temp_pw), user["id"]))
+    conn.commit()
+    conn.close()
+    return _GENERIC
+
+
 # ── Admin: user management ────────────────────────────────────────────────────
 
 @app.get("/api/admin/users")
 def list_users(admin: dict = Depends(require_admin)):
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, username, is_admin, theme, language, created_date FROM users ORDER BY created_date"
+        "SELECT id, username, email, is_admin, theme, language, created_date FROM users ORDER BY created_date"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -657,6 +703,7 @@ def list_users(admin: dict = Depends(require_admin)):
 def create_user(data: dict, admin: dict = Depends(require_admin)):
     username = data.get("username", "").strip()
     password = data.get("password", "")
+    email    = data.get("email", "").strip().lower()
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password required")
     if len(password) < 8:
@@ -667,12 +714,47 @@ def create_user(data: dict, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail="Username already exists")
     uid = str(uuid.uuid4())
     conn.execute(
-        "INSERT INTO users (id, username, password_hash, is_admin, created_date) VALUES (?,?,?,?,?)",
-        (uid, username, _hash_password(password), 1 if data.get("is_admin") else 0, datetime.utcnow().isoformat())
+        "INSERT INTO users (id, username, password_hash, is_admin, email, created_date) VALUES (?,?,?,?,?,?)",
+        (uid, username, _hash_password(password), 1 if data.get("is_admin") else 0, email, datetime.utcnow().isoformat())
     )
     conn.commit()
     conn.close()
-    return {"id": uid, "username": username, "is_admin": bool(data.get("is_admin"))}
+    return {"id": uid, "username": username, "email": email, "is_admin": bool(data.get("is_admin"))}
+
+
+@app.put("/api/admin/users/{user_id}/email")
+def update_user_email(user_id: str, data: dict, admin: dict = Depends(require_admin)):
+    email = data.get("email", "").strip().lower()
+    conn = get_db()
+    if not conn.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    conn.execute("UPDATE users SET email=? WHERE id=?", (email, user_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Email updated"}
+
+
+@app.post("/api/admin/users/{user_id}/welcome-mail")
+def send_welcome_mail(user_id: str, data: dict, request: Request, admin: dict = Depends(require_admin)):
+    conn = get_db()
+    user = conn.execute("SELECT username, email FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user or not user["email"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="User has no email address")
+    cfg_rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_tmpl_%'").fetchall()
+    conn.close()
+    cfg = {r["key"]: r["value"] for r in cfg_rows}
+    base_url = str(request.base_url).rstrip("/")
+    subject  = cfg.get("mail_tmpl_welcome_subject", _DEFAULT_WELCOME_SUBJECT)
+    body     = cfg.get("mail_tmpl_welcome_body",    _DEFAULT_WELCOME_BODY)
+    password = data.get("password", "(see administrator)")
+    tokens   = {"USERNAME": user["username"], "PASSWORD": password, "APP_URL": base_url}
+    try:
+        _send_app_mail(user["email"], _render_template(subject, tokens), _render_template(body, tokens))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not send email: {e}")
+    return {"message": "Welcome email sent"}
 
 
 @app.delete("/api/admin/users/{user_id}")
@@ -2520,6 +2602,79 @@ def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(requir
     result = collected[-lines:] if len(collected) > lines else collected
     return {"lines": result}
 
+# ── Mail helpers ──────────────────────────────────────────────────────────────
+
+_DEFAULT_FORGOT_SUBJECT = "Your new Knitting Library password"
+_DEFAULT_FORGOT_BODY = (
+    "Hi {USERNAME},\n\n"
+    "We received a password reset request for your Knitting Library account. "
+    "A temporary password has been generated for you.\n\n"
+    "────────────────────────────\n"
+    "  Temporary password: {PASSWORD}\n"
+    "────────────────────────────\n\n"
+    "To get back in:\n"
+    "  1. Log in with your temporary password\n"
+    "  2. Go to Settings → Account → Change Password\n"
+    "  3. Set a new password you will remember\n\n"
+    "If you did not request a password reset, you can safely ignore this email — "
+    "your existing password has not been changed.\n\n"
+    "Happy knitting,\n"
+    "Knitting Library"
+)
+
+_DEFAULT_WELCOME_SUBJECT = "Welcome to your Knitting Library!"
+_DEFAULT_WELCOME_BODY = (
+    "Hi {USERNAME},\n\n"
+    "Your Knitting Library account is ready. Here are your login details:\n\n"
+    "────────────────────────────\n"
+    "  Username: {USERNAME}\n"
+    "  Password: {PASSWORD}\n"
+    "  App URL:  {APP_URL}\n"
+    "────────────────────────────\n\n"
+    "Once you are logged in, we recommend changing your password right away. "
+    "You can do this under Settings → Account → Change Password.\n\n"
+    "Knitting Library lets you store and organise your patterns, track your projects, "
+    "and keep an inventory of your yarn stash — all in one place.\n\n"
+    "Happy knitting,\n"
+    "Knitting Library"
+)
+
+def _render_template(text: str, tokens: dict) -> str:
+    """Substitute {TOKEN} placeholders in a template string."""
+    for key, value in tokens.items():
+        text = text.replace("{" + key + "}", value)
+    return text
+
+def _send_app_mail(to: str, subject: str, body: str) -> None:
+    """Send a plain-text email using the stored SMTP settings. Raises on failure."""
+    conn = get_db()
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_%'").fetchall()
+    conn.close()
+    cfg = {r["key"]: r["value"] for r in rows}
+    if cfg.get("mail_enabled", "false").lower() != "true":
+        raise ValueError("Mail is not enabled")
+    host      = cfg.get("mail_host", "")
+    port      = int(cfg.get("mail_port", 587))
+    username  = cfg.get("mail_username", "")
+    password  = cfg.get("mail_password", "")
+    from_addr = cfg.get("mail_from", username)
+    use_tls   = cfg.get("mail_tls", "true").lower() == "true"
+    if not host or not username or not password:
+        raise ValueError("Mail server not configured")
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"]    = from_addr
+    msg["To"]      = to
+    if use_tls:
+        server = smtplib.SMTP(host, port, timeout=10)
+        server.starttls()
+    else:
+        server = smtplib.SMTP_SSL(host, port, timeout=10)
+    server.login(username, password)
+    server.sendmail(from_addr, [to], msg.as_string())
+    server.quit()
+
+
 # ── Admin: mail settings ──────────────────────────────────────────────────────
 
 @app.get("/api/admin/mail")
@@ -2536,13 +2691,16 @@ def get_mail_settings(admin: dict = Depends(require_admin)):
 
 @app.put("/api/admin/mail")
 def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
-    allowed = {"mail_host", "mail_port", "mail_username", "mail_password",
-               "mail_from", "mail_tls", "mail_enabled"}
+    allowed = {
+        "mail_host", "mail_port", "mail_username", "mail_password",
+        "mail_from", "mail_tls", "mail_enabled", "mail_announcements_enabled",
+        "mail_tmpl_forgot_subject", "mail_tmpl_forgot_body",
+        "mail_tmpl_welcome_subject", "mail_tmpl_welcome_body",
+    }
     conn = get_db()
     for key, value in data.items():
         if key not in allowed:
             continue
-        # Don't overwrite the password if the frontend sends back the mask
         if key == "mail_password" and value == "••••••••":
             continue
         conn.execute(
@@ -2556,39 +2714,36 @@ def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
 
 
 @app.post("/api/admin/mail/test")
-async def test_mail(data: dict, admin: dict = Depends(require_admin)):
-    """Send a test email using the stored SMTP settings."""
-    import smtplib
-    from email.mime.text import MIMEText
-    conn = get_db()
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_%'").fetchall()
-    conn.close()
-    cfg = {r["key"]: r["value"] for r in rows}
+def test_mail(data: dict, admin: dict = Depends(require_admin)):
+    """Send a plain test email using the stored SMTP settings."""
     to_addr = data.get("to", "").strip()
     if not to_addr:
         raise HTTPException(status_code=400, detail="Recipient email required")
-    host     = cfg.get("mail_host", "")
-    port     = int(cfg.get("mail_port", 587))
-    username = cfg.get("mail_username", "")
-    password = cfg.get("mail_password", "")
-    from_addr = cfg.get("mail_from", username)
-    use_tls  = cfg.get("mail_tls", "true").lower() == "true"
-    if not host or not username or not password:
-        raise HTTPException(status_code=400, detail="Mail server not configured")
     try:
-        msg = MIMEText("This is a test email from your Knitting Library. Mail is working correctly.")
-        msg["Subject"] = "Knitting Library — Test Email"
-        msg["From"]    = from_addr
-        msg["To"]      = to_addr
-        if use_tls:
-            server = smtplib.SMTP(host, port, timeout=10)
-            server.starttls()
-        else:
-            server = smtplib.SMTP_SSL(host, port, timeout=10)
-        server.login(username, password)
-        server.sendmail(from_addr, [to_addr], msg.as_string())
-        server.quit()
+        _send_app_mail(to_addr, "Knitting Library — Test Email",
+                       "This is a test email from your Knitting Library. Mail is working correctly.")
         return {"message": "Test email sent successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Mail send failed: {e}")
+
+
+@app.post("/api/admin/mail/templates/test")
+def test_mail_template(data: dict, request: Request, admin: dict = Depends(require_admin)):
+    """Send a test email with a template, substituting mock values for all tokens."""
+    to_addr  = data.get("to", "").strip()
+    subject  = data.get("subject", "Test template")
+    body     = data.get("body", "")
+    if not to_addr:
+        raise HTTPException(status_code=400, detail="Test recipient required")
+    base_url = str(request.base_url).rstrip("/")
+    tokens   = {"USERNAME": "TestUser", "PASSWORD": "TempPass123!", "APP_URL": base_url}
+    try:
+        _send_app_mail(to_addr, _render_template(subject, tokens), _render_template(body, tokens))
+        return {"message": "Test email sent successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Mail send failed: {e}")
 
@@ -2748,7 +2903,7 @@ def verify_2fa_login(data: dict, request: Request):
 # ── Announcements ─────────────────────────────────────────────────────────────
 
 @app.post("/api/admin/announcements")
-def create_announcement(data: dict, admin: dict = Depends(require_admin)):
+def create_announcement(data: dict, background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):
     """Admin pushes a new update note / patch note to all users."""
     title = data.get("title", "").strip()
     body  = data.get("body",  "").strip()
@@ -2762,6 +2917,24 @@ def create_announcement(data: dict, admin: dict = Depends(require_admin)):
         (ann_id, title, body, now, admin["username"])
     )
     conn.commit()
+    # Email users if announcement emails are enabled
+    enabled_row = conn.execute(
+        "SELECT value FROM app_settings WHERE key='mail_announcements_enabled'"
+    ).fetchone()
+    if enabled_row and enabled_row["value"] == "true":
+        recipients = [r["email"] for r in conn.execute(
+            "SELECT email FROM users WHERE email != ''"
+        ).fetchall()]
+        if recipients:
+            mail_subject = f"Knitting Library — {title}"
+            mail_body    = (body + "\n\n— Knitting Library") if body else f"{title}\n\n— Knitting Library"
+            def _send_all(addresses, subj, msg):
+                for addr in addresses:
+                    try:
+                        _send_app_mail(addr, subj, msg)
+                    except Exception:
+                        pass
+            background_tasks.add_task(_send_all, recipients, mail_subject, mail_body)
     conn.close()
     return {"id": ann_id, "title": title, "body": body, "created_at": now, "created_by": admin["username"]}
 

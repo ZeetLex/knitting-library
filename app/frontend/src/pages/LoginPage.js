@@ -2,24 +2,32 @@
  * LoginPage.js
  * Step 1: username + password.
  * Step 2 (if 2FA enabled): 6-digit TOTP code.
+ * Step 3 (optional): forgot password flow.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../utils/AppContext';
-import { verify2FAChallenge } from '../utils/api';
+import { verify2FAChallenge, forgotPassword } from '../utils/api';
 import './LoginPage.css';
 
 export default function LoginPage() {
-  const { login } = useApp();
+  const { login, t } = useApp();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
   // 2FA challenge state
-  const [challenge, setChallenge] = useState(null); // token string when 2FA needed
+  const [challenge, setChallenge] = useState(null);
   const [totpCode, setTotpCode]   = useState('');
   const totpRef = useRef(null);
+
+  // Forgot password state
+  const [showForgot, setShowForgot]     = useState(false);
+  const [forgotInput, setForgotInput]   = useState('');
+  const [forgotSent, setForgotSent]     = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError]   = useState('');
 
   useEffect(() => {
     if (challenge && totpRef.current) totpRef.current.focus();
@@ -68,6 +76,66 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    if (!forgotInput.trim()) return;
+    setForgotLoading(true); setForgotError('');
+    try {
+      await forgotPassword(forgotInput.trim());
+      setForgotSent(true);
+    } catch (err) {
+      setForgotError(err.message || 'Something went wrong');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // ── Forgot password step ────────────────────────────────────────────────────
+  if (showForgot) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <div className="login-logo">
+            <span className="login-logo-icon">🧶</span>
+            <h1 className="login-app-name">Knitting Library</h1>
+          </div>
+          <p className="login-subtitle">{t('forgotPassword')}</p>
+          {forgotSent ? (
+            <>
+              <p className="login-forgot-sent">{t('forgotPasswordSent')}</p>
+              <button className="login-back-link" onClick={() => { setShowForgot(false); setForgotSent(false); setForgotInput(''); }}>
+                ← {t('forgotPasswordBack')}
+              </button>
+            </>
+          ) : (
+            <form className="login-form" onSubmit={handleForgot}>
+              <p className="login-2fa-hint">{t('forgotPasswordDesc')}</p>
+              <div className="login-field">
+                <label htmlFor="forgot-input">Username or email</label>
+                <input
+                  id="forgot-input"
+                  type="text"
+                  value={forgotInput}
+                  onChange={e => setForgotInput(e.target.value)}
+                  placeholder="username or email@example.com"
+                  autoFocus
+                  disabled={forgotLoading}
+                />
+              </div>
+              {forgotError && <p className="login-error">{forgotError}</p>}
+              <button type="submit" className="login-btn" disabled={forgotLoading || !forgotInput.trim()}>
+                {forgotLoading ? 'Sending…' : t('forgotPasswordSubmit')}
+              </button>
+              <button type="button" className="login-back-link" onClick={() => { setShowForgot(false); setForgotError(''); setForgotInput(''); }}>
+                ← {t('forgotPasswordBack')}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ── 2FA step ───────────────────────────────────────────────────────────────
   if (challenge) {
@@ -163,6 +231,9 @@ export default function LoginPage() {
             disabled={loading || !username || !password}
           >
             {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+          <button type="button" className="login-back-link" onClick={() => { setShowForgot(true); setError(''); }}>
+            {t('forgotPassword')}
           </button>
         </form>
       </div>

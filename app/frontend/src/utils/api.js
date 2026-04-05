@@ -94,6 +94,22 @@ export async function adminResetPassword(userId, newPassword) {
   if (!res.ok) throw new Error('Failed to reset password');
   return res.json();
 }
+export async function updateUserEmail(userId, email) {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/email`, { method:'PUT', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify({ email }) });
+  if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to update email'); }
+  return res.json();
+}
+export async function sendWelcomeMail(userId, password) {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/welcome-mail`, { method:'POST', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify({ password }) });
+  if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to send welcome email'); }
+  return res.json();
+}
+export async function forgotPassword(usernameOrEmail) {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username_or_email: usernameOrEmail }) });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.detail || 'Request failed');
+  return data;
+}
 export async function changePassword(oldPassword, newPassword) {
   const res = await fetch(`${API_BASE}/auth/change-password`, { method:'PUT', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify({old_password:oldPassword, new_password:newPassword}) });
   if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to change password'); }
@@ -571,6 +587,16 @@ export async function testMail(to) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Mail test failed');
+  return data;
+}
+export async function testMailTemplate(to, subject, body) {
+  const res = await fetch(`${API_BASE}/admin/mail/templates/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ to, subject, body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Test failed');
   return data;
 }
 

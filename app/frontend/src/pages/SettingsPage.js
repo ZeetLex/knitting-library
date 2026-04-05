@@ -9,13 +9,15 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
+  Pencil, AtSign,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
-  fetchLogs, fetchMailSettings, saveMailSettings, testMail,
+  fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
   fetch2FAStatus, adminReset2FA, setup2FA, verify2FASetup, disable2FA,
   createAnnouncement, listAnnouncements,
+  updateUserEmail, sendWelcomeMail,
 } from '../utils/api';
 import './SettingsPage.css';
 
@@ -356,6 +358,7 @@ function UsersSection() {
   const [users, setUsers]         = useState([]);
   const [showAdd, setShowAdd]     = useState(false);
   const [resetUser, setResetUser] = useState(null);
+  const [editEmailUser, setEditEmailUser] = useState(null);
   const [loading, setLoading]     = useState(true);
 
   const load = () => {
@@ -386,8 +389,18 @@ function UsersSection() {
                 <span className={`user-role-badge ${u.is_admin ? 'admin' : ''}`}>
                   {u.is_admin ? t('admin') : t('member')}
                 </span>
+                {u.email ? (
+                  <span className="user-row-email">{u.email}</span>
+                ) : (
+                  <button className="user-row-add-email" onClick={() => setEditEmailUser(u)}>
+                    <AtSign size={11} /> add email
+                  </button>
+                )}
               </div>
               <div className="user-row-actions">
+                {u.email && (
+                  <button className="icon-btn" title="Edit email" onClick={() => setEditEmailUser(u)}><AtSign size={16} /></button>
+                )}
                 <button className="icon-btn" title={t('resetPassword')} onClick={() => setResetUser(u)}><KeyRound size={16} /></button>
                 {u.id !== user.id && (
                   <button className="icon-btn danger" title={t('delete')} onClick={() => handleDelete(u.id, u.username)}><Trash2 size={16} /></button>
@@ -397,8 +410,25 @@ function UsersSection() {
           ))}
         </div>
       )}
-      {showAdd    && <AddUserModal t={t} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} />}
-      {resetUser  && <ResetPasswordModal t={t} targetUser={resetUser} onClose={() => setResetUser(null)} />}
+      {showAdd && (
+        <AddUserModal
+          t={t}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => { setShowAdd(false); load(); }}
+        />
+      )}
+      {resetUser    && <ResetPasswordModal t={t} targetUser={resetUser} onClose={() => setResetUser(null)} />}
+      {editEmailUser && (
+        <EditEmailModal
+          t={t}
+          targetUser={editEmailUser}
+          onClose={() => setEditEmailUser(null)}
+          onSaved={(uid, email) => {
+            setUsers(prev => prev.map(u => u.id === uid ? { ...u, email } : u));
+            setEditEmailUser(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -491,12 +521,13 @@ function LogsSection() {
 /* ─── Mail Section (Admin) ────────────────────────────────────────────────── */
 function MailSection() {
   const { t } = useApp();
-  const [cfg, setCfg]         = useState({ mail_host: '', mail_port: '587', mail_username: '', mail_password: '', mail_from: '', mail_tls: 'true', mail_enabled: 'false' });
+  const [cfg, setCfg]         = useState({ mail_host: '', mail_port: '587', mail_username: '', mail_password: '', mail_from: '', mail_tls: 'true', mail_enabled: 'false', mail_announcements_enabled: 'false', mail_tmpl_forgot_subject: '', mail_tmpl_forgot_body: '', mail_tmpl_welcome_subject: '', mail_tmpl_welcome_body: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [testTo, setTestTo]   = useState('');
   const [testing, setTesting] = useState(false);
   const [status, setStatus]   = useState(null);
+  const [templateModal, setTemplateModal] = useState(null); // null | 'forgot' | 'welcome'
 
   useEffect(() => {
     fetchMailSettings()
@@ -525,6 +556,13 @@ function MailSection() {
   };
 
   const f = (key, val) => setCfg(prev => ({ ...prev, [key]: val }));
+
+  const handleTemplateSave = (subjectKey, bodyKey, subject, body) => {
+    setCfg(prev => ({ ...prev, [subjectKey]: subject, [bodyKey]: body }));
+    setTemplateModal(null);
+    // Save to backend immediately
+    saveMailSettings({ ...cfg, [subjectKey]: subject, [bodyKey]: body }).catch(console.error);
+  };
 
   if (loading) return <div className="settings-section"><p className="loading-text">Loading…</p></div>;
 
@@ -582,7 +620,77 @@ function MailSection() {
             <Send size={15} /> {testing ? t('sending') : t('sendTestEmail')}
           </button>
         </div>
+
+        {/* ── Email Templates ── */}
+        <div className="settings-divider" />
+        <h4 className="section-subheading">Email Templates</h4>
+
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <p className="settings-row-label">Forgot Password Email</p>
+            <p className="settings-row-sub">Sent when a user requests a password reset. Requires <code>{'{USERNAME}'}</code> and <code>{'{PASSWORD}'}</code>.</p>
+          </div>
+          <button className="btn-secondary btn-icon-label" onClick={() => setTemplateModal('forgot')}>
+            <Pencil size={14} /> Edit
+          </button>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <p className="settings-row-label">Welcome Email</p>
+            <p className="settings-row-sub">Sent when a new user is created with an email address. Requires <code>{'{USERNAME}'}</code> and <code>{'{PASSWORD}'}</code>.</p>
+          </div>
+          <button className="btn-secondary btn-icon-label" onClick={() => setTemplateModal('welcome')}>
+            <Pencil size={14} /> Edit
+          </button>
+        </div>
+
+        {/* ── Announcement emails ── */}
+        <div className="settings-divider" />
+        <h4 className="section-subheading">Notifications</h4>
+
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <p className="settings-row-label">Email Update Notes to users</p>
+            <p className="settings-row-sub">When you publish an Update Note, send it by email to all users who have an email address on file.</p>
+          </div>
+          <button
+            className={`theme-toggle ${cfg.mail_announcements_enabled === 'true' ? 'dark' : ''}`}
+            onClick={() => f('mail_announcements_enabled', cfg.mail_announcements_enabled === 'true' ? 'false' : 'true')}
+          >
+            <span className="theme-toggle-knob" />
+          </button>
+        </div>
       </div>
+
+      {templateModal === 'forgot' && (
+        <TemplateEditorModal
+          t={t}
+          title="Forgot Password Email"
+          subjectKey="mail_tmpl_forgot_subject"
+          bodyKey="mail_tmpl_forgot_body"
+          subject={cfg.mail_tmpl_forgot_subject}
+          body={cfg.mail_tmpl_forgot_body}
+          requiredTokens={['{USERNAME}', '{PASSWORD}']}
+          availableTokens={['{USERNAME}', '{PASSWORD}']}
+          onClose={() => setTemplateModal(null)}
+          onSave={handleTemplateSave}
+        />
+      )}
+      {templateModal === 'welcome' && (
+        <TemplateEditorModal
+          t={t}
+          title="Welcome Email"
+          subjectKey="mail_tmpl_welcome_subject"
+          bodyKey="mail_tmpl_welcome_body"
+          subject={cfg.mail_tmpl_welcome_subject}
+          body={cfg.mail_tmpl_welcome_body}
+          requiredTokens={['{USERNAME}', '{PASSWORD}']}
+          availableTokens={['{USERNAME}', '{PASSWORD}', '{APP_URL}']}
+          onClose={() => setTemplateModal(null)}
+          onSave={handleTemplateSave}
+        />
+      )}
     </div>
   );
 }
@@ -775,16 +883,35 @@ function PushAnnouncementModal({ t, onClose, onPushed }) {
 function AddUserModal({ t, onClose, onAdded }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail]       = useState('');
   const [isAdmin, setIsAdmin]   = useState(false);
   const [error, setError]       = useState('');
   const [saving, setSaving]     = useState(false);
+  const [createdUser, setCreatedUser] = useState(null); // {id, username, email, password} after create
 
   const handleCreate = async () => {
     if (!username || !password) return;
     setSaving(true); setError('');
-    try { await createUser({ username, password, is_admin: isAdmin }); onAdded(); }
-    catch (e) { setError(e.message); setSaving(false); }
+    try {
+      const result = await createUser({ username, password, email, is_admin: isAdmin });
+      if (email.trim()) {
+        // Show welcome mail prompt before closing
+        setCreatedUser({ ...result, password });
+      } else {
+        onAdded();
+      }
+    } catch (e) { setError(e.message); setSaving(false); }
   };
+
+  if (createdUser) {
+    return (
+      <WelcomeMailModal
+        t={t}
+        user={createdUser}
+        onDone={onAdded}
+      />
+    );
+  }
 
   return (
     <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
@@ -793,12 +920,190 @@ function AddUserModal({ t, onClose, onAdded }) {
         <div className="modal-body">
           <div className="form-field"><label className="form-label">{t('username')}</label><input className="form-input" value={username} onChange={e => setUsername(e.target.value)} autoFocus /></div>
           <div className="form-field"><label className="form-label">{t('password')}</label><input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div>
+          <div className="form-field">
+            <label className="form-label">Email <span className="form-label-optional">(optional)</span></label>
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@example.com" />
+          </div>
           <label className="checkbox-row"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} /><span>{t('isAdmin')}</span></label>
           {error && <p className="status-error">{error}</p>}
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
           <button className="btn-primary" onClick={handleCreate} disabled={saving || !username || !password}>{saving ? t('saving') : t('createUser')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Welcome Mail Modal ──────────────────────────────────────────────────── */
+function WelcomeMailModal({ t, user, onDone }) {
+  const [sending, setSending] = useState(false);
+  const [status, setStatus]   = useState(null); // 'ok' | 'error:...'
+
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      await sendWelcomeMail(user.id, user.password);
+      setStatus('ok');
+    } catch (e) {
+      setStatus('error:' + e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay modal-overlay--bottom-mobile">
+      <div className="settings-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>User Created</h3>
+        </div>
+        <div className="modal-body">
+          <p className="modal-hint">
+            <strong>{user.username}</strong> has been created.
+            {user.email && <> Send a welcome email to <strong>{user.email}</strong>?</>}
+          </p>
+          {status === 'ok' && <p className="status-success">Welcome email sent!</p>}
+          {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onDone}>Skip</button>
+          {!status && (
+            <button className="btn-primary" onClick={handleSend} disabled={sending}>
+              <Mail size={14} style={{ marginRight: 6 }} />
+              {sending ? 'Sending…' : 'Send Welcome Email'}
+            </button>
+          )}
+          {status && <button className="btn-primary" onClick={onDone}>Done</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Edit Email Modal ────────────────────────────────────────────────────── */
+function EditEmailModal({ t, targetUser, onClose, onSaved }) {
+  const [email, setEmail]   = useState(targetUser.email || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const handleSave = async () => {
+    setSaving(true); setError('');
+    try {
+      await updateUserEmail(targetUser.id, email.trim());
+      onSaved(targetUser.id, email.trim());
+    } catch (e) { setError(e.message); setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
+      <div className="settings-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Email — {targetUser.username}</h3>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="form-field">
+            <label className="form-label">Email address <span className="form-label-optional">(leave blank to remove)</span></label>
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} autoFocus placeholder="user@example.com" />
+          </div>
+          {error && <p className="status-error">{error}</p>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : 'Save Email'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Template Editor Modal ──────────────────────────────────────────────── */
+function TemplateEditorModal({ t, title, subjectKey, bodyKey, subject, body, requiredTokens, availableTokens, onClose, onSave }) {
+  const [subj, setSubj]     = useState(subject || '');
+  const [bodyText, setBody] = useState(body || '');
+  const [testTo, setTestTo] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState(null);
+  const [error, setError]   = useState('');
+
+  const validate = () => {
+    for (const tok of requiredTokens) {
+      if (!subj.includes(tok) && !bodyText.includes(tok)) {
+        return `Required token ${tok} is missing from both subject and body.`;
+      }
+    }
+    return '';
+  };
+
+  const handleSave = () => {
+    const err = validate();
+    if (err) { setError(err); return; }
+    onSave(subjectKey, bodyKey, subj, bodyText);
+  };
+
+  const handleTest = async () => {
+    if (!testTo) return;
+    setTesting(true); setTestStatus(null);
+    try {
+      await testMailTemplate(testTo, subj, bodyText);
+      setTestStatus('ok');
+    } catch (e) { setTestStatus('error:' + e.message); }
+    finally { setTesting(false); }
+  };
+
+  const insertToken = (tok) => {
+    setBody(prev => prev + tok);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="settings-modal settings-modal--wide" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{title}</h3>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="form-field">
+            <label className="form-label">Subject</label>
+            <input className="form-input" value={subj} onChange={e => { setSubj(e.target.value); setError(''); }} placeholder="Email subject line" />
+          </div>
+          <div className="form-field" style={{ marginTop: '0.75rem' }}>
+            <label className="form-label">Body</label>
+            <textarea
+              className="form-input form-textarea"
+              value={bodyText}
+              onChange={e => { setBody(e.target.value); setError(''); }}
+              rows={10}
+              placeholder="Email body text…"
+            />
+          </div>
+          <div className="template-tokens">
+            <span className="template-tokens-label">Insert token:</span>
+            {availableTokens.map(tok => (
+              <button key={tok} className={`token-chip ${requiredTokens.includes(tok) ? 'token-chip--required' : ''}`} onClick={() => insertToken(tok)} type="button">
+                {tok}
+              </button>
+            ))}
+            <span className="template-tokens-hint">Required tokens are highlighted.</span>
+          </div>
+          {error && <p className="status-error" style={{ marginTop: '0.5rem' }}>{error}</p>}
+
+          <div className="settings-divider" style={{ margin: '1rem 0' }} />
+          <p className="settings-row-sub" style={{ marginBottom: '0.5rem' }}>Send a test email using this template (tokens will be replaced with sample values):</p>
+          <div className="mail-test-row">
+            <input className="form-input" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="test@example.com" type="email" />
+            <button className="btn-secondary" onClick={handleTest} disabled={testing || !testTo}>
+              <Send size={15} /> {testing ? t('sending') : 'Send Test'}
+            </button>
+          </div>
+          {testStatus === 'ok' && <p className="status-success" style={{ marginTop: '0.5rem' }}>{t('mailTestOk')}</p>}
+          {testStatus?.startsWith('error:') && <p className="status-error" style={{ marginTop: '0.5rem' }}>{testStatus.slice(6)}</p>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={handleSave}>Save Template</button>
         </div>
       </div>
     </div>
