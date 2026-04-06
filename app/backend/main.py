@@ -2210,19 +2210,45 @@ def get_yarn(yarn_id: str, current_user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/yarns")
-def create_yarn(body: dict = Body(...), current_user: dict = Depends(get_current_user)):
-    name = body.get("name", "").strip()
+async def create_yarn(
+    name:            str            = Form(...),
+    colour:          str            = Form(""),
+    wool_type:       str            = Form(""),
+    yardage:         str            = Form(""),
+    needles:         str            = Form(""),
+    tension:         str            = Form(""),
+    origin:          str            = Form(""),
+    seller:          str            = Form(""),
+    price_per_skein: str            = Form(""),
+    product_info:    str            = Form(""),
+    image:           Optional[UploadFile] = File(None),
+    current_user:    dict           = Depends(get_current_user)
+):
+    name = name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    yarn_id = str(uuid.uuid4())
-    conn    = get_db()
+    yarn_id  = str(uuid.uuid4())
+    img_path = ""
+    if image and image.filename:
+        ext = Path(image.filename).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            raise HTTPException(status_code=400, detail="Only jpg, png, webp images are accepted")
+        file_data = await image.read()
+        if len(file_data) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Image file too large (max 20 MB)")
+        if not _validate_file_magic(file_data, ext):
+            raise HTTPException(status_code=400, detail="File content does not match its extension")
+        yarn_dir = YARN_DIR / yarn_id
+        yarn_dir.mkdir(parents=True, exist_ok=True)
+        dest = yarn_dir / f"yarn{ext}"
+        with open(dest, "wb") as fh:
+            fh.write(file_data)
+        img_path = f"{yarn_id}/yarn{ext}"
+    conn = get_db()
     conn.execute(
         "INSERT INTO yarns (id,name,colour,wool_type,yardage,needles,tension,origin,seller,price_per_skein,product_info,image_path,created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (yarn_id, name,
-         body.get("colour",""), body.get("wool_type",""), body.get("yardage",""),
-         body.get("needles",""), body.get("tension",""), body.get("origin",""),
-         body.get("seller",""), body.get("price_per_skein",""), body.get("product_info",""),
-         body.get("image_path",""), datetime.utcnow().isoformat())
+        (yarn_id, name, colour, wool_type, yardage, needles, tension, origin,
+         seller, price_per_skein, product_info, img_path, datetime.utcnow().isoformat())
     )
     conn.commit()
     result = _yarn_to_dict(conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone(), conn)
@@ -2231,17 +2257,54 @@ def create_yarn(body: dict = Body(...), current_user: dict = Depends(get_current
 
 
 @app.put("/api/yarns/{yarn_id}")
-def update_yarn(yarn_id: str, body: dict = Body(...), current_user: dict = Depends(get_current_user)):
+async def update_yarn(
+    yarn_id:         str,
+    name:            str            = Form(""),
+    colour:          str            = Form(""),
+    wool_type:       str            = Form(""),
+    yardage:         str            = Form(""),
+    needles:         str            = Form(""),
+    tension:         str            = Form(""),
+    origin:          str            = Form(""),
+    seller:          str            = Form(""),
+    price_per_skein: str            = Form(""),
+    product_info:    str            = Form(""),
+    image:           Optional[UploadFile] = File(None),
+    current_user:    dict           = Depends(get_current_user)
+):
     conn = get_db()
     if not conn.execute("SELECT id FROM yarns WHERE id=?", (yarn_id,)).fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Yarn not found")
-    conn.execute(
-        "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=? WHERE id=?",
-        (body.get("name",""), body.get("colour",""), body.get("wool_type",""), body.get("yardage",""),
-         body.get("needles",""), body.get("tension",""), body.get("origin",""), body.get("seller",""),
-         body.get("price_per_skein",""), body.get("product_info",""), yarn_id)
-    )
+    if image and image.filename:
+        ext = Path(image.filename).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Only jpg, png, webp images are accepted")
+        file_data = await image.read()
+        if len(file_data) > MAX_IMAGE_BYTES:
+            conn.close()
+            raise HTTPException(status_code=413, detail="Image file too large (max 20 MB)")
+        if not _validate_file_magic(file_data, ext):
+            conn.close()
+            raise HTTPException(status_code=400, detail="File content does not match its extension")
+        yarn_dir = YARN_DIR / yarn_id
+        yarn_dir.mkdir(parents=True, exist_ok=True)
+        dest = yarn_dir / f"yarn{ext}"
+        with open(dest, "wb") as fh:
+            fh.write(file_data)
+        img_path = f"{yarn_id}/yarn{ext}"
+        conn.execute(
+            "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=?,image_path=? WHERE id=?",
+            (name, colour, wool_type, yardage, needles, tension, origin, seller,
+             price_per_skein, product_info, img_path, yarn_id)
+        )
+    else:
+        conn.execute(
+            "UPDATE yarns SET name=?,colour=?,wool_type=?,yardage=?,needles=?,tension=?,origin=?,seller=?,price_per_skein=?,product_info=? WHERE id=?",
+            (name, colour, wool_type, yardage, needles, tension, origin, seller,
+             price_per_skein, product_info, yarn_id)
+        )
     conn.commit()
     result = _yarn_to_dict(conn.execute("SELECT * FROM yarns WHERE id=?", (yarn_id,)).fetchone(), conn)
     conn.close()
