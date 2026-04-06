@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2, Plus,
+  MousePointer2, Tag,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 
 import { useApp } from '../utils/AppContext';
-import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRecipe, addCategory, deleteCategory } from '../utils/api';
+import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRecipe, addCategory, deleteCategory, bulkUpdateRecipes } from '../utils/api';
 import './Library.css';
 
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
@@ -113,12 +114,20 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   // ── Selection state ───────────────────────────────────────────────────────
   // selectedIds is a Set of recipe IDs the user has ticked
-  const [selectedIds, setSelectedIds]     = useState(new Set());
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [deleting, setDeleting]           = useState(false);
+  const [selectedIds, setSelectedIds]               = useState(new Set());
+  const [selectionModeActive, setSelectionModeActive] = useState(false); // explicit toggle
+  const [deleteConfirm, setDeleteConfirm]           = useState(false);
+  const [deleting, setDeleting]                     = useState(false);
 
-  // Derived: are we in selection mode? (any card ticked)
-  const selectionMode = selectedIds.size > 0;
+  // ── Bulk tag/category state ───────────────────────────────────────────────
+  const [bulkModal, setBulkModal]     = useState(false);
+  const [bulkTags, setBulkTags]       = useState('');
+  const [bulkCats, setBulkCats]       = useState('');
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [bulkDone, setBulkDone]       = useState(false);
+
+  // Derived: cards are selectable if the explicit toggle is on OR ≥1 card is already checked
+  const selectionMode = selectionModeActive || selectedIds.size > 0;
 
   // ── Load categories & tags ────────────────────────────────────────────────
   useEffect(() => {
@@ -212,7 +221,41 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   const clearSelection = () => {
     setSelectedIds(new Set());
+    setSelectionModeActive(false);
     setDeleteConfirm(false);
+    setBulkModal(false);
+    setBulkTags('');
+    setBulkCats('');
+    setBulkDone(false);
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionModeActive || selectedIds.size > 0) {
+      clearSelection();
+    } else {
+      setSelectionModeActive(true);
+    }
+  };
+
+  // ── Bulk apply tags/categories ────────────────────────────────────────────
+  const handleBulkApply = async () => {
+    const tags = bulkTags.split(',').map(s => s.trim()).filter(Boolean);
+    const cats = bulkCats.split(',').map(s => s.trim()).filter(Boolean);
+    if (!tags.length && !cats.length) return;
+    setBulkApplying(true);
+    try {
+      await bulkUpdateRecipes(Array.from(selectedIds), { tags, categories: cats });
+      setBulkDone(true);
+      setBulkTags('');
+      setBulkCats('');
+      // Reload to reflect updated tags/categories on cards
+      loadRecipes();
+      setTimeout(() => setBulkDone(false), 2000);
+    } catch (_) {
+      // non-critical — leave modal open so user can retry
+    } finally {
+      setBulkApplying(false);
+    }
   };
 
   // ── Mass delete ───────────────────────────────────────────────────────────
@@ -405,20 +448,34 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         )}
       </div>
 
-      {/* ── Meta row: recipe count + select-all ── */}
+      {/* ── Meta row: recipe count + selection controls ── */}
       <div className="library-meta">
         {!loading && <p className="recipe-count">{recipeCountLabel()}</p>}
         {!loading && recipes.length > 0 && (
-          <button
-            className={`select-all-btn ${allSelected ? 'active' : ''}`}
-            onClick={toggleSelectAll}
-            title={allSelected ? 'Deselect all' : 'Select all visible'}
-          >
-            {allSelected
-              ? <><CheckSquare size={15} /> Deselect all</>
-              : <><SquareIcon  size={15} /> Select all</>
-            }
-          </button>
+          <div className="meta-selection-btns">
+            {/* Selection Mode toggle — enter click-to-select mode */}
+            <button
+              className={`select-mode-btn ${selectionMode ? 'active' : ''}`}
+              onClick={toggleSelectionMode}
+              title={selectionMode ? 'Exit selection mode' : 'Enter selection mode'}
+            >
+              <MousePointer2 size={15} />
+              {selectionMode ? t('selectionModeOff') : t('selectionModeOn')}
+            </button>
+            {/* Select All — only shown while in selection mode */}
+            {selectionMode && (
+              <button
+                className={`select-all-btn ${allSelected ? 'active' : ''}`}
+                onClick={toggleSelectAll}
+                title={allSelected ? 'Deselect all' : 'Select all visible'}
+              >
+                {allSelected
+                  ? <><CheckSquare size={15} /> Deselect all</>
+                  : <><SquareIcon  size={15} /> Select all</>
+                }
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -493,28 +550,28 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
           <div className="selection-toolbar-inner">
             <span className="selection-count">
               <CheckSquare size={16} />
-              {selectedIds.size} selected
+              {selectedIds.size} {t('bulkSelected')}
             </span>
 
             <div className="selection-actions">
               {deleteConfirm ? (
                 <>
                   <span className="selection-confirm-label">
-                    Delete {selectedIds.size} {selectedIds.size === 1 ? 'recipe' : 'recipes'}? This cannot be undone.
+                    {t('deleteConfirmTitle')} ({selectedIds.size}) {t('deleteConfirmText2')}
                   </span>
                   <button
                     className="selection-btn selection-btn--cancel"
                     onClick={() => setDeleteConfirm(false)}
                     disabled={deleting}
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     className="selection-btn selection-btn--danger"
                     onClick={handleDeleteSelected}
                     disabled={deleting}
                   >
-                    {deleting ? 'Deleting…' : <><Trash2 size={14} /> Yes, delete</>}
+                    {deleting ? 'Deleting…' : <><Trash2 size={14} /> {t('clearSessionsYes')}</>}
                   </button>
                 </>
               ) : (
@@ -523,18 +580,73 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                     className="selection-btn selection-btn--ghost"
                     onClick={clearSelection}
                   >
-                    <X size={14} /> Cancel
+                    <X size={14} /> {t('cancel')}
                   </button>
-                  <button
-                    className="selection-btn selection-btn--danger"
-                    onClick={handleDeleteSelected}
-                  >
-                    <Trash2 size={14} /> Delete {selectedIds.size}
-                  </button>
+                  {selectedIds.size > 0 && (
+                    <button
+                      className={`selection-btn selection-btn--tag ${bulkModal ? 'active' : ''}`}
+                      onClick={() => { setBulkModal(m => !m); setBulkDone(false); }}
+                    >
+                      <Tag size={14} /> {t('bulkAddTags')}
+                    </button>
+                  )}
+                  {selectedIds.size > 0 && (
+                    <button
+                      className="selection-btn selection-btn--danger"
+                      onClick={handleDeleteSelected}
+                    >
+                      <Trash2 size={14} /> {t('delete')} ({selectedIds.size})
+                    </button>
+                  )}
                 </>
               )}
             </div>
           </div>
+
+          {/* ── Bulk tag/category popover ── */}
+          {bulkModal && !deleteConfirm && (
+            <div className="bulk-tag-panel">
+              <p className="bulk-tag-hint">
+                {t('bulkAddTags')} &amp; {t('bulkAddCategories')} — {t('bulkSelected')}: {selectedIds.size}
+              </p>
+              <div className="bulk-tag-row">
+                <label className="bulk-tag-label">{t('tagsLabel')}</label>
+                <input
+                  className="bulk-tag-input"
+                  value={bulkTags}
+                  onChange={e => setBulkTags(e.target.value)}
+                  placeholder={t('bulkTagsPlaceholder')}
+                  disabled={bulkApplying}
+                />
+              </div>
+              <div className="bulk-tag-row">
+                <label className="bulk-tag-label">{t('category')}</label>
+                <input
+                  className="bulk-tag-input"
+                  value={bulkCats}
+                  onChange={e => setBulkCats(e.target.value)}
+                  placeholder={t('bulkCatsPlaceholder')}
+                  disabled={bulkApplying}
+                />
+              </div>
+              <div className="bulk-tag-actions">
+                <button
+                  className="selection-btn selection-btn--ghost"
+                  onClick={() => setBulkModal(false)}
+                  disabled={bulkApplying}
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  className="selection-btn selection-btn--primary"
+                  onClick={handleBulkApply}
+                  disabled={bulkApplying || (!bulkTags.trim() && !bulkCats.trim())}
+                >
+                  {bulkDone ? t('bulkApplied') : bulkApplying ? t('bulkApplying') : t('bulkApply')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

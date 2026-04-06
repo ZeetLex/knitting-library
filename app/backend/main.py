@@ -1279,6 +1279,26 @@ async def create_recipe(
     return recipe
 
 
+@app.put("/api/recipes/bulk-update")
+def bulk_update_recipes(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Add tags and/or categories to multiple recipes (additive — never removes existing ones)."""
+    ids      = data.get("ids", [])
+    new_tags = [t.strip() for t in data.get("tags", []) if t.strip()]
+    new_cats = [c.strip() for c in data.get("categories", []) if c.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No recipe IDs provided")
+    conn = get_db()
+    for recipe_id in ids:
+        if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+            continue
+        # _save_cats_tags uses INSERT OR IGNORE so existing links are preserved
+        _save_cats_tags(conn, recipe_id, ",".join(new_cats), ",".join(new_tags))
+    _prune_orphan_categories(conn)
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "updated": len(ids)}
+
+
 @app.put("/api/recipes/{recipe_id}")
 async def update_recipe(
     recipe_id:   str,
@@ -1563,6 +1583,71 @@ def delete_recipe_image(recipe_id: str, filename: str, current_user: dict = Depe
     conn.commit()
     conn.close()
     return {"status": "deleted", "filename": safe_name, "thumbnail_version": new_version}
+
+
+@app.post("/api/recipes/{recipe_id}/add-images")
+async def add_images_to_recipe(
+    recipe_id: str,
+    files: List[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Append one or more image files to an existing image-type recipe."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe = dict(row)
+    if recipe["file_type"] != "images":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Recipe is not an image-type recipe")
+
+    recipe_dir = DATA_DIR / recipe_id
+    existing_order: list = []
+    if recipe.get("image_order"):
+        try:
+            existing_order = json.loads(recipe["image_order"])
+        except Exception:
+            existing_order = []
+
+    added = []
+    for upload in files:
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            continue
+        file_data = await upload.read()
+        if len(file_data) > MAX_IMAGE_BYTES:
+            conn.close()
+            raise HTTPException(status_code=413, detail=f"File too large: {upload.filename}")
+        if not _validate_file_magic(file_data, ext):
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"File content does not match extension: {upload.filename}")
+        # Normalise name, avoid collisions
+        base = Path(upload.filename).stem.lower()
+        dest = f"{base}{ext}"
+        counter = 1
+        while (recipe_dir / dest).exists():
+            dest = f"{base}_{counter}{ext}"
+            counter += 1
+        with open(recipe_dir / dest, "wb") as f:
+            f.write(file_data)
+        added.append(dest)
+
+    if not added:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No valid image files were uploaded")
+
+    new_order = existing_order + added
+    thumb = _generate_thumbnail(recipe_dir, "images")
+    new_version = (recipe.get("thumbnail_version") or 0) + 1
+    conn.execute(
+        "UPDATE recipes SET image_order=?, thumbnail_path=?, thumbnail_version=? WHERE id=?",
+        (json.dumps(new_order), thumb, new_version, recipe_id)
+    )
+    conn.commit()
+    result = _get_recipe_full(recipe_id, conn)
+    conn.close()
+    return result
 
 
 @app.post("/api/recipes/{recipe_id}/rotate-image")

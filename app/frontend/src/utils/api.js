@@ -638,14 +638,6 @@ export async function disable2FA(password) {
   if (!res.ok) throw new Error(data.detail || 'Failed to disable 2FA');
   return data;
 }
-
-// ── Statistics ───────────────────────────────────────────────────────────────────
-export async function fetchStats() {
-  const res = await fetch(`${API_BASE}/stats`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load statistics');
-  return res.json();
-}
-
 export async function verify2FAChallenge(challengeToken, code) {
   const res = await fetch(`${API_BASE}/auth/2fa/challenge`, {
     method: 'POST',
@@ -654,5 +646,38 @@ export async function verify2FAChallenge(challengeToken, code) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Invalid code');
+  return data;
+}
+
+// ── Statistics ───────────────────────────────────────────────────────
+export async function fetchStats() {
+  const res = await fetch(`${API_BASE}/stats`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load stats');
+  return res.json();
+}
+
+// ── Bulk recipe actions ───────────────────────────────────────────────
+export async function bulkUpdateRecipes(ids, { tags = [], categories = [] } = {}) {
+  const res = await fetch(`${API_BASE}/recipes/bulk-update`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ ids, tags, categories }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Bulk update failed');
+  return data;
+}
+
+// ── Add images to existing recipe ────────────────────────────────────
+export async function addImagesToRecipe(recipeId, files) {
+  const fd = new FormData();
+  for (const file of files) fd.append('files', file);
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/add-images`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to add images');
   return data;
 }

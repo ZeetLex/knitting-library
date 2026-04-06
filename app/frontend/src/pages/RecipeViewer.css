@@ -1193,6 +1193,26 @@ a.viewer-action-btn { text-decoration: none; }
 
 .reorder-trigger-btn:hover { background: rgba(255,255,255,0.2); }
 
+/* Add images to existing recipe — same style family as reorder-trigger-btn */
+.add-images-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: var(--transition);
+  min-height: 34px;
+  white-space: nowrap;
+}
+.add-images-btn:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
+.add-images-btn:disabled { opacity: 0.5; cursor: default; }
+
 /* ══════════════════════════════════════════════════════════════════════════════
    Mobile Bottom Tab Bar & Slide-up Panels
    Replaces the old fixed sidebar + image chrome on mobile (< 769px).

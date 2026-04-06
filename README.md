@@ -82,10 +82,13 @@ Username/password login with bcrypt hashing. Login rate limiting. Optional two-f
 Create and manage user accounts, view live API logs, configure SMTP mail, and manage 2FA status for all users.
 
 ### Themes
-Light and dark mode. Seven colour themes: Terracotta, Rose Garden, Lavender Mist, Sage & Linen, Berry Bloom, Ocean, and Willow. Settings are per-user and saved to the database.
+Light and dark mode. Seven colour themes: Terracotta, Rose Garden, Lavender Mist, Sage & Linen, Berry Bloom, Ocean Deep, and Willow Green. Settings are per-user and saved to the database.
+
+### Help & Guide
+Built-in user guide accessible from the `?` icon in the header. Covers all features in ten accordion sections with a sticky table of contents. On desktop the TOC sits in a left sidebar; on mobile it collapses to a horizontally scrolling chip row. No login required to access the guide — it is available from any screen.
 
 ### Statistics
-High-level metrics: recipe count, yarn entries, users, categories, tags, active and finished projects, inventory items, and total knitting sessions.
+High-level metrics: recipe count, yarn entries, users, categories, tags, active and finished projects, inventory items, and total knitting sessions. Accessible from the statistics icon inside Settings.
 
 ### Backup & Export
 Data lives in `./data/` — copy it to back up. Export as ZIP from **Settings → Data → Export Library**.
@@ -222,3 +225,4 @@ Open an issue if you find bugs or want to suggest something.
 ---
 
 *Built with FastAPI · React · SQLite · Docker*
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          

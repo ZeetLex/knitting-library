@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Info, Wrench, Scissors } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Info, Wrench, Scissors, ImagePlus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -27,6 +27,8 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [imageVersions, setImageVersions] = useState({}); // { filename: timestamp } for cache-busting after rotate
   const [deleteImageConfirm, setDeleteImageConfirm] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [addingImages, setAddingImages] = useState(false);
+  const addImagesInputRef = useRef(null);
   // Controls panel: open by default on desktop, closed on mobile
   const [controlsOpen, setControlsOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 641 : true
@@ -100,6 +102,22 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
       }
     } catch (e) {
       alert('Could not crop image.');
+    }
+  };
+
+  const handleAddImages = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setAddingImages(true);
+    try {
+      const updated = await addImagesToRecipe(recipeId, files);
+      setRecipe(updated);
+    } catch (err) {
+      alert(t('addImagesError'));
+    } finally {
+      setAddingImages(false);
+      // Reset the input so the same file can be re-selected if needed
+      if (addImagesInputRef.current) addImagesInputRef.current.value = '';
     }
   };
 
@@ -347,6 +365,24 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                       <span>{t('reorderImages')}</span>
                     </button>
                   )}
+                  {/* ── Add images to this recipe ── */}
+                  <button
+                    className="add-images-btn"
+                    onClick={() => addImagesInputRef.current?.click()}
+                    title={t('addImages')}
+                    disabled={addingImages}
+                  >
+                    <ImagePlus size={14} />
+                    <span>{addingImages ? t('addingImages') : t('addImages')}</span>
+                  </button>
+                  <input
+                    ref={addImagesInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={handleAddImages}
+                  />
                 </div>
               </div>
 
@@ -545,6 +581,13 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                   <GripVertical size={20} /><span>{t('reorderImages') || 'Reorder'}</span>
                 </button>
               )}
+              {/* Add images — reuses the same hidden input */}
+              <button
+                onClick={() => { setMobileTab(null); setTimeout(() => addImagesInputRef.current?.click(), 150); }}
+                disabled={addingImages}
+              >
+                <ImagePlus size={20} /><span>{addingImages ? t('addingImages') : t('addImages')}</span>
+              </button>
             </div>
           </div>
         </div>
