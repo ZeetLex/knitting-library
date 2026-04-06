@@ -596,6 +596,114 @@
   border-color: #a93226;
 }
 
+.selection-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.selection-btn--primary:hover:not(:disabled) { opacity: 0.85; }
+
+.selection-btn--tag {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.selection-btn--tag:hover:not(:disabled) {
+  background: var(--accent-light);
+}
+.selection-btn--tag.active {
+  background: var(--accent-light);
+}
+
+/* ── Bulk tag/category popover ────────────────────────────────────────────── */
+.bulk-tag-panel {
+  margin-top: 8px;
+  padding: 14px 16px 12px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bulk-tag-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.bulk-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-tag-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.bulk-tag-input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: var(--transition);
+}
+.bulk-tag-input:focus { border-color: var(--accent); }
+.bulk-tag-input::placeholder { color: var(--text-light); }
+.bulk-tag-input:disabled { opacity: 0.6; }
+
+.bulk-tag-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Selection Mode button (in meta row) ──────────────────────────────────── */
+.meta-selection-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.select-mode-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.select-mode-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
 /* ── Mobile adjustments ──────────────────────────────────────────────────── */
 @media (max-width: 480px) {
   .selection-toolbar {
