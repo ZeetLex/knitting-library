@@ -7,7 +7,6 @@ Built for personal use: my wife needed somewhere to store her knitting patterns 
 > **Built with AI assistance.** This project was developed with Claude (Anthropic) as a coding assistant. The architecture, feature decisions, and direction are mine — the AI helped write and debug the code. The codebase has not been formally reviewed by a professional developer or security auditor, and you may encounter rough edges. See the [Security](#security) section for what has been implemented and what the limits are.
 
 ---
-
 ## Requirements
 
 **Docker Desktop** — nothing else.
@@ -222,6 +221,13 @@ This project is in active use but should be considered **beta software**. Things
 
 Open an issue if you find bugs or want to suggest something.
 
+
+---
+## Images
+[![Image - Library View](screenshots/Image1_pc_libraryview.png)](#images)
+[![Image - Settings](screenshots/Image2_pc_settings.png)](#images)
+[![Image - Help](screenshots/image3_pc_helpsection.png)](#images)
+[![Image - Importer](screenshots/image4_pc_importer.png)](#images)
 ---
 
 *Built with FastAPI · React · SQLite · Docker*
