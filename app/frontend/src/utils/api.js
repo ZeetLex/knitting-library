@@ -1,6 +1,44 @@
 const API_BASE = '/api';
 function getToken() { return localStorage.getItem('knitting_token') || ''; }
-function authHeaders() { return { 'X-Session-Token': getToken() }; }
+function getCookie(name) {
+  return document.cookie
+    .split('; ')
+    .find(row => row.startsWith(`${name}=`))
+    ?.split('=')[1] || '';
+}
+function authHeaders() {
+  const headers = {};
+  const legacyToken = getToken();
+  if (legacyToken) headers['X-Session-Token'] = legacyToken;
+  const csrf = getCookie('knitting_csrf');
+  if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
+  return headers;
+}
+function fetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const auth = authHeaders();
+  for (const [key, value] of Object.entries(auth)) {
+    if (!headers[key]) headers[key] = value;
+  }
+  return window.fetch(url, { ...options, headers, credentials: 'include' });
+}
+
+export async function fetchSetupStatus() {
+  const res = await fetch(`${API_BASE}/setup/status`);
+  if (!res.ok) return { setup_required: false };
+  return res.json();
+}
+
+export async function createFirstAdmin(username, password) {
+  const res = await fetch(`${API_BASE}/setup/admin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Setup failed');
+  return data;
+}
 
 export async function fetchRecipes({ search='', category='', tags=[], status='', page=1, per_page=60 }={}) {
   const params = new URLSearchParams();
@@ -115,26 +153,20 @@ export async function changePassword(oldPassword, newPassword) {
   if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to change password'); }
   return res.json();
 }
-// File URLs include the token as a query param so the browser can load them
-// directly in <img> and <iframe> tags without needing custom headers.
+// Browser media requests authenticate with the HttpOnly session cookie.
 export function thumbnailUrl(recipeId, cacheBust) {
-  const t = getToken();
   const base = `${API_BASE}/recipes/${recipeId}/thumbnail`;
   const params = new URLSearchParams();
-  if (t) params.set('token', t);
   if (cacheBust) params.set('v', cacheBust);
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }
 export function pdfUrl(recipeId) {
-  const t = getToken();
-  return `${API_BASE}/recipes/${recipeId}/pdf${t ? '?token=' + t : ''}`;
+  return `${API_BASE}/recipes/${recipeId}/pdf`;
 }
 export function imageUrl(recipeId, filename, cacheBust) {
-  const t = getToken();
   const base = `${API_BASE}/recipes/${recipeId}/images/${filename}`;
   const params = new URLSearchParams();
-  if (t) params.set('token', t);
   if (cacheBust) params.set('v', cacheBust);
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
@@ -240,8 +272,7 @@ export async function setThumbnail(recipeId, source, filename) {
 
 // Download original recipe (PDF as attachment, images as ZIP)
 export function downloadUrl(recipeId) {
-  const t = getToken();
-  return `${API_BASE}/recipes/${recipeId}/download${t ? '?token=' + t : ''}`;
+  return `${API_BASE}/recipes/${recipeId}/download`;
 }
 
 // PDF page images
@@ -258,8 +289,7 @@ export async function convertPdf(recipeId) {
   return res.json();
 }
 export function pdfPageUrl(recipeId, filename) {
-  const t = getToken();
-  return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}${t ? '?token=' + t : ''}`;
+  return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}`;
 }
 
 // Project sessions
@@ -348,13 +378,11 @@ export async function deleteYarn(id) {
 }
 
 export function yarnImageUrl(yarnId) {
-  const t = getToken();
-  return `${API_BASE}/yarns/${yarnId}/image${t ? '?token=' + t : ''}`;
+  return `${API_BASE}/yarns/${yarnId}/image`;
 }
 
 export function yarnColourImageUrl(yarnId, colourId) {
-  const t = getToken();
-  return `${API_BASE}/yarns/${yarnId}/colours/${colourId}/image${t ? '?token=' + t : ''}`;
+  return `${API_BASE}/yarns/${yarnId}/colours/${colourId}/image`;
 }
 
 export async function addYarnColour(yarnId, formData) {

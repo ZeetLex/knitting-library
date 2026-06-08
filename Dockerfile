@@ -5,11 +5,11 @@
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY app/frontend/package.json ./
-RUN npm install --legacy-peer-deps
+COPY app/frontend/package.json app/frontend/package-lock.json ./
+RUN npm ci --legacy-peer-deps
 COPY app/frontend/ .
 
-# Fonts are bundled via @fontsource npm packages (imported in index.js).
+# Fonts are bundled via @fontsource npm packages (imported in index.jsx).
 # No external font downloads needed — they are included in node_modules.
 RUN npm run build
 
@@ -47,8 +47,8 @@ RUN pip install --no-cache-dir --upgrade pip \
     && rm -rf /usr/libexec/gcc /usr/lib/gcc /var/cache/apk/*
 
 COPY app/backend/ .
-# Copy React build — FastAPI's SPA middleware serves it directly
-COPY --from=builder /app/build /app/frontend/build
+# Copy frontend build — FastAPI's SPA middleware serves it directly
+COPY --from=builder /app/dist /app/frontend/build
 
 # Create data dirs — entrypoint will set final permissions at runtime
 RUN mkdir -p /data /logs && chmod 777 /data /logs

@@ -23,7 +23,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -85,7 +85,7 @@ app.add_middleware(
     allow_origins=_ALLOWED_ORIGINS,   # empty = same-origin only
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "X-Session-Token"],
+    allow_headers=["Content-Type", "X-Session-Token", "X-CSRF-Token"],
 )
 
 DATA_DIR   = Path("/data/recipes")
@@ -97,6 +97,94 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+SESSION_COOKIE = "knitting_session"
+CSRF_COOKIE = "knitting_csrf"
+MAX_SCRAPE_BYTES = 5 * 1024 * 1024
+
+def _parse_trusted_proxies() -> list[ipaddress._BaseNetwork]:
+    networks = []
+    raw = os.environ.get("TRUSTED_PROXIES", "")
+    for item in [p.strip() for p in raw.split(",") if p.strip()]:
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            print(f"Ignoring invalid TRUSTED_PROXIES entry: {item}")
+    return networks
+
+_TRUSTED_PROXY_NETS = _parse_trusted_proxies()
+
+def _ip_in_networks(ip_text: str, networks: list[ipaddress._BaseNetwork]) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_text)
+    except ValueError:
+        return False
+    return any(ip in net for net in networks)
+
+def _is_trusted_proxy(request: Request) -> bool:
+    if not _TRUSTED_PROXY_NETS or not request.client:
+        return False
+    return _ip_in_networks(request.client.host, _TRUSTED_PROXY_NETS)
+
+def _get_forwarded_proto(request: Request) -> str:
+    if not _is_trusted_proxy(request):
+        return request.url.scheme
+    proto = request.headers.get("X-Forwarded-Proto", "")
+    return proto.split(",")[0].strip().lower() or request.url.scheme
+
+def _is_secure_request(request: Request) -> bool:
+    return _get_forwarded_proto(request) == "https"
+
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP, trusting X-Forwarded-For only from configured proxies."""
+    if _is_trusted_proxy(request):
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def _redact_sensitive(text: str) -> str:
+    return re.sub(r"(?i)(token|challenge_token)=([^&\s]+)", r"\1=[REDACTED]", text)
+
+@app.middleware("http")
+async def redact_request_url_for_logs(request: Request, call_next):
+    """Prevent session tokens in legacy URLs from reaching access logs/admin logs."""
+    scope = dict(request.scope)
+    raw_path = scope.get("raw_path", b"")
+    query = scope.get("query_string", b"")
+    if query:
+        qs = query.decode("latin-1", errors="ignore")
+        redacted = _redact_sensitive(qs)
+        if redacted != qs:
+            scope["query_string"] = redacted.encode("latin-1", errors="ignore")
+            scope["raw_path"] = raw_path.split(b"?")[0] + b"?" + scope["query_string"]
+            request = Request(scope, request.receive)
+    return await call_next(request)
+
+def _blocked_outbound_ip(ip: ipaddress._BaseAddress) -> bool:
+    metadata = ipaddress.ip_address("169.254.169.254")
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        or ip.is_multicast or ip.is_unspecified or ip == metadata
+    )
+
+def _validate_public_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Valid http/https URL required")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail="URL host could not be resolved")
+    addresses = {info[4][0] for info in infos}
+    for addr in addresses:
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="URL not allowed")
+        if _blocked_outbound_ip(ip):
+            raise HTTPException(status_code=400, detail="URL not allowed")
+    return url
 
 # ── Auth log — fail2ban and admin audit ──────────────────────────────────────
 # Writes AUTH_FAIL / AUTH_OK events to /logs/auth.log (mounted volume).
@@ -117,13 +205,6 @@ try:
 except OSError:
     # /logs not mounted (e.g. local dev without the volume) — log to stderr instead
     _auth_log.addHandler(logging.StreamHandler())
-
-def _get_client_ip(request: Request) -> str:
-    """Extract the real client IP, accounting for X-Forwarded-For from reverse proxies."""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    return forwarded.split(",")[0].strip() if forwarded else (
-        request.client.host if request.client else "unknown"
-    )
 
 def _auth_fail(request: Request, reason: str, username: str = "") -> None:
     """Write one AUTH_FAIL line to auth.log. Extracts the real client IP."""
@@ -199,6 +280,58 @@ def _verify_password(password: str, stored_hash: str) -> bool:
         return bcrypt.checkpw(password.encode(), stored_hash.encode())
     except Exception:
         return False
+
+def _set_auth_cookies(response: Response, token: str, request: Request) -> None:
+    secure = _is_secure_request(request)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=SESSION_LIFETIME_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    csrf = secrets.token_urlsafe(32)
+    response.set_cookie(
+        CSRF_COOKIE,
+        csrf,
+        max_age=SESSION_LIFETIME_DAYS * 24 * 60 * 60,
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+def _clear_auth_cookies(response: Response, request: Request) -> None:
+    secure = _is_secure_request(request)
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=secure, samesite="lax")
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=secure, samesite="lax")
+
+def _request_session_token(request: Request) -> str:
+    return request.headers.get("X-Session-Token", "") or request.cookies.get(SESSION_COOKIE, "")
+
+def _uses_cookie_auth(request: Request) -> bool:
+    return bool(request.cookies.get(SESSION_COOKIE)) and not request.headers.get("X-Session-Token")
+
+@app.middleware("http")
+async def csrf_cookie_guard(request: Request, call_next):
+    csrf_exempt = {
+        "/api/auth/login",
+        "/api/auth/2fa/challenge",
+        "/api/auth/forgot-password",
+        "/api/setup/admin",
+    }
+    if (
+        request.method.upper() in {"POST", "PUT", "DELETE"}
+        and request.url.path not in csrf_exempt
+        and _uses_cookie_auth(request)
+    ):
+        cookie_token = request.cookies.get(CSRF_COOKIE, "")
+        header_token = request.headers.get("X-CSRF-Token", "")
+        if not cookie_token or not secrets.compare_digest(cookie_token, header_token):
+            return JSONResponse({"detail": "CSRF token missing or invalid"}, status_code=403)
+    return await call_next(request)
 
 
 def _is_legacy_hash(stored: str) -> bool:
@@ -457,14 +590,6 @@ def init_db():
         AND recipe_id IN (SELECT id FROM recipes)
     """)
 
-    # Seed default admin on fresh install
-    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-        conn.execute(
-            "INSERT INTO users (id, username, password_hash, is_admin, created_date) VALUES (?,?,?,1,?)",
-            (str(uuid.uuid4()), "admin", _hash_password("admin"), datetime.utcnow().isoformat())
-        )
-        print("Default admin created — username: admin  password: admin — CHANGE THIS IMMEDIATELY")
-
     conn.commit()
     conn.close()
 
@@ -473,8 +598,48 @@ init_db()
 
 # ── Auth middleware ───────────────────────────────────────────────────────────
 
+@app.get("/api/setup/status")
+def setup_status():
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    conn.close()
+    return {"setup_required": count == 0}
+
+
+@app.post("/api/setup/admin")
+def setup_admin(data: dict, request: Request):
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
+    if len(password) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
+    conn = get_db()
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Setup has already been completed")
+    uid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    token = secrets.token_hex(32)
+    session_exp = (datetime.utcnow() + timedelta(days=SESSION_LIFETIME_DAYS)).isoformat()
+    conn.execute(
+        "INSERT INTO users (id, username, password_hash, is_admin, created_date) VALUES (?,?,?,1,?)",
+        (uid, username, _hash_password(password), now)
+    )
+    conn.execute(
+        "INSERT INTO sessions (token, user_id, created_date, expires_at, is_challenge) VALUES (?,?,?,?,0)",
+        (token, uid, now, session_exp)
+    )
+    conn.commit()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    response = JSONResponse({"token": token, "user": _user_dict(dict(user))})
+    _set_auth_cookies(response, token, request)
+    _auth_ok(request, username)
+    return response
+
 def get_current_user(request: Request) -> dict:
-    token = request.headers.get("X-Session-Token")
+    token = _request_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not logged in")
     conn = get_db()
@@ -500,7 +665,7 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 def _verify_token_param(request: Request, token: Optional[str] = None) -> None:
     """Auth check for file-serving endpoints where the browser sends token as
     a query param instead of a header (used by <img> and <iframe> tags)."""
-    t = token or request.headers.get("X-Session-Token")
+    t = token or _request_session_token(request)
     if not t:
         raise HTTPException(status_code=401, detail="Not logged in")
     conn = get_db()
@@ -519,7 +684,7 @@ def _verify_token_param(request: Request, token: Optional[str] = None) -> None:
 @app.post("/api/auth/login")
 def login(data: dict, request: Request):
     # Rate limit by IP to slow brute-force attempts
-    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+    ip = _get_client_ip(request)
     try:
         _check_rate_limit(ip)
     except HTTPException:
@@ -586,18 +751,22 @@ def login(data: dict, request: Request):
     conn.commit()
     conn.close()
     _auth_ok(request, username)
-    return {"token": token, "user": _user_dict(dict(user))}
+    response = JSONResponse({"token": token, "user": _user_dict(dict(user))})
+    _set_auth_cookies(response, token, request)
+    return response
 
 
 @app.post("/api/auth/logout")
 def logout(request: Request):
-    token = request.headers.get("X-Session-Token")
+    token = _request_session_token(request)
     if token:
         conn = get_db()
         conn.execute("DELETE FROM sessions WHERE token=?", (token,))
         conn.commit()
         conn.close()
-    return {"message": "Logged out"}
+    response = JSONResponse({"message": "Logged out"})
+    _clear_auth_cookies(response, request)
+    return response
 
 
 @app.get("/api/auth/me")
@@ -2622,20 +2791,8 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
     Strategy 1: Shopify JSON API  (fast, structured).
     Strategy 2: HTML scraping fallback."""
     url = (body.get("url") or "").strip()
-    if not url or not url.startswith("http"):
-        raise HTTPException(status_code=400, detail="Valid http/https URL required")
-
-    # SSRF protection — reject requests to private/internal network addresses
-    parsed   = urlparse(url)
-    hostname = parsed.hostname or ""
-    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
-        raise HTTPException(status_code=400, detail="URL not allowed")
-    try:
-        ip = ipaddress.ip_address(socket.gethostbyname(hostname))
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            raise HTTPException(status_code=400, detail="URL not allowed")
-    except (socket.gaierror, ValueError):
-        pass  # unresolvable hostname — let httpx handle it
+    url = _validate_public_url(url)
+    parsed = urlparse(url)
 
     headers = {
         "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
@@ -2665,13 +2822,31 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
                         result[field] = v.strip()
                         break
 
+    async def _safe_get(client: httpx.AsyncClient, start_url: str, expected: tuple[str, ...]):
+        current = _validate_public_url(start_url)
+        for _ in range(4):
+            resp = await client.get(current, headers=headers)
+            if resp.is_redirect:
+                location = resp.headers.get("location", "")
+                if not location:
+                    raise HTTPException(status_code=502, detail="Redirect missing location")
+                current = _validate_public_url(urljoin(current, location))
+                continue
+            ctype = resp.headers.get("content-type", "").lower()
+            if expected and not any(kind in ctype for kind in expected):
+                raise HTTPException(status_code=415, detail="Unsupported response type")
+            if len(resp.content) > MAX_SCRAPE_BYTES:
+                raise HTTPException(status_code=413, detail="Response too large")
+            return resp
+        raise HTTPException(status_code=400, detail="Too many redirects")
+
     handle      = parsed.path.strip("/").split("/")[-1].split("?")[0]
     shopify_url = f"{parsed.scheme}://{parsed.netloc}/products/{handle}.json"
 
     # Strategy 1: Shopify JSON API
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            sj = await client.get(shopify_url, headers=headers)
+        async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
+            sj = await _safe_get(client, shopify_url, ("application/json", "text/json"))
         if sj.status_code == 200:
             product = sj.json().get("product", {})
             if product.get("title"):
@@ -2689,14 +2864,15 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
                     src = re.sub(r"_\d+x\d+(\.[a-z]+)$", r"\1", images[0].get("src", ""))
                     if src:
                         result["scraped_image_url"] = src
+                        result["image_url"] = src
                 return result
     except Exception:
         pass
 
     # Strategy 2: HTML scraping
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            resp = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
+            resp = await _safe_get(client, url, ("text/html", "application/xhtml+xml"))
         soup   = BeautifulSoup(resp.text, "html.parser")
         result = {}
         h1     = soup.find("h1")
@@ -2706,6 +2882,7 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
         meta = soup.find("meta", {"property": "og:image"}) or soup.find("meta", {"name": "og:image"})
         if meta and meta.get("content"):
             result["scraped_image_url"] = meta["content"]
+            result["image_url"] = meta["content"]
         if not result.get("name"):
             raise HTTPException(status_code=422, detail="Could not extract product name from page")
         return result
@@ -2741,7 +2918,7 @@ def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(requir
             with open(path, "r", errors="replace") as f:
                 file_lines = f.readlines()
             for line in file_lines:
-                stripped = line.rstrip()
+                stripped = _redact_sensitive(line.rstrip())
                 if stripped:
                     collected.append(f"[{src}] {stripped}")
         except Exception as e:
@@ -3046,7 +3223,9 @@ def verify_2fa_login(data: dict, request: Request):
     conn.commit()
     conn.close()
     _auth_ok(request, row["username"])
-    return {"token": challenge, "user": _user_dict(dict(row))}
+    response = JSONResponse({"token": challenge, "user": _user_dict(dict(row))})
+    _set_auth_cookies(response, challenge, request)
+    return response
 
 # ── Announcements ─────────────────────────────────────────────────────────────
 
