@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { AppProvider, useApp } from './utils/AppContext';
 import LoginPage from './pages/LoginPage';
+import SetupPage from './pages/SetupPage';
 import Library from './pages/Library';
 import RecipeViewer from './pages/RecipeViewer';
 import YarnLibrary from './pages/YarnLibrary';
@@ -18,7 +19,7 @@ import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement } from '
 import './App.css';
 
 function AppInner() {
-  const { user, loading, t } = useApp();
+  const { user, loading, setupRequired, t } = useApp();
   const [activeTab, setActiveTab]             = useState('recipes');
   const [yarnSubTab, setYarnSubTab]           = useState('inventory');
   const [viewingRecipeId, setViewingRecipeId] = useState(null);
@@ -111,6 +112,7 @@ function AppInner() {
     </div>
   );
 
+  if (setupRequired) return <SetupPage />;
   if (!user) return <LoginPage />;
 
   if (showSettings) return (

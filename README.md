@@ -24,6 +24,8 @@ docker-compose up -d
 ```
 Then open `http://localhost:3000`.
 
+On first launch, Knitting Library shows a setup screen where you create the first admin account. There are no default credentials.
+
 **Docker Desktop GUI:**
 Open the Compose section, point it at `docker-compose.yml`, and hit Start.
 
@@ -35,6 +37,10 @@ services:
     restart: unless-stopped
     ports:
       - "3000:8080"
+    environment:
+      - PUID=99
+      - PGID=100
+      - TRUSTED_PROXIES=
     volumes:
       - /path/to/your/data:/data
       - /path/to/your/logs:/logs
@@ -47,8 +53,9 @@ Open `http://YOUR-SERVER-IP:3000` in Safari → Share → Add to Home Screen.
 
 ## First Login
 
-Default credentials: `admin` / `admin`
-Change your password immediately — **Settings → My Account → Change Password**.
+Create your admin account in the first-run setup screen. Use a strong password; the first admin password must be at least 12 characters.
+
+Existing installs are not changed. If your database already has users, the normal login screen appears.
 
 ---
 
@@ -133,13 +140,16 @@ The following measures are implemented:
 | Login rate limiting | 10 attempts per 15 min per IP, plus fail2ban support |
 | Two-factor authentication | TOTP (Google Authenticator, Authy, etc.) |
 | Session expiry | 30 days; 2FA challenges expire in 5 minutes |
+| Session storage | HttpOnly SameSite cookies; legacy `X-Session-Token` still accepted for compatibility |
+| CSRF | CSRF token required for cookie-authenticated write requests |
 | File upload validation | Magic-byte checks + size limits (50 MB PDF, 20 MB image) |
 | CORS | Same-origin only (set `ALLOWED_ORIGINS` env var if needed) |
 | Security headers | CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy |
 | API documentation | Disabled in production |
 | SQL injection | Parameterised queries throughout |
 | Path traversal | Filename sanitisation on all uploads |
-| SSRF | Private IP blocking on yarn URL scraper |
+| SSRF | Yarn URL scraper validates DNS/IPs and every redirect hop |
+| Frontend dependencies | Vite build with committed npm lockfile; current production audit is clean |
 | HTTPS | Not built in — use a reverse proxy |
 
 **These measures were implemented in good faith but have not been reviewed by a security professional. You run this software at your own risk.**
@@ -155,11 +165,43 @@ The author takes no responsibility for data loss, unauthorised access, or any is
 
 ---
 
+## Reverse Proxy
+
+If you run the app behind a reverse proxy, configure `TRUSTED_PROXIES` so the app only trusts `X-Forwarded-For` and `X-Forwarded-Proto` from your proxy, not from random clients. Use the proxy container IP or Docker network CIDR:
+
+```yaml
+environment:
+  - TRUSTED_PROXIES=172.16.0.0/12
+```
+
+For Nginx Proxy Manager, add this in the proxy host **Advanced** tab:
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Real-IP $remote_addr;
+```
+
+For Caddy:
+
+```caddyfile
+knitting.example.com {
+  reverse_proxy knitting-library:8080 {
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+}
+```
+
+Pin image versions for production when possible. `latest` is convenient for testing, but a version tag plus a backup before updating is safer.
+
+---
+
 ## Fail2ban (optional)
 
 If you expose the app through a reverse proxy, fail2ban can block IPs that repeatedly fail to log in.
 
-The app writes a dedicated auth log at `logs/auth.log`. Every failed login and bad 2FA code is recorded with the real client IP (extracted from `X-Forwarded-For`).
+The app writes a dedicated auth log at `logs/auth.log`. Every failed login and bad 2FA code is recorded with the real client IP. When using a proxy, set `TRUSTED_PROXIES` as described above.
 
 Example log line:
 ```
@@ -189,6 +231,7 @@ action   = iptables-multiport[name=knitting-library, port="80,443,3000", protoco
 Make sure Nginx Proxy Manager forwards the real client IP — add this to the **Advanced** tab of your proxy host:
 ```nginx
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Real-IP $remote_addr;
 ```
 
@@ -211,7 +254,7 @@ fail2ban-client status knitting-library
 | Annotations not saving | Check that the `./data` volume is mounted correctly in your compose file |
 | URL import didn't fill everything | Early beta — fill in missing fields manually |
 | Live Logs shows nothing | Check that `./logs:/logs` is mounted in your compose file |
-| All requests show same IP in logs | Set `X-Forwarded-For` in your reverse proxy (see Fail2ban section) |
+| All requests show same IP in logs | Set forwarded headers in your reverse proxy and configure `TRUSTED_PROXIES` |
 | Port 8080 shows nothing | Check container logs: `docker logs knitting-library` |
 
 ---
@@ -224,4 +267,4 @@ Open an issue if you find bugs or want to suggest something.
 
 ---
 
-*Built with FastAPI · React · SQLite · Docker*
+*Built with FastAPI · React · Vite · SQLite · Docker*

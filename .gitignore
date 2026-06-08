@@ -3,14 +3,17 @@ app/frontend/node_modules/
 
 # Build output
 app/frontend/build/
+app/frontend/dist/
 
 # Data volumes — recipes, yarns, database (your personal files, never commit)
 data/
 data-test/
+data-codex-test/
 
 # Logs
 logs/
 logs-test/
+logs-codex-test/
 *.log
 
 # Environment files

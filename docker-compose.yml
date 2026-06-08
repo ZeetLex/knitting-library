@@ -23,8 +23,12 @@ services:
     ports:
       - "3000:8080"
     environment:
-      - PUID=99
-      - PGID=100
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      # Comma-separated proxy IPs/CIDRs whose X-Forwarded-For and X-Forwarded-Proto
+      # headers should be trusted. Leave empty when accessing the app directly.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
     volumes:
       - ./data:/data
       - ./logs:/logs

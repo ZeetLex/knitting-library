@@ -27,6 +27,7 @@ export function AppProvider({ children }) {
   const [language, setLanguage]       = useState('en');
   const [currency, setCurrency]       = useState('NOK');
   const [loading, setLoading]         = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
 
   const t = useT(language);
 
@@ -45,10 +46,19 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const token = localStorage.getItem('knitting_token');
-    if (!token) { setLoading(false); return; }
-    fetch('/api/auth/me', { headers: { 'X-Session-Token': token } })
-      .then(r => r.ok ? r.json() : null)
+    const headers = token ? { 'X-Session-Token': token } : {};
+    fetch('/api/setup/status', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { setup_required: false })
+      .then(status => {
+        if (status.setup_required) {
+          setSetupRequired(true);
+          return undefined;
+        }
+        return fetch('/api/auth/me', { headers, credentials: 'include' })
+          .then(r => r.ok ? r.json() : null);
+      })
       .then(userData => {
+        if (userData === undefined) return;
         if (userData) {
           setUser(userData);
           setTheme(userData.theme || 'light');
@@ -64,7 +74,8 @@ export function AppProvider({ children }) {
   }, []);
 
   const login = useCallback((userData, token) => {
-    localStorage.setItem('knitting_token', token);
+    localStorage.removeItem('knitting_token');
+    setSetupRequired(false);
     setUser(userData);
     setTheme(userData.theme || 'light');
     setColourTheme(userData.colour_theme || 'terracotta');
@@ -74,11 +85,11 @@ export function AppProvider({ children }) {
 
   const logout = useCallback(async () => {
     const token = localStorage.getItem('knitting_token');
-    if (token) {
-      await fetch('/api/auth/logout', {
-        method: 'POST', headers: { 'X-Session-Token': token }
-      }).catch(() => {});
-    }
+    const csrf = document.cookie.split('; ').find(row => row.startsWith('knitting_csrf='))?.split('=')[1] || '';
+    const headers = {};
+    if (token) headers['X-Session-Token'] = token;
+    if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
+    await fetch('/api/auth/logout', { method: 'POST', headers, credentials: 'include' }).catch(() => {});
     localStorage.removeItem('knitting_token');
     setUser(null);
     setTheme('light');
@@ -89,12 +100,17 @@ export function AppProvider({ children }) {
 
   const updateSettings = useCallback(async (newTheme, newLanguage, newCurrency, newColourTheme) => {
     const token = localStorage.getItem('knitting_token');
+    const csrf = document.cookie.split('; ').find(row => row.startsWith('knitting_csrf='))?.split('=')[1] || '';
     // Use current values as fallback if not provided
     const ct = newColourTheme || colourTheme;
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['X-Session-Token'] = token;
+      if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
       await fetch('/api/auth/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct })
       });
       setTheme(newTheme);
@@ -110,7 +126,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       user, theme, colourTheme, language, currency, currencySymbol, t,
-      loading, login, logout, updateSettings
+      loading, setupRequired, login, logout, updateSettings
     }}>
       {children}
     </AppContext.Provider>

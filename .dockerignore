@@ -4,15 +4,18 @@
 # Data volumes (never bake personal data into an image)
 data/
 data-test/
+data-codex-test/
 
 # Logs
 logs/
 logs-test/
+logs-codex-test/
 *.log
 
 # Frontend build artifacts and dependencies (rebuilt fresh inside Docker)
 app/frontend/node_modules/
 app/frontend/build/
+app/frontend/dist/
 
 # Python cache
 **/__pycache__/
