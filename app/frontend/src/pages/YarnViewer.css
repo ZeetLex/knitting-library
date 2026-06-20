@@ -7,6 +7,11 @@
   flex-direction: column;
   min-height: 100%;
   background: var(--bg-primary);
+  padding-bottom: var(--app-mobile-nav-space, 0px);
+}
+
+@media (min-width: 900px) {
+  .yv-page { padding-bottom: 0; }
 }
 
 .yv-loading,

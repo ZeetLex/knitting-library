@@ -5,8 +5,12 @@
  */
 
 .stats-page {
-  padding: 24px;
+  padding: 24px 24px calc(24px + var(--app-mobile-nav-space, 0px));
   min-height: 100%;
+}
+
+@media (min-width: 900px) {
+  .stats-page { padding: 32px; }
 }
 
 .stats-header {

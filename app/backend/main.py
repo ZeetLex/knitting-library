@@ -352,6 +352,7 @@ def _user_dict(u: dict) -> dict:
         "language":     u["language"]     or "en",
         "currency":     u["currency"]     or "NOK",
         "colour_theme": u["colour_theme"] or "terracotta",
+        "background":   u["background"]   or "default",
     }
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -379,6 +380,9 @@ def get_db() -> sqlite3.Connection:
         user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
         if "email" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            conn.commit()
+        if "background" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN background TEXT NOT NULL DEFAULT 'default'")
             conn.commit()
     return conn
 
@@ -429,6 +433,7 @@ def init_db():
             language      TEXT NOT NULL DEFAULT 'en',
             currency      TEXT NOT NULL DEFAULT 'NOK',
             colour_theme  TEXT NOT NULL DEFAULT 'terracotta',
+            background    TEXT NOT NULL DEFAULT 'default',
             created_date  TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sessions (
@@ -780,22 +785,25 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
     language     = data.get("language",     current_user.get("language", "en"))
     currency     = data.get("currency",     current_user.get("currency", "NOK"))
     colour_theme = data.get("colour_theme", current_user.get("colour_theme", "terracotta"))
+    background   = data.get("background",   current_user.get("background", "default"))
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Invalid theme")
     if language not in ("en", "no", "hu"):
         raise HTTPException(status_code=400, detail="Invalid language")
     if currency not in ("NOK", "USD", "GBP", "HUF", "EUR"):
         raise HTTPException(status_code=400, detail="Invalid currency")
-    if colour_theme not in ("terracotta", "rose", "lavender", "sage", "berry"):
+    if colour_theme not in ("terracotta", "rose", "lavender", "sage", "berry", "ocean", "willow"):
         raise HTTPException(status_code=400, detail="Invalid colour theme")
+    if background not in ("default", "plain-white", "cotton", "soft-paper", "warm-linen"):
+        raise HTTPException(status_code=400, detail="Invalid background")
     conn = get_db()
     conn.execute(
-        "UPDATE users SET theme=?, language=?, currency=?, colour_theme=? WHERE id=?",
-        (theme, language, currency, colour_theme, current_user["id"])
+        "UPDATE users SET theme=?, language=?, currency=?, colour_theme=?, background=? WHERE id=?",
+        (theme, language, currency, colour_theme, background, current_user["id"])
     )
     conn.commit()
     conn.close()
-    return {"theme": theme, "language": language, "currency": currency, "colour_theme": colour_theme}
+    return {"theme": theme, "language": language, "currency": currency, "colour_theme": colour_theme, "background": background}
 
 
 @app.put("/api/auth/change-password")

@@ -50,7 +50,7 @@
 /* ── Panel ──────────────────────────────────────────────────────────────────── */
 .kt-panel {
   position: fixed;
-  top: 60px;
+  top: 0;
   right: 0;
   z-index: 121; /* Above sidebar (z-index: 80) */
   width: min(340px, 92vw);
@@ -65,9 +65,8 @@
 }
 @media (min-width: 641px) {
   .kt-panel {
-    top: 72px;
     bottom: 0;
-    max-height: calc(100dvh - 72px);
+    max-height: 100dvh;
   }
 }
 
@@ -77,14 +76,13 @@
 /* Mobile: account for the mobile bottom tab bar (50px + safe area) */
 @media (max-width: 768px) {
   .kt-panel {
-    /* 60px top header + 50px tab bar + safe area */
-    max-height: calc(100dvh - 110px - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 50px - var(--app-mobile-nav-space, 0px));
     overflow-y: auto;
   }
   /* Controlled mode: panel slides in from right, bottom above the tab bar */
   .kt-panel--controlled {
-    bottom: calc(50px + env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 110px - env(safe-area-inset-bottom, 0px));
+    bottom: calc(50px + var(--app-mobile-nav-space, 0px));
+    max-height: calc(100dvh - 50px - var(--app-mobile-nav-space, 0px));
   }
 }
 

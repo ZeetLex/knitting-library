@@ -39,6 +39,7 @@ docker-compose.test*.yaml
 README.md
 CODE_OF_CONDUCT.md
 LICENSE
+agent.md
 CLAUDE.md
 MEMORY.md
 

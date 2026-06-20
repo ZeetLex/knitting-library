@@ -4,14 +4,18 @@
 .library {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 12px 80px;
+  padding: 12px 12px 80px;
   /* Never wider than screen */
   width: 100%;
   overflow-x: hidden;
 }
 
 @media (min-width: 641px) {
-  .library { padding: 0 24px 80px; }
+  .library { padding: 18px 24px 80px; }
+}
+
+@media (min-width: 900px) {
+  .library { padding: 22px 28px 80px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

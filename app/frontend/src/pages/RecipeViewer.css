@@ -4,13 +4,12 @@
 .viewer {
   display: flex;
   flex-direction: column;
-  /* Fill from below the fixed header down to bottom of viewport */
-  min-height: calc(100dvh - 60px);
+  min-height: 100dvh;
   overflow-x: hidden;
 }
 
 @media (min-width: 641px) {
-  .viewer { min-height: calc(100dvh - 72px); }
+  .viewer { min-height: 100dvh; }
 }
 
 /* ── Top Bar ────────────────────────────────────────────────────────────────── */
@@ -1234,7 +1233,9 @@ a.viewer-action-btn { text-decoration: none; }
    * Tab bar is 50px tall + iOS safe area (home indicator ≈ 34px in PWA mode).
    * Using env() here ensures content never hides behind the bar in PWA/standalone mode.
    */
-  .viewer-body { padding-bottom: calc(50px + env(safe-area-inset-bottom, 0px)); }
+  .viewer-body {
+    padding-bottom: calc(50px + var(--app-mobile-nav-space, 0px));
+  }
 }
 
 /* ── Mobile tab bar ─────────────────────────────────────────────────────────── */
@@ -1244,11 +1245,11 @@ a.viewer-action-btn { text-decoration: none; }
   .mobile-tab-bar {
     display: flex;
     position: fixed;
-    bottom: 0;
+    bottom: var(--app-mobile-nav-space, 0px);
     left: 0;
     right: 0;
     /* 50px content area + safe area padding for iPhone home indicator */
-    height: calc(50px + env(safe-area-inset-bottom, 0px));
+    height: 50px;
     z-index: 130;
     align-items: flex-start; /* buttons align to top of bar, safe area is below */
     /* Use app theme colours — adapts to light/dark and colour themes */
@@ -1308,7 +1309,7 @@ a.viewer-action-btn { text-decoration: none; }
     flex-direction: column;
     position: fixed;
     /* Sit directly above the tab bar — 50px content + safe area */
-    bottom: calc(50px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(50px + var(--app-mobile-nav-space, 0px));
     left: 0;
     right: 0;
     z-index: 125;

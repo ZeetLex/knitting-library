@@ -39,6 +39,7 @@ docker-compose.test*.yaml
 
 # AI tooling and session files
 .claude/
+agent.md
 CLAUDE.md
 MEMORY.md
 TODO.md

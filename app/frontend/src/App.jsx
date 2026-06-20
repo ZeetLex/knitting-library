@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { AppProvider, useApp } from './utils/AppContext';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
+import HomePage from './pages/HomePage';
 import Library from './pages/Library';
 import RecipeViewer from './pages/RecipeViewer';
 import YarnLibrary from './pages/YarnLibrary';
@@ -13,15 +14,14 @@ import HelpPage from './pages/HelpPage';
 import UploadModal from './components/UploadModal';
 import YarnUploadModal from './components/YarnUploadModal';
 import ImportWizard from './components/ImportWizard';
-import Header from './components/Header';
+import AppShell from './components/AppShell';
 import AnnouncementModal from './components/AnnouncementModal';
 import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement } from './utils/api';
 import './App.css';
 
 function AppInner() {
   const { user, loading, setupRequired, t } = useApp();
-  const [activeTab, setActiveTab]             = useState('recipes');
-  const [yarnSubTab, setYarnSubTab]           = useState('inventory');
+  const [activeView, setActiveView]           = useState('home');
   const [viewingRecipeId, setViewingRecipeId] = useState(null);
   const [viewingYarnId, setViewingYarnId]     = useState(null);
   const [uploadOpen, setUploadOpen]           = useState(false);
@@ -68,42 +68,69 @@ function AppInner() {
     setRefreshKey(k => k + 1);
   }, []);
 
-  const handleAddClick = () => {
-    if (activeTab === 'yarns' && yarnSubTab === 'yarndatabase') setYarnUploadOpen(true);
-    else if (activeTab === 'recipes') setUploadOpen(true);
-  };
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
+  const handleNavigate = (view) => {
+    setActiveView(view);
     setViewingRecipeId(null);
     setViewingYarnId(null);
     setShowStats(false);
     setShowSettings(false);
+    setShowHelp(false);
   };
 
-  const handleYarnSubTabChange = (sub) => {
-    setYarnSubTab(sub);
+  const navigateApp = (view) => {
+    if (view === 'settings') {
+      setShowSettings(true);
+      setShowStats(false);
+      setShowHelp(false);
+      setViewingRecipeId(null);
+      setViewingYarnId(null);
+      return;
+    }
+    if (view === 'stats') {
+      setShowStats(true);
+      setShowSettings(false);
+      setShowHelp(false);
+      setViewingRecipeId(null);
+      setViewingYarnId(null);
+      return;
+    }
+    if (view === 'help') {
+      setShowHelp(true);
+      setShowSettings(false);
+      setShowStats(false);
+      setViewingRecipeId(null);
+      setViewingYarnId(null);
+      return;
+    }
+    handleNavigate(view);
+  };
+
+  const openRecipe = (id) => {
+    setActiveView('recipes');
+    setViewingRecipeId(id);
+  };
+
+  const openYarn = (id) => {
+    setActiveView('yarnDatabase');
+    setViewingYarnId(id);
+  };
+
+  const handleAddRecipe = () => {
+    setActiveView('recipes');
+    setViewingRecipeId(null);
+    setUploadOpen(true);
+  };
+
+  const handleImportFolder = () => {
+    setActiveView('recipes');
+    setViewingRecipeId(null);
+    setImportOpen(true);
+  };
+
+  const handleAddYarn = () => {
+    setActiveView('yarnDatabase');
     setViewingYarnId(null);
-  };
-
-  // Header button label
-  const addLabel = activeTab === 'yarns' && yarnSubTab === 'yarndatabase'
-    ? t('addYarn')
-    : activeTab === 'recipes' ? t('addRecipe')
-    : null; // inventory manages its own add buttons
-
-  const sharedHeaderProps = {
-    activeTab,
-    onTabChange: handleTabChange,
-    onUploadClick: handleAddClick,
-    onBulkImportClick: () => setImportOpen(true),
-    onSettingsClick: () => setShowSettings(true),
-    addLabel,
-    importCount,
-    yarnSubTab,
-    onYarnSubTabChange: handleYarnSubTabChange,
-    onStatsClick: () => { setShowSettings(false); setShowStats(true); },
-    onHelpClick: () => { setShowHelp(true); setShowSettings(false); setShowStats(false); },
+    setYarnUploadOpen(true);
   };
 
   if (loading) return (
@@ -117,10 +144,15 @@ function AppInner() {
 
   if (showSettings) return (
     <div className="app">
-      <Header {...sharedHeaderProps} onLogoClick={() => { setShowSettings(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
-      <main className={`app-main${activeTab === 'yarns' ? ' app-main--with-subtabs' : ''}`}>
+      <AppShell
+        activeView="settings"
+        onNavigate={navigateApp}
+        onAddRecipe={handleAddRecipe}
+        onImportFolder={handleImportFolder}
+        onAddYarn={handleAddYarn}
+      >
         <SettingsPage onBack={() => setShowSettings(false)} />
-      </main>
+      </AppShell>
       {pendingAnnouncements.length > 0 && (
         <AnnouncementModal
           announcements={pendingAnnouncements}
@@ -132,29 +164,52 @@ function AppInner() {
 
   if (showStats) return (
     <div className="app">
-      <Header {...sharedHeaderProps} onLogoClick={() => { setShowStats(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
-      <main className="app-main">
+      <AppShell
+        activeView="stats"
+        onNavigate={navigateApp}
+        onAddRecipe={handleAddRecipe}
+        onImportFolder={handleImportFolder}
+        onAddYarn={handleAddYarn}
+      >
         <StatisticsPage />
-      </main>
+      </AppShell>
     </div>
   );
 
   if (showHelp) return (
     <div className="app">
-      <Header {...sharedHeaderProps} onLogoClick={() => { setShowHelp(false); setViewingRecipeId(null); setViewingYarnId(null); }} />
-      <main className="app-main">
+      <AppShell
+        activeView="help"
+        onNavigate={navigateApp}
+        onAddRecipe={handleAddRecipe}
+        onImportFolder={handleImportFolder}
+        onAddYarn={handleAddYarn}
+      >
         <HelpPage onBack={() => setShowHelp(false)} />
-      </main>
+      </AppShell>
     </div>
   );
 
   return (
     <div className="app">
-      <Header {...sharedHeaderProps} onLogoClick={() => { setViewingRecipeId(null); setViewingYarnId(null); }} />
-      <main className={`app-main${activeTab === 'yarns' ? ' app-main--with-subtabs' : ''}`}>
+      <AppShell
+        activeView={activeView}
+        onNavigate={navigateApp}
+        onAddRecipe={handleAddRecipe}
+        onImportFolder={handleImportFolder}
+        onAddYarn={handleAddYarn}
+      >
 
-        {/* ── Recipes tab ── */}
-        {activeTab === 'recipes' && (
+        {activeView === 'home' && (
+          <HomePage
+            onOpenRecipe={openRecipe}
+            onNavigate={navigateApp}
+            onAddRecipe={handleAddRecipe}
+          />
+        )}
+
+        {/* ── Recipes ── */}
+        {activeView === 'recipes' && (
           viewingRecipeId ? (
             <RecipeViewer
               recipeId={viewingRecipeId}
@@ -170,32 +225,30 @@ function AppInner() {
           )
         )}
 
-        {/* ── Inventory / Yarn Database tab ── */}
-        {activeTab === 'yarns' && (
-          <>
-            {yarnSubTab === 'inventory' && (
-              <InventoryPage
-                onRequestAddYarn={() => { setYarnSubTab('yarndatabase'); setYarnUploadOpen(true); }}
-              />
-            )}
-            {yarnSubTab === 'yarndatabase' && (
-              viewingYarnId ? (
-                <YarnViewer
-                  yarnId={viewingYarnId}
-                  onBack={() => setViewingYarnId(null)}
-                  onDeleted={() => { setViewingYarnId(null); setYarnRefreshKey(k => k + 1); }}
-                />
-              ) : (
-                <YarnLibrary
-                  key={yarnRefreshKey}
-                  onYarnClick={setViewingYarnId}
-                />
-              )
-            )}
-          </>
+        {/* ── Inventory ── */}
+        {activeView === 'inventory' && (
+          <InventoryPage
+            onRequestAddYarn={handleAddYarn}
+          />
         )}
 
-      </main>
+        {/* ── Yarn Database ── */}
+        {activeView === 'yarnDatabase' && (
+          viewingYarnId ? (
+            <YarnViewer
+              yarnId={viewingYarnId}
+              onBack={() => setViewingYarnId(null)}
+              onDeleted={() => { setViewingYarnId(null); setYarnRefreshKey(k => k + 1); }}
+            />
+          ) : (
+            <YarnLibrary
+              key={yarnRefreshKey}
+              onYarnClick={openYarn}
+            />
+          )
+        )}
+
+      </AppShell>
 
       {uploadOpen && (
         <UploadModal onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />

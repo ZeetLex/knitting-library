@@ -7,9 +7,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
-  ChevronLeft, Download, LogOut, Terminal, Mail, ShieldCheck,
+  ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign,
+  Pencil, AtSign, Palette,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import {
@@ -24,32 +24,63 @@ import './SettingsPage.css';
 export default function SettingsPage({ onBack }) {
   const { user, t } = useApp();
   const [activeSection, setActiveSection] = useState('appearance');
+  const [mobileSectionOpen, setMobileSectionOpen] = useState(false);
 
   const navItems = [
-    { id: 'appearance', icon: <Sun size={18} />,        label: t('appearance') },
-    { id: 'account',    icon: <Lock size={18} />,       label: t('account') },
-    { id: 'data',       icon: <Download size={18} />,   label: t('dataSection') },
+    { id: 'appearance', icon: <Sun size={18} />,        label: t('appearance'), sub: t('settingsAppearanceSub') },
+    { id: 'account',    icon: <Lock size={18} />,       label: t('account'), sub: t('settingsAccountSub') },
+    { id: 'data',       icon: <Download size={18} />,   label: t('dataSection'), sub: t('settingsDataSub') },
     ...(user?.is_admin ? [
-      { id: 'users',         icon: <Users size={18} />,       label: t('userManagement'), adminDivider: true },
-      { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs') },
-      { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail') },
-      { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA') },
-      { id: 'announcements', icon: <Megaphone size={18} />,   label: 'Update Notes' },
+      { id: 'users',         icon: <Users size={18} />,       label: t('userManagement'), sub: t('settingsUsersSub'), adminDivider: true },
+      { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs'), sub: t('settingsLogsSub') },
+      { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail'), sub: t('settingsMailSub') },
+      { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA'), sub: t('settingsTwoFASub') },
+      { id: 'announcements', icon: <Megaphone size={18} />,   label: 'Update Notes', sub: t('settingsAnnouncementsSub') },
     ] : []),
   ];
+  const activeItem = navItems.find(item => item.id === activeSection);
+  const openSection = (id) => {
+    setActiveSection(id);
+    setMobileSectionOpen(true);
+  };
+  const handleTopBack = () => {
+    if (mobileSectionOpen) {
+      setMobileSectionOpen(false);
+      return;
+    }
+    onBack();
+  };
 
   return (
-    <div className="settings-page">
+    <div className={`settings-page ${mobileSectionOpen ? 'settings-page--section-open' : ''}`}>
       <div className="settings-topbar">
-        <button className="settings-back" onClick={onBack}>
+        <button className="settings-back" onClick={handleTopBack}>
           <ChevronLeft size={20} />
-          <span>{t('backToLibrary')}</span>
+          <span>{mobileSectionOpen ? t('settings') : t('backToLibrary')}</span>
         </button>
-        <h2 className="settings-title">{t('settings')}</h2>
+        <h2 className="settings-title">{mobileSectionOpen ? activeItem?.label : t('settings')}</h2>
         <div style={{ width: 80 }} />
       </div>
 
       <div className="settings-body">
+        <div className="settings-mobile-index">
+          {navItems.map((item) => (
+            <React.Fragment key={item.id}>
+              {item.adminDivider && (
+                <div className="settings-mobile-divider">{t('adminPanel')}</div>
+              )}
+              <button className="settings-mobile-row" onClick={() => openSection(item.id)}>
+                <span className="settings-mobile-row-icon">{item.icon}</span>
+                <span className="settings-mobile-row-copy">
+                  <span>{item.label}</span>
+                  <small>{item.sub}</small>
+                </span>
+                <ChevronRight size={18} />
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+
         <nav className="settings-nav">
           {navItems.map((item, i) => (
             <React.Fragment key={item.id}>
@@ -63,7 +94,7 @@ export default function SettingsPage({ onBack }) {
                 onClick={() => setActiveSection(item.id)}
               >
                 {item.icon}
-                {item.label}
+                <span>{item.label}</span>
               </button>
             </React.Fragment>
           ))}
@@ -95,6 +126,18 @@ const COLOUR_THEMES = [
   { id: 'ocean',      labelKey: 'themeOcean',      bg: '#e8f5f5', card: '#ffffff', accent: '#2d6a6a', bgDark: '#0e2a2a', cardDark: '#0e1f1f', accentDark: '#6eb0b0', flowerColour: '#2d6a6a', flowerColourDark: '#6eb0b0' },
   { id: 'willow',     labelKey: 'themeWillow',     bg: '#f4f6f0', card: '#ffffff', accent: '#6b7a4a', bgDark: '#11160e', cardDark: '#121910', accentDark: '#96a868', flowerColour: '#6b7a4a', flowerColourDark: '#96a868' },
 ];
+
+const BACKGROUNDS = [
+  { id: 'default', labelKey: 'backgroundDefault', subKey: 'backgroundDefaultSub' },
+  { id: 'plain-white', labelKey: 'backgroundPlainWhite', subKey: 'backgroundPlainWhiteSub' },
+  { id: 'cotton', labelKey: 'backgroundCotton', subKey: 'backgroundCottonSub' },
+  { id: 'soft-paper', labelKey: 'backgroundSoftPaper', subKey: 'backgroundSoftPaperSub' },
+  { id: 'warm-linen', labelKey: 'backgroundWarmLinen', subKey: 'backgroundWarmLinenSub' },
+];
+
+function normalizeBackgroundId(id) {
+  return id === 'floral' || id === 'floral-light' || id === 'floral-dark' ? 'default' : id;
+}
 
 function ThemeSwatch({ themeData, isSelected, isDark, onClick }) {
   const bg     = isDark ? themeData.bgDark     : themeData.bg;
@@ -139,12 +182,109 @@ function ThemeSwatch({ themeData, isSelected, isDark, onClick }) {
   );
 }
 
+function BackgroundSwatch({ backgroundData, isSelected, onClick }) {
+  const { t } = useApp();
+  return (
+    <button
+      className={`background-swatch background-swatch--${backgroundData.id} ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+      aria-label={t(backgroundData.labelKey)}
+    >
+      <span className="background-swatch-preview" />
+      <span className="background-swatch-copy">
+        <strong>{t(backgroundData.labelKey)}</strong>
+        <small>{t(backgroundData.subKey)}</small>
+      </span>
+      {isSelected && <span className="background-swatch-check"><CheckCircle size={18} /></span>}
+    </button>
+  );
+}
+
+function AppearancePickerHeader({ title, onBack }) {
+  const { t } = useApp();
+  return (
+    <div className="appearance-picker-header">
+      <button className="appearance-picker-back" onClick={onBack}>
+        <ChevronLeft size={18} />
+        <span>{t('appearance')}</span>
+      </button>
+      <h4>{title}</h4>
+    </div>
+  );
+}
+
 function AppearanceSection() {
-  const { theme, colourTheme, language, currency, t, updateSettings } = useApp();
+  const { theme, colourTheme, background, language, currency, t, updateSettings } = useApp();
+  const [mobilePicker, setMobilePicker] = useState(null);
+  const normalizedBackground = normalizeBackgroundId(background);
+  const selectedTheme = COLOUR_THEMES.find(ct => ct.id === colourTheme) || COLOUR_THEMES[0];
+  const selectedBackground = BACKGROUNDS.find(bg => bg.id === normalizedBackground) || BACKGROUNDS[0];
+  const saveTheme = (nextColourTheme) => updateSettings(theme, language, currency, nextColourTheme, background);
+  const saveBackground = (nextBackground) => updateSettings(theme, language, currency, colourTheme, nextBackground);
+
+  if (mobilePicker === 'themes') {
+    return (
+      <div className="settings-section appearance-picker-page">
+        <AppearancePickerHeader title={t('colourTheme')} onBack={() => setMobilePicker(null)} />
+        <div className="theme-swatch-grid theme-swatch-grid--picker">
+          {COLOUR_THEMES.map(ct => (
+            <div key={ct.id} className="theme-swatch-wrap">
+              <ThemeSwatch
+                themeData={ct}
+                isSelected={colourTheme === ct.id}
+                isDark={theme === 'dark'}
+                onClick={() => saveTheme(ct.id)}
+              />
+              <span className="swatch-label">{t(ct.labelKey)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (mobilePicker === 'backgrounds') {
+    return (
+      <div className="settings-section appearance-picker-page">
+        <AppearancePickerHeader title={t('backgroundSection')} onBack={() => setMobilePicker(null)} />
+        <div className="background-swatch-grid">
+          {BACKGROUNDS.map(bg => (
+            <BackgroundSwatch
+              key={bg.id}
+              backgroundData={bg}
+              isSelected={normalizedBackground === bg.id}
+              onClick={() => saveBackground(bg.id)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-section">
       <h3 className="section-heading">{t('appearance')}</h3>
-      <div className="settings-row settings-row--column">
+
+      <div className="appearance-mobile-options">
+        <button className="appearance-option-row" onClick={() => setMobilePicker('themes')}>
+          <span className="appearance-option-icon"><Palette size={19} /></span>
+          <span className="appearance-option-copy">
+            <span>{t('colourTheme')}</span>
+            <small>{t(selectedTheme.labelKey)}</small>
+          </span>
+          <ChevronRight size={18} />
+        </button>
+        <button className="appearance-option-row" onClick={() => setMobilePicker('backgrounds')}>
+          <span className={`appearance-background-mini background-swatch--${selectedBackground.id}`} />
+          <span className="appearance-option-copy">
+            <span>{t('backgroundSection')}</span>
+            <small>{t(selectedBackground.labelKey)}</small>
+          </span>
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="settings-row settings-row--column appearance-desktop-options">
         <div className="settings-row-info">
           <p className="settings-row-label">{t('colourTheme')}</p>
           <p className="settings-row-sub">{t('colourThemeSub')}</p>
@@ -153,28 +293,46 @@ function AppearanceSection() {
           {COLOUR_THEMES.map(ct => (
             <div key={ct.id} className="theme-swatch-wrap">
               <ThemeSwatch themeData={ct} isSelected={colourTheme === ct.id} isDark={theme === 'dark'}
-                onClick={() => updateSettings(theme, language, currency, ct.id)} />
+                onClick={() => saveTheme(ct.id)} />
               <span className="swatch-label">{t(ct.labelKey)}</span>
             </div>
           ))}
         </div>
       </div>
+
+      <div className="settings-row settings-row--column appearance-desktop-options">
+        <div className="settings-row-info">
+          <p className="settings-row-label">{t('backgroundSection')}</p>
+          <p className="settings-row-sub">{t('backgroundSectionSub')}</p>
+        </div>
+        <div className="background-swatch-grid">
+          {BACKGROUNDS.map(bg => (
+            <BackgroundSwatch
+              key={bg.id}
+              backgroundData={bg}
+              isSelected={normalizedBackground === bg.id}
+              onClick={() => saveBackground(bg.id)}
+            />
+          ))}
+        </div>
+      </div>
+
       <div className="settings-row">
         <div className="settings-row-info">
           <p className="settings-row-label">{t('darkMode')}</p>
           <p className="settings-row-sub">{theme === 'dark' ? t('darkMode') : t('lightMode')}</p>
         </div>
         <button className={`theme-toggle ${theme === 'dark' ? 'dark' : ''}`}
-          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language, currency, colourTheme)}>
+          onClick={() => updateSettings(theme === 'dark' ? 'light' : 'dark', language, currency, colourTheme, background)}>
           <span className="theme-toggle-knob">{theme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}</span>
         </button>
       </div>
       <div className="settings-row">
         <div className="settings-row-info"><p className="settings-row-label">{t('language')}</p></div>
         <div className="lang-switcher">
-          <button className={`lang-btn ${language === 'en' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'en', currency, colourTheme)}>🇬🇧 English</button>
-          <button className={`lang-btn ${language === 'no' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'no', currency, colourTheme)}>🇳🇴 Norsk</button>
-          <button className={`lang-btn ${language === 'hu' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'hu', currency, colourTheme)}>🇭🇺 Magyar</button>
+          <button className={`lang-btn ${language === 'en' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'en', currency, colourTheme, background)}>🇬🇧 English</button>
+          <button className={`lang-btn ${language === 'no' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'no', currency, colourTheme, background)}>🇳🇴 Norsk</button>
+          <button className={`lang-btn ${language === 'hu' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'hu', currency, colourTheme, background)}>🇭🇺 Magyar</button>
         </div>
       </div>
       <div className="settings-row">
@@ -185,7 +343,7 @@ function AppearanceSection() {
         <div className="lang-switcher">
           {CURRENCIES.map(c => (
             <button key={c.code} className={`lang-btn ${currency === c.code ? 'active' : ''}`}
-              onClick={() => updateSettings(theme, language, c.code, colourTheme)}>
+              onClick={() => updateSettings(theme, language, c.code, colourTheme, background)}>
               {c.label.split(' — ')[0]} {c.code}
             </button>
           ))}

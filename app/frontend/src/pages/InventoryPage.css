@@ -1,9 +1,13 @@
 /* ── InventoryPage ─────────────────────────────────────────────────────────── */
 
 .inv-page {
-  padding: 0 16px 16px;
+  padding: 12px 16px 90px;
   max-width: 900px;
   margin: 0 auto;
+}
+
+@media (min-width: 900px) {
+  .inv-page { padding: 22px 24px 36px; }
 }
 
 /* Toolbar — single sticky row */
@@ -61,6 +65,33 @@
   gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .inv-toolbar-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-search-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .inv-toolbar-actions {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .inv-toolbar-actions::-webkit-scrollbar { display: none; }
+
+  .inv-add-btn {
+    min-height: 38px;
+    padding: 8px 12px;
+  }
 }
 
 .inv-pill {
@@ -150,6 +181,23 @@
   border-radius: 12px;
   padding: 12px;
   transition: box-shadow 0.15s;
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .inv-card {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .inv-card-thumb {
+    width: 48px;
+    height: 48px;
+  }
+
+  .inv-card-actions {
+    flex-direction: column;
+  }
 }
 .inv-card--empty { opacity: 0.6; }
 

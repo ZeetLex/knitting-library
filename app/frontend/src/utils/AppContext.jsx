@@ -1,7 +1,7 @@
 /**
  * AppContext.js
  * Global state that every component in the app can read.
- * Stores: logged-in user, theme (light/dark), language (en/no/hu), currency (NOK/USD/GBP/HUF/EUR)
+ * Stores: logged-in user, theme (light/dark), language (en/no/hu), currency (NOK/USD/GBP/HUF/EUR), background
  *
  * Usage in any component:
  *   const { user, theme, language, currency, currencySymbol, t, login, logout } = useApp();
@@ -22,10 +22,17 @@ export const CURRENCIES = [
   { code: 'EUR', label: '€ — Euro' },
 ];
 
+function normalizeBackground(background) {
+  return background === 'floral' || background === 'floral-light' || background === 'floral-dark'
+    ? 'default'
+    : background;
+}
+
 export function AppProvider({ children }) {
   const [user, setUser]               = useState(null);
   const [theme, setTheme]             = useState('light');
   const [colourTheme, setColourTheme] = useState('terracotta');
+  const [background, setBackground]   = useState('default');
   const [language, setLanguage]       = useState('en');
   const [currency, setCurrency]       = useState('NOK');
   const [loading, setLoading]         = useState(true);
@@ -47,6 +54,10 @@ export function AppProvider({ children }) {
   }, [colourTheme]);
 
   useEffect(() => {
+    document.documentElement.setAttribute('data-background', background);
+  }, [background]);
+
+  useEffect(() => {
     const token = localStorage.getItem('knitting_token');
     const headers = token ? { 'X-Session-Token': token } : {};
     fetch('/api/setup/status', { credentials: 'include' })
@@ -65,6 +76,7 @@ export function AppProvider({ children }) {
           setUser(userData);
           setTheme(userData.theme || 'light');
           setColourTheme(userData.colour_theme || 'terracotta');
+          setBackground(normalizeBackground(userData.background || 'default'));
           setLanguage(userData.language || 'en');
           setCurrency(userData.currency || 'NOK');
         } else {
@@ -81,6 +93,7 @@ export function AppProvider({ children }) {
     setUser(userData);
     setTheme(userData.theme || 'light');
     setColourTheme(userData.colour_theme || 'terracotta');
+    setBackground(normalizeBackground(userData.background || 'default'));
     setLanguage(userData.language || 'en');
     setCurrency(userData.currency || 'NOK');
   }, []);
@@ -96,15 +109,17 @@ export function AppProvider({ children }) {
     setUser(null);
     setTheme('light');
     setColourTheme('terracotta');
+    setBackground('default');
     setLanguage('en');
     setCurrency('NOK');
   }, []);
 
-  const updateSettings = useCallback(async (newTheme, newLanguage, newCurrency, newColourTheme) => {
+  const updateSettings = useCallback(async (newTheme, newLanguage, newCurrency, newColourTheme, newBackground) => {
     const token = localStorage.getItem('knitting_token');
     const csrf = document.cookie.split('; ').find(row => row.startsWith('knitting_csrf='))?.split('=')[1] || '';
     // Use current values as fallback if not provided
     const ct = newColourTheme || colourTheme;
+    const bg = normalizeBackground(newBackground || background);
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['X-Session-Token'] = token;
@@ -113,21 +128,22 @@ export function AppProvider({ children }) {
         method: 'PUT',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct })
+        body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct, background: bg })
       });
       setTheme(newTheme);
       setLanguage(newLanguage);
       setCurrency(newCurrency);
       setColourTheme(ct);
-      setUser(u => ({ ...u, theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct }));
+      setBackground(bg);
+      setUser(u => ({ ...u, theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct, background: bg }));
     } catch (e) {
       console.error('Failed to save settings', e);
     }
-  }, [colourTheme]);
+  }, [background, colourTheme]);
 
   return (
     <AppContext.Provider value={{
-      user, theme, colourTheme, language, currency, currencySymbol, t,
+      user, theme, colourTheme, background, language, currency, currencySymbol, t,
       loading, setupRequired, login, logout, updateSettings
     }}>
       {children}
