@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Search, SlidersHorizontal, X, Grid2X2, LayoutGrid, Square,
+  SlidersHorizontal, X, Grid2X2, LayoutGrid, Square,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2, Plus,
   MousePointer2, Tag,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
+import CollectionToolbar from '../components/CollectionToolbar';
 
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRecipe, addCategory, deleteCategory, bulkUpdateRecipes } from '../utils/api';
@@ -281,49 +282,27 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="library">
-      {/* ── Controls bar ── */}
-      <div className="library-controls">
-        <div className="library-controls-inner">
-          <div className="search-wrap">
-            <Search size={18} className="search-icon" />
-            <input
-              type="text"
-              placeholder={t('searchPlaceholder')}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="search-input"
-              aria-label={t('searchPlaceholder')}
-            />
-            {search && (
-              <button className="search-clear" onClick={() => setSearch('')} aria-label="Clear search">
-                <X size={16} />
-              </button>
-            )}
-          </div>
-
+      <CollectionToolbar
+        searchType="text"
+        searchValue={search}
+        onSearchChange={setSearch}
+        placeholder={t('searchPlaceholder')}
+        searchLabel={t('searchPlaceholder')}
+        filterButton={(
           <button
-            className={`filter-btn ${filtersOpen || hasActiveFilters ? 'active' : ''}`}
+            type="button"
+            className={`collection-filter-btn ${filtersOpen || hasActiveFilters ? 'active' : ''}`}
             onClick={() => setFiltersOpen(o => !o)}
           >
             <SlidersHorizontal size={18} />
             <span>{t('filters')}</span>
-            {hasActiveFilters && <span className="filter-badge" />}
+            {hasActiveFilters && <span className="collection-filter-badge" />}
           </button>
-
-          <div className="grid-size-switcher">
-            {Object.entries(GRID_SIZES).map(([key, val]) => (
-              <button
-                key={key}
-                className={`grid-size-btn ${gridSize === key ? 'active' : ''}`}
-                onClick={() => setGridSize(key)}
-                title={val.label}
-              >
-                {val.icon}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        )}
+        viewOptions={Object.entries(GRID_SIZES).map(([key, val]) => ({ key, label: val.label, icon: val.icon }))}
+        viewValue={gridSize}
+        onViewChange={setGridSize}
+      >
         {filtersOpen && (
           <div className="filter-panel fade-in">
             <div className="filter-panel-inner">
@@ -446,7 +425,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             </div>
           </div>
         )}
-      </div>
+      </CollectionToolbar>
 
       {/* ── Meta row: recipe count + selection controls ── */}
       <div className="library-meta">

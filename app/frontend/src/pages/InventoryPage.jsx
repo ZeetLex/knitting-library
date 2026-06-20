@@ -15,6 +15,7 @@ import {
 } from '../utils/api';
 import YarnUploadModal from '../components/YarnUploadModal';
 import CurrencyInput from '../components/CurrencyInput';
+import CollectionToolbar from '../components/CollectionToolbar';
 import './InventoryPage.css';
 
 const TOOL_CATEGORIES = ['needle', 'tool', 'notion', 'other'];
@@ -490,32 +491,19 @@ export default function InventoryPage({ onRequestAddYarn }) {
 
   return (
     <div className="inv-page">
-      {/* ── Toolbar — single row matching YarnLibrary style ── */}
-      <div className="inv-toolbar">
-        <div className="inv-toolbar-top">
-          <div className="inv-search-wrap">
-            <Search size={15} className="inv-search-icon" />
-            <input
-              type="search"
-              className="inv-search"
-              placeholder={`${t('search')}…`}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="inv-toolbar-actions">
-            <button className={`inv-pill ${typeFilter==='' ? 'inv-pill--active' : ''}`} onClick={() => setTypeFilter('')}>{t('all')}</button>
-            <button className={`inv-pill ${typeFilter==='yarn' ? 'inv-pill--active' : ''}`} onClick={() => setTypeFilter('yarn')}>🧵</button>
-            <button className={`inv-pill ${typeFilter==='tool' ? 'inv-pill--active' : ''}`} onClick={() => setTypeFilter('tool')}>🪡</button>
-            <button className="inv-add-btn inv-add-btn--secondary" onClick={() => openAdd('tool')}>
-              <Plus size={15} /> {t('addToolToInventory')}
-            </button>
-            <button className="inv-add-btn" onClick={() => openAdd('yarn')}>
-              <Plus size={15} /> {t('addYarnToInventory')}
-            </button>
-          </div>
-        </div>
-      </div>
+      <CollectionToolbar
+        searchValue={search}
+        onSearchChange={setSearch}
+        placeholder={`${t('search')}…`}
+        searchLabel={t('search')}
+        actions={[
+          { key: 'all', label: t('all'), active: typeFilter === '', variant: 'secondary', onClick: () => setTypeFilter('') },
+          { key: 'yarn-filter', label: t('inventoryFilterYarn'), active: typeFilter === 'yarn', variant: 'secondary', onClick: () => setTypeFilter('yarn') },
+          { key: 'tool-filter', label: t('inventoryFilterItems'), active: typeFilter === 'tool', variant: 'secondary', onClick: () => setTypeFilter('tool') },
+          { key: 'add-tool', label: t('addToolToInventory'), icon: <Plus size={15} />, variant: 'secondary', onClick: () => openAdd('tool') },
+          { key: 'add-yarn', label: t('addYarnToInventory'), icon: <Plus size={15} />, onClick: () => openAdd('yarn') },
+        ]}
+      />
 
       {/* ── Content ── */}
       {loading ? (

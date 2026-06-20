@@ -3,11 +3,12 @@
  * Grid view of all yarns — same search/filter look as the recipe Library.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Grid2X2, LayoutGrid, Square, Plus, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Grid2X2, LayoutGrid, Square, Plus, SlidersHorizontal, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchYarns, fetchYarnAutocomplete, yarnImageUrl, yarnColourImageUrl } from '../utils/api';
 import YarnUploadModal from '../components/YarnUploadModal';
+import CollectionToolbar from '../components/CollectionToolbar';
 import './YarnLibrary.css';
 
 const SEARCH_FIELDS = [
@@ -39,8 +40,6 @@ export default function YarnLibrary({ onYarnClick }) {
   const [allWoolTypes, setAllWoolTypes] = useState([]);
   const [allSellers, setAllSellers]     = useState([]);
   const [uploadOpen, setUploadOpen]     = useState(false);
-  const [fieldDropdownOpen, setFieldDropdownOpen] = useState(false);
-  const fieldDropdownRef = useRef(null);
 
   // Load filter option lists
   useEffect(() => {
@@ -54,13 +53,6 @@ export default function YarnLibrary({ onYarnClick }) {
     if (!apiField) { setSuggestions([]); return; }
     fetchYarnAutocomplete(apiField).then(setSuggestions).catch(() => setSuggestions([]));
   }, [searchField]);
-
-  // Close field dropdown on outside click
-  useEffect(() => {
-    const h = (e) => { if (fieldDropdownRef.current && !fieldDropdownRef.current.contains(e.target)) setFieldDropdownOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
 
   const loadYarns = useCallback(async () => {
     setLoading(true); setError(null);
@@ -88,96 +80,37 @@ export default function YarnLibrary({ onYarnClick }) {
   const matchingSuggestions = search.length > 0
     ? suggestions.filter(s => s.toLowerCase().includes(search.toLowerCase()))
     : suggestions;
+  const fieldOptions = SEARCH_FIELDS.map(field => ({ key: field.key, label: t(field.labelKey) }));
 
   return (
     <div className="library yarn-library">
-
-      {/* ── Controls bar — identical structure to recipe Library ────── */}
-      <div className="library-controls">
-        <div className="library-controls-inner">
-
-          {/* Field selector + search input */}
-          <div className="search-wrap yarn-search-combined">
-            {/* Field dropdown pill */}
-            <div className="yarn-field-selector" ref={fieldDropdownRef}>
-              <button
-                className="yarn-field-btn"
-                onClick={() => setFieldDropdownOpen(o => !o)}
-                type="button"
-              >
-                <span>{t(currentFieldLabel)}</span>
-                <ChevronDown size={12} className={fieldDropdownOpen ? 'rotated' : ''} />
-              </button>
-              {fieldDropdownOpen && (
-                <div className="yarn-field-dropdown">
-                  {SEARCH_FIELDS.map(f => (
-                    <button
-                      key={f.key}
-                      className={`yarn-field-option ${searchField === f.key ? 'active' : ''}`}
-                      onClick={() => { setSearchField(f.key); setSearch(''); setFieldDropdownOpen(false); }}
-                    >
-                      {t(f.labelKey)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <span className="yarn-field-divider" />
-
-            {/* Icon + input in their own wrapper so the icon positions relative to the input only */}
-            <div className="yarn-input-wrap">
-              <Search size={16} className="search-icon" />
-              <input
-                list="yarn-suggestions"
-                type="search"
-                className="search-input yarn-search-input"
-                placeholder={searchField
-                  ? `${t('search')} ${t(currentFieldLabel).toLowerCase()}…`
-                  : `${t('search')}…`}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {matchingSuggestions.length > 0 && (
-                <datalist id="yarn-suggestions">
-                  {matchingSuggestions.map(s => <option key={s} value={s} />)}
-                </datalist>
-              )}
-              {search && (
-                <button className="search-clear" onClick={() => setSearch('')} aria-label="Clear">
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Filters button — same as recipe Library */}
+      <CollectionToolbar
+        searchValue={search}
+        onSearchChange={setSearch}
+        placeholder={searchField
+          ? `${t('search')} ${t(currentFieldLabel).toLowerCase()}…`
+          : `${t('search')}…`}
+        searchLabel={`${t('search')} ${t(currentFieldLabel)}`}
+        datalistId="yarn-suggestions"
+        datalistOptions={matchingSuggestions}
+        fieldOptions={fieldOptions}
+        fieldValue={searchField}
+        onFieldChange={(field) => { setSearchField(field); setSearch(''); }}
+        filterButton={(
           <button
-            className={`filter-btn ${filtersOpen || (hasActiveFilters && (filterWoolType || filterSeller)) ? 'active' : ''}`}
+            type="button"
+            className={`collection-filter-btn ${filtersOpen || (hasActiveFilters && (filterWoolType || filterSeller)) ? 'active' : ''}`}
             onClick={() => setFiltersOpen(o => !o)}
           >
             <SlidersHorizontal size={18} />
             <span>{t('yarnFilters')}</span>
-            {(filterWoolType || filterSeller) && <span className="filter-badge" />}
+            {(filterWoolType || filterSeller) && <span className="collection-filter-badge" />}
           </button>
-
-          {/* Grid size switcher — same as recipe Library */}
-          <div className="grid-size-switcher">
-            {Object.entries(GRID_SIZES).map(([sz, cfg]) => (
-              <button
-                key={sz}
-                className={`grid-size-btn ${gridSize === sz ? 'active' : ''}`}
-                onClick={() => setGridSize(sz)}
-                title={sz}
-              >
-                {cfg.icon}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Filter panel */}
+        )}
+        viewOptions={Object.entries(GRID_SIZES).map(([key, cfg]) => ({ key, label: key, icon: cfg.icon }))}
+        viewValue={gridSize}
+        onViewChange={setGridSize}
+      >
         {filtersOpen && (
           <div className="filter-panel fade-in">
             <div className="filter-panel-inner">
@@ -230,7 +163,7 @@ export default function YarnLibrary({ onYarnClick }) {
             </div>
           </div>
         )}
-      </div>
+      </CollectionToolbar>
 
       {/* ── Count bar ───────────────────────────────────────────────── */}
       <div className="library-meta" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', marginBottom: 0 }}>

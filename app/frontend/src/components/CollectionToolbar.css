@@ -1,0 +1,291 @@
+.collection-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  margin: 0 -12px;
+  padding: 0 12px;
+  overflow: visible;
+}
+
+@media (min-width: 641px) {
+  .collection-toolbar {
+    margin: 0 -24px;
+    padding: 0 24px;
+  }
+}
+
+.collection-toolbar-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.collection-search {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 42px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  transition: var(--transition);
+}
+
+.collection-search:focus-within {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 113, 74, 0.12);
+}
+
+.collection-search-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.collection-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.collection-search-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 38px 0 38px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.collection-search-input::placeholder { color: var(--text-light); }
+
+.collection-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-light);
+  cursor: pointer;
+}
+
+.collection-search-clear:hover { color: var(--text-primary); }
+
+.collection-field {
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+  max-width: 42%;
+}
+
+.collection-field-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 39px;
+  max-width: 100%;
+  padding: 0 8px 0 12px;
+  border: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.collection-field-btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-field-btn .rotated { transform: rotate(180deg); }
+
+.collection-search-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.collection-field-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 150px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  z-index: 40;
+}
+
+.collection-field-option {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.collection-field-option:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.collection-field-option.active { background: rgba(196,113,74,0.12); color: var(--terracotta); font-weight: 600; }
+
+.collection-toolbar-rail {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.collection-toolbar-rail::-webkit-scrollbar { display: none; }
+
+.collection-view-switcher {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.collection-view-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.collection-view-btn.active { background: var(--navy); color: white; }
+.collection-view-btn:hover:not(.active) { background: var(--bg-hover); color: var(--text-primary); }
+
+.collection-action,
+.collection-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.collection-action:not(.collection-action--secondary) {
+  border-color: var(--terracotta);
+  background: var(--terracotta);
+  color: white;
+}
+
+.collection-action--secondary:hover,
+.collection-filter-btn:hover,
+.collection-filter-btn.active {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.06);
+}
+
+.collection-action--secondary.active {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.12);
+}
+
+.collection-filter-btn span { display: inline; }
+
+.collection-filter-badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+@media (min-width: 760px) {
+  .collection-toolbar-inner {
+    grid-template-columns: minmax(260px, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+  }
+
+  .collection-toolbar-rail {
+    justify-content: flex-end;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .collection-field { max-width: 210px; }
+}
+
+@media (max-width: 420px) {
+  .collection-toolbar {
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+
+  .collection-filter-btn span {
+    display: none;
+  }
+
+  .collection-action {
+    min-height: 38px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
