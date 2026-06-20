@@ -782,9 +782,9 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
     colour_theme = data.get("colour_theme", current_user.get("colour_theme", "terracotta"))
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Invalid theme")
-    if language not in ("en", "no"):
+    if language not in ("en", "no", "hu"):
         raise HTTPException(status_code=400, detail="Invalid language")
-    if currency not in ("NOK", "USD", "GBP"):
+    if currency not in ("NOK", "USD", "GBP", "HUF", "EUR"):
         raise HTTPException(status_code=400, detail="Invalid currency")
     if colour_theme not in ("terracotta", "rose", "lavender", "sage", "berry"):
         raise HTTPException(status_code=400, detail="Invalid colour theme")

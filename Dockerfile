@@ -13,7 +13,7 @@ COPY app/frontend/ .
 # No external font downloads needed — they are included in node_modules.
 RUN npm run build
 
-FROM python:3.12-alpine3.22
+FROM python:3.12-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
