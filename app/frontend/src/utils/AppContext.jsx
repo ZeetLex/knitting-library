@@ -1,7 +1,7 @@
 /**
  * AppContext.js
  * Global state that every component in the app can read.
- * Stores: logged-in user, theme (light/dark), language (en/no), currency (NOK/USD/GBP)
+ * Stores: logged-in user, theme (light/dark), language (en/no/hu), currency (NOK/USD/GBP/HUF/EUR)
  *
  * Usage in any component:
  *   const { user, theme, language, currency, currencySymbol, t, login, logout } = useApp();
@@ -13,11 +13,13 @@ import { useT } from './translations';
 const AppContext = createContext(null);
 
 // Map currency code → symbol
-export const CURRENCY_SYMBOLS = { NOK: 'kr', USD: '$', GBP: '£' };
+export const CURRENCY_SYMBOLS = { NOK: 'kr', USD: '$', GBP: '£', HUF: 'Ft', EUR: '€' };
 export const CURRENCIES = [
   { code: 'NOK', label: 'kr — Norwegian Krone' },
   { code: 'USD', label: '$ — US Dollar' },
   { code: 'GBP', label: '£ — British Pound' },
+  { code: 'HUF', label: 'Ft — Hungarian Forint' },
+  { code: 'EUR', label: '€ — Euro' },
 ];
 
 export function AppProvider({ children }) {

@@ -11,7 +11,7 @@ import {
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
   Pencil, AtSign,
 } from 'lucide-react';
-import { useApp } from '../utils/AppContext';
+import { CURRENCIES, useApp } from '../utils/AppContext';
 import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
@@ -174,6 +174,7 @@ function AppearanceSection() {
         <div className="lang-switcher">
           <button className={`lang-btn ${language === 'en' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'en', currency, colourTheme)}>🇬🇧 English</button>
           <button className={`lang-btn ${language === 'no' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'no', currency, colourTheme)}>🇳🇴 Norsk</button>
+          <button className={`lang-btn ${language === 'hu' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'hu', currency, colourTheme)}>🇭🇺 Magyar</button>
         </div>
       </div>
       <div className="settings-row">
@@ -182,10 +183,10 @@ function AppearanceSection() {
           <p className="settings-row-sub">{t('currencySub')}</p>
         </div>
         <div className="lang-switcher">
-          {[{ code:'NOK', label:'kr' }, { code:'USD', label:'$' }, { code:'GBP', label:'£' }].map(c => (
+          {CURRENCIES.map(c => (
             <button key={c.code} className={`lang-btn ${currency === c.code ? 'active' : ''}`}
               onClick={() => updateSettings(theme, language, c.code, colourTheme)}>
-              {c.label} {c.code}
+              {c.label.split(' — ')[0]} {c.code}
             </button>
           ))}
         </div>
