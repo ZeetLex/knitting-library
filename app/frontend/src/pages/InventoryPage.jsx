@@ -440,10 +440,66 @@ function ColourChip({ colour, yarnId, selected, onSelect }) {
   );
 }
 
+function YarnSpecInventoryCard({ yarn, t, currencySymbol, onOpen }) {
+  const [imgErr, setImgErr] = useState(false);
+  const colours = yarn.colours || [];
+
+  return (
+    <button className="inv-card inv-yarn-spec-card" onClick={onOpen}>
+      <div className="inv-card-thumb">
+        {yarn.image_path && !imgErr ? (
+          <img src={yarnImageUrl(yarn.id)} alt={yarn.name} onError={() => setImgErr(true)} />
+        ) : (
+          <span className="inv-card-thumb-emoji">🧵</span>
+        )}
+      </div>
+      <div className="inv-card-body">
+        <div className="inv-card-top">
+          <div className="inv-card-names">
+            <span className="inv-card-name">{yarn.name}</span>
+            {yarn.wool_type && <span className="inv-card-category">{yarn.wool_type}</span>}
+          </div>
+          <span className="inv-stock-badge">{t('sampleStockBadge')}</span>
+        </div>
+        <div className="inv-spec-tags">
+          {yarn.seller && <span>{yarn.seller}</span>}
+          {yarn.needles && <span>🪡 {yarn.needles}</span>}
+          {yarn.price_per_skein && <span>{currencySymbol}{yarn.price_per_skein}</span>}
+        </div>
+        <div className="inv-qty-row inv-qty-row--sample">
+          <span className="inv-qty-value inv-qty-zero">0<span className="inv-qty-unit">{t('skeinCount')}</span></span>
+          <span className="inv-sample-note">{t('sampleStockHint')}</span>
+        </div>
+        {colours.length > 0 && (
+          <div className="inv-spec-swatches">
+            {colours.slice(0, 8).map(colour => (
+              <PassiveColourDot key={colour.id} colour={colour} yarnId={yarn.id} />
+            ))}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function PassiveColourDot({ colour, yarnId }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <span className="inv-spec-swatch" title={colour.name}>
+      {colour.image_path && !imgErr ? (
+        <img src={yarnColourImageUrl(yarnId, colour.id)} alt={colour.name} onError={() => setImgErr(true)} />
+      ) : (
+        <span>🎨</span>
+      )}
+    </span>
+  );
+}
+
 // ── Main InventoryPage ────────────────────────────────────────────────────────
-export default function InventoryPage({ onRequestAddYarn }) {
+export default function InventoryPage({ onRequestAddYarn, addRequest, refreshKey = 0, onYarnClick }) {
   const { t, language, currencySymbol } = useApp();
   const [items, setItems]       = useState([]);
+  const [yarns, setYarns]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -454,16 +510,25 @@ export default function InventoryPage({ onRequestAddYarn }) {
 
   const openAdd = (type = 'yarn') => { setEditItem(null); setModalInitialType(type); setModalOpen(true); };
 
+  useEffect(() => {
+    if (!addRequest) return;
+    openAdd(addRequest.type || 'tool');
+  }, [addRequest]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchInventory({ type: typeFilter, search });
-      setItems(data);
+      const [inventoryRows, yarnRows] = await Promise.all([
+        fetchInventory({ search }),
+        fetchYarns({ search }),
+      ]);
+      setItems(inventoryRows);
+      setYarns(yarnRows);
     } catch {}
     setLoading(false);
-  }, [typeFilter, search]);
+  }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   const handleAdjust = async (item, change) => {
     try {
@@ -487,7 +552,13 @@ export default function InventoryPage({ onRequestAddYarn }) {
   };
 
   const yarnItems = items.filter(i => i.type === 'yarn');
-  const toolItems = items.filter(i => i.type === 'tool');
+  const stockedYarnIds = new Set(yarnItems.map(i => i.yarn_id).filter(Boolean));
+  const sampleYarns = yarns.filter(y => !stockedYarnIds.has(y.id));
+  const toolsByCategory = items.filter(i => i.type === 'tool');
+  const toolItems = toolsByCategory.filter(i => !typeFilter || typeFilter === 'all' || i.category === typeFilter);
+  const showYarn = typeFilter === '' || typeFilter === 'all' || typeFilter === 'yarn';
+  const showTools = typeFilter === '' || typeFilter === 'all' || ['needle', 'tool', 'notion', 'other'].includes(typeFilter);
+  const hasVisibleItems = (showYarn && (yarnItems.length > 0 || sampleYarns.length > 0)) || (showTools && toolItems.length > 0);
 
   return (
     <div className="inv-page">
@@ -497,31 +568,33 @@ export default function InventoryPage({ onRequestAddYarn }) {
         placeholder={`${t('search')}…`}
         searchLabel={t('search')}
         actions={[
-          { key: 'all', label: t('all'), active: typeFilter === '', variant: 'secondary', onClick: () => setTypeFilter('') },
+          { key: 'all', label: t('all'), active: typeFilter === '' || typeFilter === 'all', variant: 'secondary', onClick: () => setTypeFilter('') },
           { key: 'yarn-filter', label: t('inventoryFilterYarn'), active: typeFilter === 'yarn', variant: 'secondary', onClick: () => setTypeFilter('yarn') },
-          { key: 'tool-filter', label: t('inventoryFilterItems'), active: typeFilter === 'tool', variant: 'secondary', onClick: () => setTypeFilter('tool') },
+          { key: 'needle-filter', label: t('categoryNeedle'), active: typeFilter === 'needle', variant: 'secondary', onClick: () => setTypeFilter('needle') },
+          { key: 'tool-filter', label: t('categoryTool'), active: typeFilter === 'tool', variant: 'secondary', onClick: () => setTypeFilter('tool') },
+          { key: 'notion-filter', label: t('categoryNotion'), active: typeFilter === 'notion', variant: 'secondary', onClick: () => setTypeFilter('notion') },
           { key: 'add-tool', label: t('addToolToInventory'), icon: <Plus size={15} />, variant: 'secondary', onClick: () => openAdd('tool') },
-          { key: 'add-yarn', label: t('addYarnToInventory'), icon: <Plus size={15} />, onClick: () => openAdd('yarn') },
+          { key: 'add-yarn', label: t('addYarn'), icon: <Plus size={15} />, onClick: onRequestAddYarn },
         ]}
       />
 
       {/* ── Content ── */}
       {loading ? (
         <div className="inv-loading"><div className="spinner" style={{ width: 32, height: 32 }} /></div>
-      ) : items.length === 0 ? (
+      ) : !hasVisibleItems ? (
         <div className="inv-empty">
           <Package size={48} strokeWidth={1.2} />
           <p>{t('inventoryEmpty')}</p>
           <p className="inv-empty-hint">{t('inventoryEmptyHint')}</p>
-          <button className="inv-add-btn" onClick={() => openAdd('yarn')}>
-            <Plus size={16} /> {t('addYarnToInventory')}
+          <button className="inv-add-btn" onClick={() => openAdd('tool')}>
+            <Plus size={16} /> {t('addToolToInventory')}
           </button>
         </div>
       ) : (
         <div className="inv-content">
-          {(typeFilter === '' || typeFilter === 'yarn') && yarnItems.length > 0 && (
+          {showYarn && yarnItems.length > 0 && (
             <section className="inv-section">
-              <h3 className="inv-section-title">🧵 {t('addYarnToInventory')} ({yarnItems.length})</h3>
+              <h3 className="inv-section-title">🧵 {t('inventoryYarnStockTitle')} ({yarnItems.length})</h3>
               <div className="inv-grid">
                 {yarnItems.map(item => (
                   <InventoryCard
@@ -534,9 +607,25 @@ export default function InventoryPage({ onRequestAddYarn }) {
               </div>
             </section>
           )}
-          {(typeFilter === '' || typeFilter === 'tool') && toolItems.length > 0 && (
+          {showYarn && sampleYarns.length > 0 && (
             <section className="inv-section">
-              <h3 className="inv-section-title">🪡 {t('addToolToInventory')} ({toolItems.length})</h3>
+              <h3 className="inv-section-title">🧶 {t('inventoryYarnSamplesTitle')} ({sampleYarns.length})</h3>
+              <div className="inv-grid">
+                {sampleYarns.map(yarn => (
+                  <YarnSpecInventoryCard
+                    key={yarn.id}
+                    yarn={yarn}
+                    t={t}
+                    currencySymbol={currencySymbol}
+                    onOpen={() => onYarnClick?.(yarn.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {showTools && toolItems.length > 0 && (
+            <section className="inv-section">
+              <h3 className="inv-section-title">🪡 {t('inventoryToolsTitle')} ({toolItems.length})</h3>
               <div className="inv-grid">
                 {toolItems.map(item => (
                   <InventoryCard

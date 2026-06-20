@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart2, BookOpen, Boxes, ChevronDown, ChevronRight, ChevronUp,
-  CircleHelp, Home, Import, Menu, PackagePlus, Plus, Settings, X,
+  CircleHelp, Home, Import, Menu, PackagePlus, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './AppShell.css';
@@ -18,7 +18,7 @@ function BrandMark({ compact = false }) {
   );
 }
 
-function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, onAddYarn }) {
+function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, onAddYarn, onAddTool }) {
   const { t } = useApp();
   const ref = useRef(null);
 
@@ -37,6 +37,7 @@ function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, on
     { icon: <BookOpen size={18} />, label: t('addRecipe'), sub: t('pdfOrImages'), onClick: onAddRecipe },
     { icon: <Import size={18} />, label: t('importFolder'), sub: t('workThroughFolder'), onClick: onImportFolder },
     { icon: <PackagePlus size={18} />, label: t('addYarn'), sub: t('navAddYarnHint'), onClick: onAddYarn },
+    { icon: <Wrench size={18} />, label: t('addToolToInventory'), sub: t('navAddToolHint'), onClick: onAddTool },
   ];
 
   return (
@@ -72,7 +73,6 @@ function AppMenu({ open, onClose, onNavigate }) {
   if (!open) return null;
 
   const items = [
-    { key: 'yarnDatabase', icon: <Boxes size={18} />, label: t('tabYarnDatabase') },
     { key: 'stats', icon: <BarChart2 size={18} />, label: t('statistics') },
     { key: 'help', icon: <CircleHelp size={18} />, label: t('helpTooltip') },
     { key: 'settings', icon: <Settings size={18} />, label: t('settings') },
@@ -104,53 +104,6 @@ function AppMenu({ open, onClose, onNavigate }) {
         </div>
         <button className="app-menu-logout" onClick={logout}>{t('logout')}</button>
       </aside>
-    </div>
-  );
-}
-
-function InventoryChooser({ open, variant, onClose, onNavigate }) {
-  const { t } = useApp();
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const options = [
-    { key: 'inventory', icon: <Boxes size={19} />, label: t('tabInventory'), sub: t('inventoryEmptyHint') },
-    { key: 'yarnDatabase', icon: <PackagePlus size={19} />, label: t('tabYarnDatabase'), sub: t('navAddYarnHint') },
-  ];
-
-  return (
-    <div className={`inventory-chooser inventory-chooser--${variant}`} ref={ref}>
-      <div className="inventory-chooser-header">
-        <span>{t('tabInventory')}</span>
-        <button onClick={onClose} aria-label={t('cancel')}><X size={16} /></button>
-      </div>
-      {options.map(option => (
-        <button
-          key={option.key}
-          className="inventory-chooser-item"
-          onClick={() => {
-            onClose();
-            onNavigate(option.key);
-          }}
-        >
-          <span className="inventory-chooser-icon">{option.icon}</span>
-          <span className="inventory-chooser-copy">
-            <span>{option.label}</span>
-            <small>{option.sub}</small>
-          </span>
-          <ChevronRight size={16} />
-        </button>
-      ))}
     </div>
   );
 }
@@ -216,7 +169,7 @@ function MobileNav({
       </button>
       <button
         className={`mobile-nav-item-main ${activeView === 'inventory' || activeView === 'yarnDatabase' ? 'active' : ''}`}
-        onClick={onInventoryClick}
+        onClick={() => onNavigate('inventory')}
         aria-label={t('tabInventory')}
       >
         {items[2].icon}
@@ -259,7 +212,7 @@ function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }
             className={`desktop-nav-item ${
               activeView === item.key || (item.key === 'inventory' && activeView === 'yarnDatabase') ? 'active' : ''
             }`}
-            onClick={item.key === 'inventory' ? onInventoryClick : () => onNavigate(item.key)}
+            onClick={() => onNavigate(item.key)}
           >
             {item.icon}
             <span>{item.label}</span>
@@ -288,10 +241,10 @@ export default function AppShell({
   onAddRecipe,
   onImportFolder,
   onAddYarn,
+  onAddTool,
   children,
 }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavCollapsed, setMobileNavCollapsed] = useState(false);
   const isHome = activeView === 'home';
@@ -304,7 +257,6 @@ export default function AppShell({
 
   const collapseMobileNav = () => {
     setAddOpen(false);
-    setInventoryOpen(false);
     setMenuOpen(false);
     setMobileNavCollapsed(true);
   };
@@ -315,7 +267,7 @@ export default function AppShell({
         activeView={activeView}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
-        onInventoryClick={() => setInventoryOpen(o => !o)}
+        onInventoryClick={() => onNavigate('inventory')}
       />
       <main className="app-content">
         {children}
@@ -326,7 +278,7 @@ export default function AppShell({
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
-        onInventoryClick={() => setInventoryOpen(o => !o)}
+        onInventoryClick={() => onNavigate('inventory')}
         onMenuClick={() => setMenuOpen(true)}
       />
       <AddActionMenu
@@ -336,12 +288,7 @@ export default function AppShell({
         onAddRecipe={onAddRecipe}
         onImportFolder={onImportFolder}
         onAddYarn={onAddYarn}
-      />
-      <InventoryChooser
-        open={inventoryOpen}
-        variant="responsive"
-        onClose={() => setInventoryOpen(false)}
-        onNavigate={onNavigate}
+        onAddTool={onAddTool}
       />
       <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} onNavigate={onNavigate} />
     </div>

@@ -72,7 +72,7 @@ Knitting Library is designed primarily for mobile/PWA use while still supporting
 - **Mobile navigation**: bottom nav for Home, Recipes, Add, Inventory, and Menu. The nav can be collapsed into a small restore button when more screen space is needed.
 - **Desktop navigation**: left sidebar with primary navigation and secondary links.
 - **Add menu**: one Add button opens choices for adding recipes, importing folders, or adding yarn.
-- **Inventory chooser**: Inventory opens a small chooser for Inventory or Yarn Database.
+- **Unified Inventory**: Inventory contains yarn/thread samples, yarn stock, needles, tools, and notions in one place.
 - **Settings**: mobile settings use section pages so Appearance, Account, Data, and admin tools do not become one long scrolling panel.
 
 ---
@@ -99,13 +99,13 @@ Draw or highlight directly on recipe pages. Brush, opacity, and color are adjust
 
 Mark recipes as active or finished. Link a yarn and color variant when starting, optionally deducting skeins from inventory. Finished projects can be rated for quality, difficulty, and result with optional notes.
 
-### Yarn Database
+### Yarn & Thread Inventory
 
 Catalogue yarn types with material, yardage, needle size, tension, seller, price, and color variants. Each color can have a name, price, and photo. URL import is early beta and works best with Sandnes Garn.
 
 ### Inventory
 
-Track yarn skeins, needles, tools, and notions. Yarn inventory entries can link to the Yarn Database for specs. Quantity changes have quick controls and a history log.
+Track yarn/thread samples, yarn stock, needles, tools, and notions. Yarn/thread entries can be saved with quantity 0 as project-planning samples, or with stock quantity for physical skeins. Quantity changes have quick controls and a history log.
 
 ### User Accounts
 

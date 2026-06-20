@@ -33,6 +33,8 @@ function AppInner() {
   const [showHelp, setShowHelp]               = useState(false);
   const [refreshKey, setRefreshKey]           = useState(0);
   const [yarnRefreshKey, setYarnRefreshKey]   = useState(0);
+  const [inventoryAddRequest, setInventoryAddRequest] = useState(null);
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   const checkImport = useCallback(() => {
     getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
@@ -128,9 +130,19 @@ function AppInner() {
   };
 
   const handleAddYarn = () => {
-    setActiveView('yarnDatabase');
+    setActiveView('inventory');
     setViewingYarnId(null);
     setYarnUploadOpen(true);
+  };
+
+  const handleAddTool = () => {
+    setActiveView('inventory');
+    setViewingRecipeId(null);
+    setViewingYarnId(null);
+    setShowSettings(false);
+    setShowStats(false);
+    setShowHelp(false);
+    setInventoryAddRequest({ type: 'tool', nonce: Date.now() });
   };
 
   if (loading) return (
@@ -150,6 +162,7 @@ function AppInner() {
         onAddRecipe={handleAddRecipe}
         onImportFolder={handleImportFolder}
         onAddYarn={handleAddYarn}
+        onAddTool={handleAddTool}
       >
         <SettingsPage onBack={() => setShowSettings(false)} />
       </AppShell>
@@ -170,6 +183,7 @@ function AppInner() {
         onAddRecipe={handleAddRecipe}
         onImportFolder={handleImportFolder}
         onAddYarn={handleAddYarn}
+        onAddTool={handleAddTool}
       >
         <StatisticsPage />
       </AppShell>
@@ -184,6 +198,7 @@ function AppInner() {
         onAddRecipe={handleAddRecipe}
         onImportFolder={handleImportFolder}
         onAddYarn={handleAddYarn}
+        onAddTool={handleAddTool}
       >
         <HelpPage onBack={() => setShowHelp(false)} />
       </AppShell>
@@ -198,6 +213,7 @@ function AppInner() {
         onAddRecipe={handleAddRecipe}
         onImportFolder={handleImportFolder}
         onAddYarn={handleAddYarn}
+        onAddTool={handleAddTool}
       >
 
         {activeView === 'home' && (
@@ -229,16 +245,24 @@ function AppInner() {
         {activeView === 'inventory' && (
           <InventoryPage
             onRequestAddYarn={handleAddYarn}
+            addRequest={inventoryAddRequest}
+            refreshKey={inventoryRefreshKey}
+            onYarnClick={openYarn}
           />
         )}
 
-        {/* ── Yarn Database ── */}
+        {/* ── Yarn/thread detail, opened from the merged Inventory ── */}
         {activeView === 'yarnDatabase' && (
           viewingYarnId ? (
             <YarnViewer
               yarnId={viewingYarnId}
-              onBack={() => setViewingYarnId(null)}
-              onDeleted={() => { setViewingYarnId(null); setYarnRefreshKey(k => k + 1); }}
+              onBack={() => { setActiveView('inventory'); setViewingYarnId(null); }}
+              onDeleted={() => {
+                setActiveView('inventory');
+                setViewingYarnId(null);
+                setYarnRefreshKey(k => k + 1);
+                setInventoryRefreshKey(k => k + 1);
+              }}
             />
           ) : (
             <YarnLibrary
@@ -255,8 +279,14 @@ function AppInner() {
       )}
       {yarnUploadOpen && (
         <YarnUploadModal
+          allowStockQuantity
           onClose={() => setYarnUploadOpen(false)}
-          onSuccess={() => { setYarnUploadOpen(false); setYarnRefreshKey(k => k + 1); }}
+          onSuccess={() => {
+            setYarnUploadOpen(false);
+            setYarnRefreshKey(k => k + 1);
+            setInventoryRefreshKey(k => k + 1);
+            setActiveView('inventory');
+          }}
         />
       )}
       {importOpen && (

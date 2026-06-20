@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, ImagePlus, Link, Loader } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createYarn, updateYarn, yarnImageUrl, scrapeYarnUrl } from '../utils/api';
+import { createInventoryItem, createYarn, updateYarn, yarnImageUrl, scrapeYarnUrl } from '../utils/api';
 import CurrencyInput from './CurrencyInput';
 import './YarnUploadModal.css';
 
@@ -16,7 +16,7 @@ const EMPTY = {
   tension: '', origin: '', seller: '', price_per_skein: '', product_info: '',
 };
 
-export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
+export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowStockQuantity = false }) {
   const { t } = useApp();
   const isEdit = !!editYarn;
 
@@ -26,6 +26,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [dragOver, setDragOver]   = useState(false);
+  const [stockQuantity, setStockQuantity] = useState(0);
   const fileRef = useRef();
 
   // URL import state
@@ -65,7 +66,23 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
       });
       if (imageFile) fd.append('image', imageFile);
       const result = isEdit ? await updateYarn(editYarn.id, fd) : await createYarn(fd);
-      onSuccess(result);
+      let stockItem = null;
+      const quantity = Math.max(0, Number(stockQuantity) || 0);
+      if (!isEdit && allowStockQuantity && quantity > 0) {
+        stockItem = await createInventoryItem({
+          type: 'yarn',
+          name: result.name,
+          quantity,
+          category: '',
+          yarn_id: result.id,
+          yarn_colour_id: null,
+          purchase_date: '',
+          purchase_price: '',
+          purchase_note: '',
+          notes: '',
+        });
+      }
+      onSuccess(result, stockItem);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -278,6 +295,19 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn }) {
                 rows={5}
               />
             </Field>
+
+            {!isEdit && allowStockQuantity && (
+              <Field label={t('initialStockQuantity')}>
+                <input
+                  type="number"
+                  min="0"
+                  value={stockQuantity}
+                  onChange={(e) => setStockQuantity(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="yum-input"
+                />
+                <p className="yum-field-hint">{t('initialStockQuantityHint')}</p>
+              </Field>
+            )}
           </div>
         </div>
 
