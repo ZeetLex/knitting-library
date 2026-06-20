@@ -83,7 +83,10 @@ Catalogue yarn types with full specs: material, yardage, needle size, tension, s
 Track yarn skeins, needles, tools, and notions. Yarn entries link to the Yarn Database for specs. +/− buttons for quick quantity adjustments with a full history log per item.
 
 ### User Accounts
-Username/password login with bcrypt hashing. Login rate limiting. Optional two-factor authentication (TOTP). Per-user settings: theme, colour theme, language (English/Norwegian), currency.
+Username/password login with bcrypt hashing. Login rate limiting. Optional two-factor authentication (TOTP). Per-user settings: theme, colour theme, language, and currency.
+
+### Languages & Currencies
+The interface is available in English, Norwegian, and Hungarian. Prices and inventory values can be shown in NOK, USD, GBP, HUF, or EUR.
 
 ### Admin Panel
 Create and manage user accounts, view live API logs, configure SMTP mail, and manage 2FA status for all users.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Localization
+- Added Hungarian (`hu`) as a selectable interface language.
+- Added Hungarian Forint (`HUF`) and Euro (`EUR`) as selectable currencies.
+
 ### Security
 - Removed the default `admin/admin` first-run account. New installs now create the first admin through the setup screen.
 - Added HttpOnly SameSite session cookies, CSRF protection for cookie-authenticated write requests, and retained legacy `X-Session-Token` support for compatibility.
@@ -17,4 +21,5 @@
 
 ### Documentation
 - Updated self-hosting documentation for first-run setup, backups, reverse proxy usage, `TRUSTED_PROXIES`, HTTPS, Nginx Proxy Manager, Caddy, and safer pinned-image upgrades.
+- Updated feature documentation to reflect Hungarian language support and the expanded currency list.
 - Added `.env.example` with proxy and origin configuration examples.
