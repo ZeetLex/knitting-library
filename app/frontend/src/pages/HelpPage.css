@@ -242,6 +242,28 @@
   line-height: 1.6;
 }
 
+.help-issue-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--accent);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.help-issue-link:hover {
+  color: var(--accent-light);
+  text-decoration: underline;
+}
+
+.help-issue-link svg {
+  flex-shrink: 0;
+}
+
 /* ── Section ─────────────────────────────────────────────────────────────────── */
 .help-section {
   background: var(--card-bg);

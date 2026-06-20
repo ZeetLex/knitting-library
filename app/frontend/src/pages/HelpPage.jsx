@@ -9,7 +9,7 @@ import {
   ChevronLeft, ChevronDown, ChevronRight,
   BookOpen, Search, Eye, PenTool, Activity,
   Package, Upload, Scissors, Settings,
-  ArrowRight, Info,
+  ArrowRight, Info, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './HelpPage.css';
@@ -143,6 +143,8 @@ function useSections(t) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+const ISSUES_URL = 'https://github.com/ZeetLex/knitting-library/issues';
+
 export default function HelpPage({ onBack }) {
   const { t } = useApp();
   const sections = useSections(t);
@@ -231,6 +233,15 @@ export default function HelpPage({ onBack }) {
             <div>
               <h1 className="help-hero-title">{t('helpTitle')}</h1>
               <p className="help-hero-intro">{t('helpIntro')}</p>
+              <a
+                className="help-issue-link"
+                href={ISSUES_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span>{t('helpIssueLink')}</span>
+                <ExternalLink size={14} />
+              </a>
             </div>
           </div>
 
