@@ -1,6 +1,6 @@
 .home-page {
   min-height: 100dvh;
-  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px 22px;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px calc(var(--app-mobile-nav-space, 96px) + 22px);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 92%, #fff) 0%, var(--bg-primary) 55%),
     var(--bg-primary);
@@ -14,7 +14,7 @@
 
 @media (max-width: 640px) {
   .home-page {
-    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 18px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px calc(var(--app-mobile-nav-space, 96px) + 18px);
   }
 }
 

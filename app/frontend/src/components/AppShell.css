@@ -24,6 +24,10 @@
   padding-bottom: calc(var(--mobile-nav-gap) + 14px);
 }
 
+.app-shell--home .app-content {
+  padding-bottom: 0;
+}
+
 @media (min-width: 900px) {
   .app-shell {
     --desktop-sidebar-width: 248px;
