@@ -66,6 +66,24 @@
 
 .help-topbar-spacer { width: 80px; flex-shrink: 0; }
 
+@media (max-width: 480px) {
+  .help-topbar {
+    padding: 10px 12px;
+  }
+
+  .help-back span {
+    display: none;
+  }
+
+  .help-topbar-title {
+    font-size: 17px;
+  }
+
+  .help-topbar-spacer {
+    width: 40px;
+  }
+}
+
 /* ── Body layout ─────────────────────────────────────────────────────────────── */
 .help-body {
   display: flex;

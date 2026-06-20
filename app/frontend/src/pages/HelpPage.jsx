@@ -27,8 +27,9 @@ function useSections(t) {
       items: [
         { key: 'helpS1Intro' },
         { label: 'Sign in',          key: 'helpS1SignIn' },
+        { label: 'Home dashboard',   key: 'helpS1Home' },
         { label: 'Navigation',        key: 'helpS1Nav' },
-        { label: 'Logo shortcut',     key: 'helpS1Logo' },
+        { label: 'Home shortcut',     key: 'helpS1Logo' },
       ],
     },
     {
