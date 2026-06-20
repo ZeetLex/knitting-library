@@ -1,0 +1,30 @@
+<Container version="2">
+  <Name>Knitting Library</Name>
+  <Repository>zeetlex/knitting-library:latest</Repository>
+  <Registry>https://hub.docker.com/r/zeetlex/knitting-library</Registry>
+  <Network>bridge</Network>
+
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+
+  <Icon>https://raw.githubusercontent.com/ZeetLex/knitting-library/main/icon.svg</Icon>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+
+  <Overview>Self-hosted knitting pattern manager with PDF/image uploads, searchable pattern library, annotations, project tracking, and yarn inventory.</Overview>
+  <Support>https://github.com/ZeetLex/knitting-library/issues</Support>
+  <Project>https://github.com/ZeetLex/knitting-library</Project>
+  <TemplateURL>https://raw.githubusercontent.com/ZeetLex/knitting-library/main/templates/knitting-library.xml</TemplateURL>
+  <ReadMe>https://raw.githubusercontent.com/ZeetLex/knitting-library/main/README.md</ReadMe>
+
+  <Category>Tools:Utilities</Category>
+  <Beta>true</Beta>
+  <License>MIT</License>
+
+  <Config Name="WebUI" Target="8080" Default="3000" Mode="tcp" Description="HTTP port for the Knitting Library web interface." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/knitting-library/data" Mode="rw" Description="Persistent app data, including the SQLite database, uploaded patterns, thumbnails, yarn images, annotations, and settings." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Logs" Target="/logs" Default="/mnt/user/appdata/knitting-library/logs" Mode="rw" Description="Application and authentication logs." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="PUID" Target="PUID" Default="99" Description="User ID used for files written to /data and /logs. Unraid default is 99." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Group ID used for files written to /data and /logs. Unraid default is 100." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Trusted Proxies" Target="TRUSTED_PROXIES" Default="" Description="Comma-separated proxy IPs or CIDRs whose X-Forwarded-For and X-Forwarded-Proto headers should be trusted. Leave blank when accessing the app directly." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="" Description="Comma-separated allowed browser origins for CORS. Leave blank for same-origin access." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

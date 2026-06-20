@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="32" fill="#1a1a2e"/>
+  <!-- Yarn ball body -->
+  <circle cx="32" cy="33" r="18" fill="#c4714a"/>
+  <!-- Yarn strands -->
+  <path d="M17 26 Q32 18 47 26" fill="none" stroke="#e8956d" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M15 33 Q32 24 49 33" fill="none" stroke="#e8956d" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M16 40 Q32 31 48 40" fill="none" stroke="#e8956d" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M20 46 Q32 39 44 46" fill="none" stroke="#e8956d" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M25 20 Q28 34 22 47" fill="none" stroke="#a85a38" stroke-width="2" stroke-linecap="round"/>
+  <path d="M32 15 Q35 33 32 51" fill="none" stroke="#a85a38" stroke-width="2" stroke-linecap="round"/>
+  <path d="M39 20 Q36 34 42 47" fill="none" stroke="#a85a38" stroke-width="2" stroke-linecap="round"/>
+  <!-- Needle going through -->
+  <line x1="44" y1="16" x2="24" y2="50" stroke="#d4c4b0" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="44" cy="15" r="3.5" fill="#d4c4b0"/>
+  <!-- Shine -->
+  <circle cx="26" cy="27" r="4" fill="rgba(255,255,255,0.15)"/>
+</svg>

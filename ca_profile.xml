@@ -1,0 +1,7 @@
+<CommunityApplications>
+  <Profile>
+    Knitting Library is a self-hosted knitting pattern manager for Docker. It lets users upload PDF patterns or scanned images, browse a searchable pattern library, annotate pages, track active projects, and manage yarn inventory from a single container. Support is available through the GitHub issue tracker.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/ZeetLex/knitting-library/main/icon.svg</Icon>
+  <WebPage>https://github.com/ZeetLex/knitting-library</WebPage>
+</CommunityApplications>
