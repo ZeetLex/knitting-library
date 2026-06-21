@@ -59,6 +59,48 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
   );
 }
 
+function HomeProjectPanel({ panelKey, panel, loading, onOpenRecipe, onNavigate, onAddRecipe, onShuffle, t }) {
+  const action = panelKey === 'active' ? () => onNavigate('recipes') : panelKey === 'discover' ? onShuffle : onAddRecipe;
+  const actionLabel = panelKey === 'active' ? t('homeBrowseRecipes') : panelKey === 'discover' ? t('homeShuffle') : t('addRecipe');
+
+  return (
+    <section className={`home-project-column home-project-column--${panel.mode}`}>
+      <div className="home-column-top">
+        <div>
+          <p className="home-section-kicker">{panel.title}</p>
+          <h2>{panel.title}</h2>
+        </div>
+        {panelKey === 'discover' && (
+          <button className="home-column-icon-btn" onClick={onShuffle} title={t('homeShuffle')} aria-label={t('homeShuffle')}>
+            <Dice5 size={17} />
+          </button>
+        )}
+      </div>
+
+      <div className="home-column-list">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => <div key={i} className="home-card-skeleton skeleton" />)
+        ) : panel.items.length > 0 ? (
+          panel.items.slice(0, 6).map(recipe => (
+            <MiniRecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              mode={panel.mode}
+              onOpen={onOpenRecipe}
+            />
+          ))
+        ) : (
+          <div className="home-empty home-empty--column">
+            <FolderOpen size={28} />
+            <p>{panel.empty}</p>
+            <button onClick={action}>{actionLabel}</button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
   const { t } = useApp();
   const [stats, setStats] = useState(null);
@@ -108,6 +150,7 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
     discover: { title: t('homeDiscover'), items: discoverRecipes, empty: t('homeNoDiscover'), mode: 'discover' },
   };
   const current = panels[panel];
+  const shuffleDiscover = () => setRandomSeed(s => s + 1);
 
   return (
     <div className="home-page">
@@ -153,7 +196,7 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
             <h1>{current.title}</h1>
           </div>
           {panel === 'discover' && (
-            <button className="home-shuffle" onClick={() => setRandomSeed(s => s + 1)}>
+            <button className="home-shuffle" onClick={shuffleDiscover}>
               <Dice5 size={17} />
               <span>{t('homeShuffle')}</span>
             </button>
@@ -208,6 +251,22 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
             <span>{t('homeNextShelf')}</span>
             <ChevronRight size={16} />
           </button>
+        </div>
+
+        <div className="home-project-columns">
+          {Object.entries(panels).map(([key, projectPanel]) => (
+            <HomeProjectPanel
+              key={key}
+              panelKey={key}
+              panel={projectPanel}
+              loading={loading}
+              onOpenRecipe={onOpenRecipe}
+              onNavigate={onNavigate}
+              onAddRecipe={onAddRecipe}
+              onShuffle={shuffleDiscover}
+              t={t}
+            />
+          ))}
         </div>
       </section>
     </div>
