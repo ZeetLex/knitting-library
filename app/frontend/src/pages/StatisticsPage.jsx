@@ -1,27 +1,85 @@
 /**
  * StatisticsPage.js
- * Displays library-wide statistics: recipe count, yarn entries, project counts, categories, tags, inventory.
- * Fetched when the page is opened (on tab change).
+ * Displays library-wide statistics and collection health.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart2, Book, Users, CheckSquare, Tag, Package, Activity, CircleDot } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  Archive,
+  BookOpen,
+  CheckCircle2,
+  CircleDot,
+  FolderKanban,
+  Package,
+  Palette,
+  Sparkles,
+  Tags,
+  Users,
+  Wrench,
+} from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchStats } from '../utils/api';
 import './StatisticsPage.css';
 
-// ── Main StatisticsPage ──
+function clampPercent(value) {
+  const number = Number(value) || 0;
+  return Math.max(0, Math.min(100, number));
+}
+
+function StatTile({ icon, label, value, sub, tone = 'accent' }) {
+  return (
+    <article className={`stats-tile stats-tile--${tone}`}>
+      <div className="stats-tile-icon">{icon}</div>
+      <div className="stats-tile-copy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{sub}</small>
+      </div>
+    </article>
+  );
+}
+
+function ProgressMetric({ label, value, detail, tone = 'accent' }) {
+  const pct = clampPercent(value);
+  return (
+    <div className={`stats-progress stats-progress--${tone}`}>
+      <div className="stats-progress-top">
+        <span>{label}</span>
+        <strong>{pct}%</strong>
+      </div>
+      <div className="stats-progress-track" aria-hidden="true">
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function BreakdownBar({ label, value, max, tone = 'accent' }) {
+  const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
+  return (
+    <div className={`stats-breakdown-row stats-breakdown-row--${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div className="stats-breakdown-track" aria-hidden="true">
+        <span style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export default function StatisticsPage() {
   const { t, language, currencySymbol } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch stats once when the page is opened
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchStats();
-      setStats(data);
+      setStats(await fetchStats());
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
@@ -31,122 +89,225 @@ export default function StatisticsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Helper to format numbers with thousands separator
-  const fmtNum = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const fmtNum = useCallback((value) => (
+    new Intl.NumberFormat(language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US')
+      .format(Number(value) || 0)
+  ), [language]);
+
+  const fmtMoney = useCallback((value) => {
+    const amount = Number(value) || 0;
+    if (!amount) return `${currencySymbol}0`;
+    return `${currencySymbol}${new Intl.NumberFormat(language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US', {
+      maximumFractionDigits: 0,
+    }).format(amount)}`;
+  }, [currencySymbol, language]);
+
+  const toolBreakdown = useMemo(() => {
+    const counts = stats?.tool_categories || {};
+    return [
+      { key: 'needle', label: t('categoryNeedle'), value: counts.needle || 0, tone: 'blue' },
+      { key: 'tool', label: t('categoryTool'), value: counts.tool || 0, tone: 'accent' },
+      { key: 'notion', label: t('categoryNotion'), value: counts.notion || 0, tone: 'sage' },
+      { key: 'other', label: t('categoryOther'), value: counts.other || 0, tone: 'muted' },
+    ];
+  }, [stats, t]);
+
+  const maxToolCount = Math.max(1, ...toolBreakdown.map(item => item.value));
+  const totalSessions = stats?.total_sessions || 0;
+  const activeShare = totalSessions ? Math.round((stats.active_projects / totalSessions) * 100) : 0;
+  const finishedShare = totalSessions ? Math.round((stats.finished_projects / totalSessions) * 100) : 0;
 
   return (
     <div className="stats-page">
-      {/* Header */}
-      <div className="stats-header">
-        <h1>{t('statistics')}</h1>
-        <p className="stats-header-subtitle">{t('statsSubLibrary')}</p>
-      </div>
+      <header className="stats-hero">
+        <div>
+          <span className="stats-kicker">{t('statistics')}</span>
+          <h1>{t('statsTitle')}</h1>
+          <p>{t('statsSubLibrary')}</p>
+        </div>
+        <div className="stats-hero-mark" aria-hidden="true">
+          <Sparkles size={24} />
+        </div>
+      </header>
 
-      {/* Loading skeleton */}
       {loading ? (
         <div className="stats-loading">
           <div className="spinner" />
           <p>{t('loading')}</p>
         </div>
       ) : stats ? (
-        // ── Stats Cards Grid ──
-        <div className="stats-grid">
+        <>
+          <section className="stats-tile-grid" aria-label={t('statistics')}>
+            <StatTile
+              icon={<BookOpen size={22} />}
+              label={t('statsRecipes')}
+              value={fmtNum(stats.recipes)}
+              sub={`${fmtNum(stats.categories)} ${t('statsCategories').toLowerCase()}`}
+            />
+            <StatTile
+              icon={<Activity size={22} />}
+              label={t('statsActive')}
+              value={fmtNum(stats.active_projects)}
+              sub={t('statsSubActive')}
+              tone="blue"
+            />
+            <StatTile
+              icon={<Package size={22} />}
+              label={t('statsInventory')}
+              value={fmtNum(stats.inventory_items)}
+              sub={`${fmtNum(stats.inventory_total_quantity)} ${t('statsTotalPieces')}`}
+              tone="sage"
+            />
+            <StatTile
+              icon={<CheckCircle2 size={22} />}
+              label={t('statsFinished')}
+              value={fmtNum(stats.finished_projects)}
+              sub={`${stats.completion_rate || 0}% ${t('statsCompletionRate')}`}
+              tone="navy"
+            />
+          </section>
 
-          {/* Recipes */}
-          <StatCard
-            icon={<Book size={24} />}
-            title={t('statsRecipes')}
-            value={fmtNum(stats.recipes)}
-            sub={t('statsSubRecipes')}
-            color="from-orange to-red"
-          />
+          <section className="stats-dashboard">
+            <article className="stats-panel stats-panel--feature">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsProjectPulse')}</span>
+                  <h2>{fmtNum(totalSessions)} {t('statsTotalSessions').toLowerCase()}</h2>
+                </div>
+                <div className="stats-ring" style={{ '--stats-ring-value': `${clampPercent(stats.completion_rate)}%` }}>
+                  <strong>{stats.completion_rate || 0}%</strong>
+                  <span>{t('statsDone')}</span>
+                </div>
+              </div>
+              <div className="stats-split-bars">
+                <ProgressMetric
+                  label={t('statsActive')}
+                  value={activeShare}
+                  detail={`${fmtNum(stats.active_projects)} ${t('statsSubActive').toLowerCase()}`}
+                  tone="blue"
+                />
+                <ProgressMetric
+                  label={t('statsFinished')}
+                  value={finishedShare}
+                  detail={`${fmtNum(stats.finished_projects)} ${t('statsSubFinished').toLowerCase()}`}
+                  tone="sage"
+                />
+              </div>
+            </article>
 
-          {/* Yarns */}
-          <StatCard
-            icon={<CircleDot size={24} />}
-            title={t('statsYarns')}
-            value={fmtNum(stats.yarns)}
-            sub={t('statsSubYarns')}
-            color="from-green to-emerald"
-          />
+            <article className="stats-panel">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsLibraryHealth')}</span>
+                  <h2>{t('statsOrganization')}</h2>
+                </div>
+                <FolderKanban size={23} />
+              </div>
+              <div className="stats-stack">
+                <ProgressMetric
+                  label={t('statsCategorized')}
+                  value={stats.category_coverage}
+                  detail={`${fmtNum(stats.uncategorized_recipes)} ${t('statsUncategorizedRemaining')}`}
+                />
+                <ProgressMetric
+                  label={t('statsTagged')}
+                  value={stats.tag_coverage}
+                  detail={`${fmtNum(stats.untagged_recipes)} ${t('statsUntaggedRemaining')}`}
+                  tone="blue"
+                />
+              </div>
+            </article>
 
-          {/* Users */}
-          <StatCard
-            icon={<Users size={24} />}
-            title={t('statsUsers')}
-            value={fmtNum(stats.users)}
-            sub={t('statsSubUsers')}
-            color="from-blue to-indigo"
-          />
+            <article className="stats-panel">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsInventory')}</span>
+                  <h2>{t('statsStashSnapshot')}</h2>
+                </div>
+                <Archive size={23} />
+              </div>
+              <div className="stats-mini-grid">
+                <div>
+                  <CircleDot size={17} />
+                  <strong>{fmtNum(stats.yarns)}</strong>
+                  <span>{t('statsYarns')}</span>
+                </div>
+                <div>
+                  <Palette size={17} />
+                  <strong>{fmtNum(stats.yarn_colours)}</strong>
+                  <span>{t('statsColours')}</span>
+                </div>
+                <div>
+                  <Package size={17} />
+                  <strong>{fmtNum(stats.inventory_yarn_items)}</strong>
+                  <span>{t('statsYarnStock')}</span>
+                </div>
+                <div>
+                  <Wrench size={17} />
+                  <strong>{fmtNum(stats.inventory_tool_items)}</strong>
+                  <span>{t('statsTools')}</span>
+                </div>
+              </div>
+              <div className="stats-inventory-strip">
+                <span>{t('statsLowStock')}: <strong>{fmtNum(stats.inventory_low_stock)}</strong></span>
+                <span>{t('statsValue')}: <strong>{fmtMoney(stats.inventory_value_estimate)}</strong></span>
+              </div>
+            </article>
 
-          {/* Categories */}
-          <StatCard
-            icon={<CheckSquare size={24} />}
-            title={t('statsCategories')}
-            value={fmtNum(stats.categories)}
-            sub={t('statsSubCategories')}
-            color="from-purple to-pink"
-          />
+            <article className="stats-panel">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsToolMix')}</span>
+                  <h2>{t('statsToolMixTitle')}</h2>
+                </div>
+                <Wrench size={23} />
+              </div>
+              <div className="stats-breakdown">
+                {toolBreakdown.map(item => (
+                  <BreakdownBar
+                    key={item.key}
+                    label={item.label}
+                    value={item.value}
+                    max={maxToolCount}
+                    tone={item.tone}
+                  />
+                ))}
+              </div>
+            </article>
 
-          {/* Tags */}
-          <StatCard
-            icon={<Tag size={24} />}
-            title={t('statsTags')}
-            value={fmtNum(stats.tags)}
-            sub={t('statsSubTags')}
-            color="from-pink to-red"
-          />
+            <article className="stats-panel stats-panel--compact">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsCatalog')}</span>
+                  <h2>{t('statsRecipeMetadata')}</h2>
+                </div>
+                <Tags size={23} />
+              </div>
+              <div className="stats-list">
+                <span><strong>{fmtNum(stats.categories)}</strong>{t('statsCategories')}</span>
+                <span><strong>{fmtNum(stats.tags)}</strong>{t('statsTags')}</span>
+                <span><strong>{fmtNum(stats.users)}</strong>{t('statsUsers')}</span>
+              </div>
+            </article>
 
-          {/* Inventory */}
-          <StatCard
-            icon={<Package size={24} />}
-            title={t('statsInventory')}
-            value={fmtNum(stats.inventory_items)}
-            sub={t('statsSubInventory')}
-            color="from-teal to-blue"
-          />
-
-          {/* Active Projects */}
-          <StatCard
-            icon={<Activity size={24} />}
-            title={t('statsActive')}
-            value={fmtNum(stats.active_projects)}
-            sub={t('statsSubActive')}
-            color="from-cyan to-blue"
-          />
-
-          {/* Finished Projects */}
-          <StatCard
-            icon={<BarChart2 size={24} />}
-            title={t('statsFinished')}
-            value={fmtNum(stats.finished_projects)}
-            sub={t('statsSubFinished')}
-            color="from-indigo to-purple"
-          />
-
-          {/* Total Sessions */}
-          <StatCard
-            icon={<Activity size={24} />}
-            title={t('statsTotalSessions')}
-            value={fmtNum(stats.total_sessions)}
-            sub={t('statsSubTotalSessions')}
-            color="from-violet to-fuchsia"
-          />
-
+            <article className="stats-panel stats-panel--compact stats-panel--quiet">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsPeople')}</span>
+                  <h2>{fmtNum(stats.users)} {t('statsUsers').toLowerCase()}</h2>
+                </div>
+                <Users size={23} />
+              </div>
+              <p className="stats-note">{t('statsSubUsers')}</p>
+            </article>
+          </section>
+        </>
+      ) : (
+        <div className="stats-empty">
+          <BookOpen size={30} />
+          <p>{t('statsSubLibrary')}</p>
         </div>
-      ) : null}
-    </div>
-  );
-}
-
-// ── StatCard component ──
-function StatCard({ icon, title, value, sub, color }) {
-  return (
-    <div className={`stats-card stats-card--${color}`}>
-      <div className="stats-card-icon">{icon}</div>
-      <div className="stats-card-title">{title}</div>
-      <div className="stats-card-value">{value}</div>
-      <div className="stats-card-sub">{sub}</div>
+      )}
     </div>
   );
 }

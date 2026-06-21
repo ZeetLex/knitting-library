@@ -3118,14 +3118,53 @@ def test_mail_template(data: dict, request: Request, admin: dict = Depends(requi
 def get_stats(current_user: dict = Depends(get_current_user)):
     """Return high-level library statistics."""
     conn = get_db()
-    recipes = conn.execute("SELECT COUNT(*) as count FROM recipes").fetchone()["count"]
-    yarns  = conn.execute("SELECT COUNT(*) as count FROM yarns").fetchone()["count"]
-    users  = conn.execute("SELECT COUNT(*) as count FROM users").fetchone()["count"]
-    active = conn.execute("SELECT COUNT(*) as count FROM project_sessions WHERE finished_at IS NULL").fetchone()["count"]
-    finished = conn.execute("SELECT COUNT(*) as count FROM project_sessions WHERE finished_at IS NOT NULL").fetchone()["count"]
-    categories = conn.execute("SELECT COUNT(*) as count FROM categories").fetchone()["count"]
-    tags = conn.execute("SELECT COUNT(*) as count FROM tags").fetchone()["count"]
-    items = conn.execute("SELECT COUNT(*) as count FROM inventory_items").fetchone()["count"]
+    def scalar(sql: str, params: tuple = ()):
+        return conn.execute(sql, params).fetchone()["value"]
+
+    recipes = scalar("SELECT COUNT(*) as value FROM recipes")
+    yarns  = scalar("SELECT COUNT(*) as value FROM yarns")
+    users  = scalar("SELECT COUNT(*) as value FROM users")
+    active = scalar("SELECT COUNT(*) as value FROM project_sessions WHERE finished_at IS NULL")
+    finished = scalar("SELECT COUNT(*) as value FROM project_sessions WHERE finished_at IS NOT NULL")
+    categories = scalar("SELECT COUNT(*) as value FROM categories")
+    tags = scalar("SELECT COUNT(*) as value FROM tags")
+    items = scalar("SELECT COUNT(*) as value FROM inventory_items")
+    recipes_with_categories = scalar(
+        "SELECT COUNT(DISTINCT recipe_id) as value FROM recipe_categories"
+    )
+    recipes_with_tags = scalar(
+        "SELECT COUNT(DISTINCT recipe_id) as value FROM recipe_tags"
+    )
+    yarn_colours = scalar("SELECT COUNT(*) as value FROM yarn_colours")
+    inventory_yarn_items = scalar(
+        "SELECT COUNT(*) as value FROM inventory_items WHERE type='yarn'"
+    )
+    inventory_tool_items = scalar(
+        "SELECT COUNT(*) as value FROM inventory_items WHERE type='tool'"
+    )
+    inventory_total_quantity = scalar(
+        "SELECT COALESCE(SUM(quantity), 0) as value FROM inventory_items"
+    )
+    inventory_low_stock = scalar(
+        "SELECT COUNT(*) as value FROM inventory_items WHERE quantity <= 1"
+    )
+    inventory_value_estimate = scalar("""
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN TRIM(purchase_price) = '' THEN 0
+                ELSE CAST(REPLACE(REPLACE(purchase_price, ',', '.'), ' ', '') AS REAL) * quantity
+            END
+        ), 0) as value
+        FROM inventory_items
+    """)
+    tool_category_rows = conn.execute("""
+        SELECT COALESCE(NULLIF(category, ''), 'other') as category, COUNT(*) as count
+        FROM inventory_items
+        WHERE type='tool'
+        GROUP BY COALESCE(NULLIF(category, ''), 'other')
+    """).fetchall()
+    tool_categories = {row["category"]: row["count"] for row in tool_category_rows}
+    total_sessions = active + finished
     conn.close()
     return {
         "recipes": recipes,
@@ -3136,7 +3175,26 @@ def get_stats(current_user: dict = Depends(get_current_user)):
         "categories": categories,
         "tags": tags,
         "inventory_items": items,
-        "total_sessions": active + finished,
+        "total_sessions": total_sessions,
+        "recipes_with_categories": recipes_with_categories,
+        "recipes_with_tags": recipes_with_tags,
+        "uncategorized_recipes": max(0, recipes - recipes_with_categories),
+        "untagged_recipes": max(0, recipes - recipes_with_tags),
+        "completion_rate": round((finished / total_sessions) * 100) if total_sessions else 0,
+        "category_coverage": round((recipes_with_categories / recipes) * 100) if recipes else 0,
+        "tag_coverage": round((recipes_with_tags / recipes) * 100) if recipes else 0,
+        "yarn_colours": yarn_colours,
+        "inventory_yarn_items": inventory_yarn_items,
+        "inventory_tool_items": inventory_tool_items,
+        "inventory_total_quantity": inventory_total_quantity,
+        "inventory_low_stock": inventory_low_stock,
+        "inventory_value_estimate": round(float(inventory_value_estimate), 2),
+        "tool_categories": {
+            "needle": tool_categories.get("needle", 0),
+            "tool": tool_categories.get("tool", 0),
+            "notion": tool_categories.get("notion", 0),
+            "other": tool_categories.get("other", 0),
+        },
     }
 
 
