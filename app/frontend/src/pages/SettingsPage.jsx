@@ -128,7 +128,7 @@ const COLOUR_THEMES = [
 ];
 
 const BACKGROUNDS = [
-  { id: 'default', labelKey: 'backgroundDefault', subKey: 'backgroundDefaultSub' },
+  { id: 'floral', labelKey: 'backgroundFloral', subKey: 'backgroundFloralSub' },
   { id: 'plain-white', labelKey: 'backgroundPlainWhite', subKey: 'backgroundPlainWhiteSub' },
   { id: 'cotton', labelKey: 'backgroundCotton', subKey: 'backgroundCottonSub' },
   { id: 'soft-paper', labelKey: 'backgroundSoftPaper', subKey: 'backgroundSoftPaperSub' },
@@ -136,7 +136,7 @@ const BACKGROUNDS = [
 ];
 
 function normalizeBackgroundId(id) {
-  return id === 'floral' || id === 'floral-light' || id === 'floral-dark' ? 'default' : id;
+  return id === 'default' || id === 'floral-light' || id === 'floral-dark' ? 'floral' : id;
 }
 
 function ThemeSwatch({ themeData, isSelected, isDark, onClick }) {

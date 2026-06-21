@@ -408,6 +408,45 @@ body {
 /* ══════════════════════════════════════════════════════════════════════════════
    App Backgrounds
 ══════════════════════════════════════════════════════════════════════════════ */
+[data-background="default"],
+[data-background="floral"] {
+  --app-background-color: #f5f0e8;
+  --app-background-image: url('/backgrounds/floral-square-light.png');
+  --app-background-size: cover;
+  --app-background-position: center;
+  --app-background-repeat: no-repeat;
+}
+
+[data-theme="dark"][data-background="default"],
+[data-theme="dark"][data-background="floral"] {
+  --app-background-color: #1c1410;
+  --app-background-image: url('/backgrounds/floral-square-dark.png');
+}
+
+@media (min-aspect-ratio: 3 / 2) {
+  [data-background="default"],
+  [data-background="floral"] {
+    --app-background-image: url('/backgrounds/floral-wide-light.png');
+  }
+
+  [data-theme="dark"][data-background="default"],
+  [data-theme="dark"][data-background="floral"] {
+    --app-background-image: url('/backgrounds/floral-wide-dark.png');
+  }
+}
+
+@media (max-aspect-ratio: 4 / 5) {
+  [data-background="default"],
+  [data-background="floral"] {
+    --app-background-image: url('/backgrounds/floral-portrait-light.png');
+  }
+
+  [data-theme="dark"][data-background="default"],
+  [data-theme="dark"][data-background="floral"] {
+    --app-background-image: url('/backgrounds/floral-portrait-dark.png');
+  }
+}
+
 [data-background="plain-white"] {
   --app-background-color: #ffffff;
 }
@@ -464,14 +503,14 @@ body {
   --app-background-size: auto;
 }
 
-[data-background]:not([data-background="default"]) .home-page,
-[data-background]:not([data-background="default"]) .settings-page,
-[data-background]:not([data-background="default"]) .library,
-[data-background]:not([data-background="default"]) .viewer,
-[data-background]:not([data-background="default"]) .inv-page,
-[data-background]:not([data-background="default"]) .yv-page,
-[data-background]:not([data-background="default"]) .help-page,
-[data-background]:not([data-background="default"]) .stats-page {
+[data-background] .home-page,
+[data-background] .settings-page,
+[data-background] .library,
+[data-background] .viewer,
+[data-background] .inv-page,
+[data-background] .yv-page,
+[data-background] .help-page,
+[data-background] .stats-page {
   background: transparent;
 }
 

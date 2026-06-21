@@ -352,7 +352,7 @@ def _user_dict(u: dict) -> dict:
         "language":     u["language"]     or "en",
         "currency":     u["currency"]     or "NOK",
         "colour_theme": u["colour_theme"] or "terracotta",
-        "background":   u["background"]   or "default",
+        "background":   u["background"]   or "floral",
     }
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -382,7 +382,7 @@ def get_db() -> sqlite3.Connection:
             conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
             conn.commit()
         if "background" not in user_cols:
-            conn.execute("ALTER TABLE users ADD COLUMN background TEXT NOT NULL DEFAULT 'default'")
+            conn.execute("ALTER TABLE users ADD COLUMN background TEXT NOT NULL DEFAULT 'floral'")
             conn.commit()
     if "annotations" in tables:
         annotation_cols = [r["name"] for r in conn.execute("PRAGMA table_info(annotations)").fetchall()]
@@ -458,7 +458,7 @@ def init_db():
             language      TEXT NOT NULL DEFAULT 'en',
             currency      TEXT NOT NULL DEFAULT 'NOK',
             colour_theme  TEXT NOT NULL DEFAULT 'terracotta',
-            background    TEXT NOT NULL DEFAULT 'default',
+            background    TEXT NOT NULL DEFAULT 'floral',
             created_date  TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sessions (
@@ -811,7 +811,7 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
     language     = data.get("language",     current_user.get("language", "en"))
     currency     = data.get("currency",     current_user.get("currency", "NOK"))
     colour_theme = data.get("colour_theme", current_user.get("colour_theme", "terracotta"))
-    background   = data.get("background",   current_user.get("background", "default"))
+    background   = data.get("background",   current_user.get("background", "floral"))
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Invalid theme")
     if language not in ("en", "no", "hu"):
@@ -820,7 +820,7 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Invalid currency")
     if colour_theme not in ("terracotta", "rose", "lavender", "sage", "berry", "ocean", "willow"):
         raise HTTPException(status_code=400, detail="Invalid colour theme")
-    if background not in ("default", "plain-white", "cotton", "soft-paper", "warm-linen"):
+    if background not in ("floral", "default", "plain-white", "cotton", "soft-paper", "warm-linen"):
         raise HTTPException(status_code=400, detail="Invalid background")
     conn = get_db()
     conn.execute(

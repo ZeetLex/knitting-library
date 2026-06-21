@@ -23,16 +23,17 @@ export const CURRENCIES = [
 ];
 
 function normalizeBackground(background) {
-  return background === 'floral' || background === 'floral-light' || background === 'floral-dark'
-    ? 'default'
-    : background;
+  if (!background || background === 'default' || background === 'floral-light' || background === 'floral-dark') {
+    return 'floral';
+  }
+  return background;
 }
 
 export function AppProvider({ children }) {
   const [user, setUser]               = useState(null);
   const [theme, setTheme]             = useState('light');
   const [colourTheme, setColourTheme] = useState('terracotta');
-  const [background, setBackground]   = useState('default');
+  const [background, setBackground]   = useState('floral');
   const [language, setLanguage]       = useState('en');
   const [currency, setCurrency]       = useState('NOK');
   const [loading, setLoading]         = useState(true);
@@ -109,7 +110,7 @@ export function AppProvider({ children }) {
     setUser(null);
     setTheme('light');
     setColourTheme('terracotta');
-    setBackground('default');
+    setBackground('floral');
     setLanguage('en');
     setCurrency('NOK');
   }, []);

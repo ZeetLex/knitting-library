@@ -711,7 +711,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
 
 /* ─── Sidebar info content — shared between desktop sidebar and mobile Info panel ── */
 function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated }) {
-  const { t } = useApp();
+  const { t, language } = useApp();
   return (
     <>
       <div className="viewer-cover-wrap">

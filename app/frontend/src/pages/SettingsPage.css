@@ -1139,9 +1139,14 @@
   color: var(--accent);
 }
 
-.background-swatch--default .background-swatch-preview,
-.appearance-background-mini.background-swatch--default {
-  background: var(--bg-primary);
+.background-swatch--floral .background-swatch-preview,
+.appearance-background-mini.background-swatch--floral {
+  background: #f5f0e8 url('/backgrounds/floral-square-light.png') center / cover no-repeat;
+}
+
+[data-theme="dark"] .background-swatch--floral .background-swatch-preview,
+[data-theme="dark"] .appearance-background-mini.background-swatch--floral {
+  background: #1c1410 url('/backgrounds/floral-square-dark.png') center / cover no-repeat;
 }
 
 .background-swatch--plain-white .background-swatch-preview,
