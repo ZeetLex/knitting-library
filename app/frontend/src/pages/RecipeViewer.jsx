@@ -222,7 +222,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   );
 
   return (
-    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''}`}>
+    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>

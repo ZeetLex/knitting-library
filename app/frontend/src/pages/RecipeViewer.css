@@ -1525,6 +1525,10 @@ a.viewer-action-btn { text-decoration: none; }
     animation: mobileQuickStripIn 0.18s ease both;
   }
 
+  .viewer--mobile-panel-open .mobile-quick-strip {
+    display: none;
+  }
+
   .mobile-quick-strip::-webkit-scrollbar { display: none; }
 
   .mobile-quick-thumb {

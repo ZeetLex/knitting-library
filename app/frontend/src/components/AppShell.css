@@ -66,6 +66,7 @@
   }
 
   .app-content {
+    grid-column: 2;
     min-height: 100dvh;
     padding-bottom: 0;
     min-width: 0;
@@ -124,8 +125,11 @@
 
 @media (min-width: 900px) {
   .desktop-sidebar {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--desktop-sidebar-width);
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -139,6 +143,7 @@
   }
 
   .desktop-sidebar--collapsed {
+    width: var(--desktop-sidebar-collapsed-width);
     align-items: center;
     gap: 14px;
     padding: 20px 10px;
