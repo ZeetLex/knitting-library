@@ -299,9 +299,21 @@ fail2ban-client status knitting-library
 
 This project is in active use but should be considered beta software. Things may change between versions. Keep backups of your `data/` folder before updating.
 
-Screenshots are intentionally omitted for now. New screenshots will be added after the current mobile and desktop UI settles.
-
 Open an issue if you find bugs or want to suggest something.
+
+---
+
+## Screenshots
+
+Desktop and mobile views of the current interface:
+
+| Desktop | Mobile |
+|---|---|
+| ![Desktop home dashboard](screenshots/1_desktop_home.png) | ![Mobile home dashboard](screenshots/1_mobile_home.png) |
+| ![Desktop recipe library](screenshots/2_desktop_recipelibrary.png) | ![Mobile recipe library](screenshots/2_mobile_recipelibrary.png) |
+| ![Desktop statistics dashboard](screenshots/3_desktop_statistics.png) | ![Mobile settings](screenshots/3_mobile_settings.png) |
+
+![Desktop settings](screenshots/4_desktop_settings.png)
 
 ---
 
