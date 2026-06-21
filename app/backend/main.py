@@ -97,6 +97,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
 
 SESSION_COOKIE = "knitting_session"
 CSRF_COOKIE = "knitting_csrf"
@@ -814,7 +815,7 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
     background   = data.get("background",   current_user.get("background", "floral"))
     if theme not in ("light", "dark"):
         raise HTTPException(status_code=400, detail="Invalid theme")
-    if language not in ("en", "no", "hu"):
+    if not isinstance(language, str) or not LANGUAGE_CODE_RE.fullmatch(language):
         raise HTTPException(status_code=400, detail="Invalid language")
     if currency not in ("NOK", "USD", "GBP", "HUF", "EUR"):
         raise HTTPException(status_code=400, detail="Invalid currency")

@@ -12,6 +12,7 @@ import {
   Pencil, AtSign, Palette,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
+import { LANGUAGE_OPTIONS } from '../utils/translations';
 import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
@@ -330,9 +331,15 @@ function AppearanceSection() {
       <div className="settings-row">
         <div className="settings-row-info"><p className="settings-row-label">{t('language')}</p></div>
         <div className="lang-switcher">
-          <button className={`lang-btn ${language === 'en' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'en', currency, colourTheme, background)}>🇬🇧 English</button>
-          <button className={`lang-btn ${language === 'no' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'no', currency, colourTheme, background)}>🇳🇴 Norsk</button>
-          <button className={`lang-btn ${language === 'hu' ? 'active' : ''}`} onClick={() => updateSettings(theme, 'hu', currency, colourTheme, background)}>🇭🇺 Magyar</button>
+          {LANGUAGE_OPTIONS.map(option => (
+            <button
+              key={option.code}
+              className={`lang-btn ${language === option.code ? 'active' : ''}`}
+              onClick={() => updateSettings(theme, option.code, currency, colourTheme, background)}
+            >
+              {option.flag} {option.nativeName}
+            </button>
+          ))}
         </div>
       </div>
       <div className="settings-row">

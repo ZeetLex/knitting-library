@@ -1,6 +1,7 @@
 import React from 'react';
 import { Megaphone, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import { getLanguageLocale } from '../utils/translations';
 import './AnnouncementModal.css';
 
 /**
@@ -18,7 +19,7 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
   const formatDate = (iso) => {
     try {
       return new Date(iso).toLocaleDateString(
-        language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : undefined,
+        getLanguageLocale(language),
         { year: 'numeric', month: 'short', day: 'numeric' }
       );
     }

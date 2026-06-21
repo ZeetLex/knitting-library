@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchStats } from '../utils/api';
+import { getLanguageLocale } from '../utils/translations';
 import './StatisticsPage.css';
 
 function clampPercent(value) {
@@ -75,6 +76,7 @@ export default function StatisticsPage() {
   const { t, language, currencySymbol } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const locale = getLanguageLocale(language);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,17 +92,17 @@ export default function StatisticsPage() {
   useEffect(() => { load(); }, [load]);
 
   const fmtNum = useCallback((value) => (
-    new Intl.NumberFormat(language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US')
+    new Intl.NumberFormat(locale)
       .format(Number(value) || 0)
-  ), [language]);
+  ), [locale]);
 
   const fmtMoney = useCallback((value) => {
     const amount = Number(value) || 0;
     if (!amount) return `${currencySymbol}0`;
-    return `${currencySymbol}${new Intl.NumberFormat(language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US', {
+    return `${currencySymbol}${new Intl.NumberFormat(locale, {
       maximumFractionDigits: 0,
     }).format(amount)}`;
-  }, [currencySymbol, language]);
+  }, [currencySymbol, locale]);
 
   const toolBreakdown = useMemo(() => {
     const counts = stats?.tool_categories || {};

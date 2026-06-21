@@ -6,6 +6,7 @@ import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
+import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
@@ -761,7 +762,7 @@ function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpda
 
       <p className="viewer-date">
         {t('added')} {new Date(recipe.created_date).toLocaleDateString(
-          language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US',
+          getLanguageLocale(language),
           { year: 'numeric', month: 'long', day: 'numeric' }
         )}
       </p>

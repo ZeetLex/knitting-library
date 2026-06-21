@@ -5,11 +5,12 @@ import {
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchStats, thumbnailUrl } from '../utils/api';
+import { getLanguageLocale } from '../utils/translations';
 import './HomePage.css';
 
 function fmtDate(iso, language) {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString(language === 'no' ? 'nb-NO' : 'en-GB', {
+  return new Date(iso).toLocaleDateString(getLanguageLocale(language), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

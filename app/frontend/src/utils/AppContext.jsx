@@ -8,7 +8,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useT } from './translations';
+import { isSupportedLanguage, useT } from './translations';
 
 const AppContext = createContext(null);
 
@@ -27,6 +27,10 @@ function normalizeBackground(background) {
     return 'floral';
   }
   return background;
+}
+
+function normalizeLanguage(language) {
+  return isSupportedLanguage(language) ? language : 'en';
 }
 
 export function AppProvider({ children }) {
@@ -78,7 +82,7 @@ export function AppProvider({ children }) {
           setTheme(userData.theme || 'light');
           setColourTheme(userData.colour_theme || 'terracotta');
           setBackground(normalizeBackground(userData.background || 'default'));
-          setLanguage(userData.language || 'en');
+          setLanguage(normalizeLanguage(userData.language));
           setCurrency(userData.currency || 'NOK');
         } else {
           localStorage.removeItem('knitting_token');
@@ -95,7 +99,7 @@ export function AppProvider({ children }) {
     setTheme(userData.theme || 'light');
     setColourTheme(userData.colour_theme || 'terracotta');
     setBackground(normalizeBackground(userData.background || 'default'));
-    setLanguage(userData.language || 'en');
+    setLanguage(normalizeLanguage(userData.language));
     setCurrency(userData.currency || 'NOK');
   }, []);
 
@@ -125,18 +129,19 @@ export function AppProvider({ children }) {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['X-Session-Token'] = token;
       if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
+      const nextLanguage = normalizeLanguage(newLanguage);
       await fetch('/api/auth/settings', {
         method: 'PUT',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct, background: bg })
+        body: JSON.stringify({ theme: newTheme, language: nextLanguage, currency: newCurrency, colour_theme: ct, background: bg })
       });
       setTheme(newTheme);
-      setLanguage(newLanguage);
+      setLanguage(nextLanguage);
       setCurrency(newCurrency);
       setColourTheme(ct);
       setBackground(bg);
-      setUser(u => ({ ...u, theme: newTheme, language: newLanguage, currency: newCurrency, colour_theme: ct, background: bg }));
+      setUser(u => ({ ...u, theme: newTheme, language: nextLanguage, currency: newCurrency, colour_theme: ct, background: bg }));
     } catch (e) {
       console.error('Failed to save settings', e);
     }
