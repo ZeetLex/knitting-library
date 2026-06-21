@@ -578,6 +578,7 @@ export default function InventoryPage({ onRequestAddYarn, addRequest, refreshKey
           { key: 'add-tool', label: t('addToolToInventory'), icon: <Plus size={15} />, variant: 'secondary', onClick: () => openAdd('tool') },
           { key: 'add-yarn', label: t('addYarn'), icon: <Plus size={15} />, onClick: onRequestAddYarn },
         ]}
+        compactSearch
       />
 
       {/* ── Content ── */}

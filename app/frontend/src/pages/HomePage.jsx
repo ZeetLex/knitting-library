@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, BookOpen, CheckCircle, ChevronLeft, ChevronRight, Dice5,
-  FolderOpen, Package, Play, Sparkles,
+  FolderOpen, Package, Play, Sparkles, Star,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchStats, thumbnailUrl } from '../utils/api';
@@ -30,6 +30,8 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
   const { t, language } = useApp();
   const [imgError, setImgError] = useState(false);
   const status = recipe.project_status || 'none';
+  const showRating = mode === 'finished';
+  const hasRating = recipe.avg_score != null;
 
   return (
     <button className={`home-recipe-card home-recipe-card--${mode}`} onClick={() => onOpen(recipe.id)}>
@@ -46,11 +48,19 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
         )}
       </div>
       <div className="home-recipe-copy">
-        <span className="home-recipe-kicker">
-          {mode === 'active' && <><Play size={12} /> {t('projectActive')}</>}
-          {mode === 'finished' && <><CheckCircle size={12} /> {t('projectFinished')}</>}
-          {mode === 'discover' && <><Sparkles size={12} /> {status === 'none' ? t('projectNone') : t('navInspiration')}</>}
-        </span>
+        <div className="home-recipe-meta-row">
+          <span className="home-recipe-kicker">
+            {mode === 'active' && <><Play size={12} /> {t('projectActive')}</>}
+            {mode === 'finished' && <><CheckCircle size={12} /> {t('projectFinished')}</>}
+            {mode === 'discover' && <><Sparkles size={12} /> {status === 'none' ? t('projectNone') : t('navInspiration')}</>}
+          </span>
+          {showRating && (
+            <span className={`home-recipe-score ${hasRating ? '' : 'home-recipe-score--empty'}`}>
+              <Star size={12} fill={hasRating ? 'currentColor' : 'none'} />
+              {hasRating ? recipe.avg_score : t('projectNotRated')}
+            </span>
+          )}
+        </div>
         <strong>{recipe.title}</strong>
         {recipe.categories?.length > 0 && <span>{recipe.categories.slice(0, 2).join(' · ')}</span>}
         {recipe.active_started_at && <span>{t('startedAt')}: {fmtDate(recipe.active_started_at, language)}</span>}
@@ -155,15 +165,6 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
   return (
     <div className="home-page">
       <section className="home-hero">
-        <button
-          className="home-menu-button"
-          onClick={() => window.dispatchEvent(new CustomEvent('knitting-open-app-menu'))}
-          aria-label={t('navMenu')}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
         <div className="home-brand-hero">
           <img className="home-brand-logo" src="/brand-logo.png" alt="" aria-hidden="true" />
           <div className="home-wordmark">

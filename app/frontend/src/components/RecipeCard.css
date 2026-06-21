@@ -331,7 +331,13 @@
 
 .recipe-card--list .recipe-score-badge {
   right: 7px;
-  bottom: 7px;
+  bottom: 31px;
+}
+
+.recipe-card--list .recipe-status-badge--finished + .recipe-score-badge {
+  left: 7px;
+  right: auto;
+  bottom: 31px;
 }
 
 @media (max-width: 420px) {
@@ -351,5 +357,9 @@
 
   .recipe-card--list .recipe-card-title {
     font-size: 15px;
+  }
+
+  .recipe-card--list .recipe-score-badge {
+    bottom: 30px;
   }
 }

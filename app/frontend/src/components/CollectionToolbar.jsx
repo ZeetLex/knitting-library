@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, Search, X } from 'lucide-react';
 import './CollectionToolbar.css';
 
 export default function CollectionToolbar({
@@ -21,9 +21,12 @@ export default function CollectionToolbar({
   onViewChange,
   actions = [],
   children,
+  compactSearch = false,
 }) {
   const [fieldOpen, setFieldOpen] = useState(false);
+  const [compactVisible, setCompactVisible] = useState(false);
   const fieldRef = useRef(null);
+  const toolbarRef = useRef(null);
   const currentField = fieldOptions.find(option => option.key === fieldValue) || fieldOptions[0];
   const hasFieldSelector = fieldOptions.length > 0 && onFieldChange;
 
@@ -36,8 +39,33 @@ export default function CollectionToolbar({
     return () => document.removeEventListener('mousedown', close);
   }, [hasFieldSelector]);
 
+  useEffect(() => {
+    if (!compactSearch) return undefined;
+
+    const updateCompactVisibility = () => {
+      const toolbar = toolbarRef.current;
+      if (!toolbar) return;
+      setCompactVisible(toolbar.getBoundingClientRect().bottom < 0);
+    };
+
+    updateCompactVisibility();
+    window.addEventListener('scroll', updateCompactVisibility, { passive: true });
+    window.addEventListener('resize', updateCompactVisibility);
+    return () => {
+      window.removeEventListener('scroll', updateCompactVisibility);
+      window.removeEventListener('resize', updateCompactVisibility);
+    };
+  }, [compactSearch]);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <div className="collection-toolbar">
+    <div
+      ref={toolbarRef}
+      className={`collection-toolbar ${compactSearch ? 'collection-toolbar--compact-source' : ''}`}
+    >
       <div className="collection-toolbar-inner">
         {title && (
           <div className="collection-toolbar-heading">
@@ -146,6 +174,43 @@ export default function CollectionToolbar({
         </div>
       </div>
       {children}
+      {compactSearch && (
+        <div className={`collection-compact-search ${compactVisible ? 'visible' : ''}`} aria-hidden={!compactVisible}>
+          <div className="collection-compact-search-inner">
+            <Search size={17} className="collection-compact-search-icon" />
+            <input
+              type={searchType}
+              className="collection-compact-search-input"
+              placeholder={placeholder}
+              value={searchValue}
+              onChange={event => onSearchChange(event.target.value)}
+              aria-label={searchLabel || placeholder}
+              tabIndex={compactVisible ? 0 : -1}
+            />
+            {searchValue && (
+              <button
+                type="button"
+                className="collection-compact-search-clear"
+                onClick={() => onSearchChange('')}
+                aria-label="Clear search"
+                tabIndex={compactVisible ? 0 : -1}
+              >
+                <X size={15} />
+              </button>
+            )}
+            <button
+              type="button"
+              className="collection-compact-top"
+              onClick={scrollToTop}
+              aria-label="Back to top"
+              title="Back to top"
+              tabIndex={compactVisible ? 0 : -1}
+            >
+              <ArrowUp size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

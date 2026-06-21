@@ -325,6 +325,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         viewOptions={Object.entries(GRID_SIZES).map(([key, val]) => ({ key, label: val.label, icon: val.icon }))}
         viewValue={gridSize}
         onViewChange={handleGridSizeChange}
+        compactSearch
       >
         {filtersOpen && (
           <div className="filter-panel fade-in">
