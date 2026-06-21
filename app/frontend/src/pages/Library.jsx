@@ -12,7 +12,7 @@ import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRec
 import './Library.css';
 
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
-  const { t } = useApp();
+  const { t, user } = useApp();
 
   const GRID_SIZES = {
     small:  { label: t('gridSmall'),  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
@@ -39,8 +39,28 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [allTags, setAllTags]         = useState([]);
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [gridSize, setGridSize]       = useState('medium');
+  const viewStorageKey = `library_grid_size_${user?.id || user?.username || 'guest'}`;
+  const [gridSize, setGridSize]       = useState(() => {
+    try {
+      const saved = localStorage.getItem(viewStorageKey);
+      return saved && GRID_SIZES[saved] ? saved : 'medium';
+    } catch (_) {
+      return 'medium';
+    }
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(viewStorageKey);
+      if (saved && GRID_SIZES[saved]) setGridSize(saved);
+    } catch (_) {}
+  }, [viewStorageKey]);
+
+  const handleGridSizeChange = (nextSize) => {
+    setGridSize(nextSize);
+    try { localStorage.setItem(viewStorageKey, nextSize); } catch (_) {}
+  };
 
   // ── Category management ───────────────────────────────────────────────────
   const [managingCats, setManagingCats]   = useState(false);
@@ -302,7 +322,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         )}
         viewOptions={Object.entries(GRID_SIZES).map(([key, val]) => ({ key, label: val.label, icon: val.icon }))}
         viewValue={gridSize}
-        onViewChange={setGridSize}
+        onViewChange={handleGridSizeChange}
       >
         {filtersOpen && (
           <div className="filter-panel fade-in">
