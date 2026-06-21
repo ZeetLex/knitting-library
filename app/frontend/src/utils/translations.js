@@ -94,6 +94,7 @@ const translations = {
     gridSmall: "Small",
     gridMedium: "Medium",
     gridLarge: "Large",
+    gridList: "List",
 
     // Upload
     addRecipeTitle: "Add Recipe",
@@ -158,6 +159,7 @@ const translations = {
     mobileTabImages: "Images",
     mobileTabInfo: "Info",
     mobileTabTools: "Tools",
+    recipeActions: "Actions",
 
     // Settings
     settings: "Settings",
@@ -665,6 +667,7 @@ hu: {
     gridSmall: "Kicsi",
     gridMedium: "Közepes",
     gridLarge: "Nagy",
+    gridList: "Lista",
 
     // Upload
     addRecipeTitle: "Minta hozzáadása",
@@ -729,6 +732,7 @@ hu: {
     mobileTabImages: "Képek",
     mobileTabInfo: "Infó",
     mobileTabTools: "Eszközök",
+    recipeActions: "Műveletek",
 
     // Settings
     settings: "Beállítások",
@@ -1246,6 +1250,7 @@ hu: {
     gridSmall: "Liten",
     gridMedium: "Medium",
     gridLarge: "Stor",
+    gridList: "Liste",
 
     // Upload
     addRecipeTitle: "Legg til oppskrift",
@@ -1310,6 +1315,7 @@ hu: {
     mobileTabImages: "Bilder",
     mobileTabInfo: "Info",
     mobileTabTools: "Verktøy",
+    recipeActions: "Handlinger",
 
     // Settings
     settings: "Innstillinger",

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  BarChart2, BookOpen, Boxes, ChevronDown, ChevronRight, ChevronUp,
-  CircleHelp, Home, Import, Menu, PackagePlus, Plus, Settings, Wrench, X,
+  ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronRight, ChevronUp,
+  CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './AppShell.css';
@@ -111,11 +111,15 @@ function AppMenu({ open, onClose, onNavigate }) {
 function MobileNav({
   activeView,
   collapsed,
+  recipeMode,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
   onInventoryClick,
   onMenuClick,
+  onRecipeBack,
+  onRecipeInfo,
+  onRecipeActions,
 }) {
   const { t } = useApp();
   const isHome = activeView === 'home';
@@ -135,6 +139,52 @@ function MobileNav({
       >
         <ChevronUp size={24} />
       </button>
+    );
+  }
+
+  if (recipeMode) {
+    return (
+      <nav className="mobile-nav mobile-nav--recipe" aria-label="Recipe">
+        <button
+          className="mobile-nav-collapse"
+          onClick={onToggleCollapsed}
+          aria-label={t('navHideNavigation')}
+        >
+          <ChevronDown size={18} />
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={() => onNavigate('home')}
+          aria-label={t('navHome')}
+        >
+          <Home size={21} />
+          <span>{t('navHome')}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main active"
+          onClick={onRecipeBack}
+          aria-label={t('backToLibrary')}
+        >
+          <ArrowLeft size={21} />
+          <span>{t('backToLibrary')}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={onRecipeInfo}
+          aria-label={t('mobileTabInfo') || 'Info'}
+        >
+          <Info size={21} />
+          <span>{t('mobileTabInfo') || 'Info'}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={onRecipeActions}
+          aria-label={t('recipeActions') || 'Actions'}
+        >
+          <Wrench size={21} />
+          <span>{t('recipeActions') || 'Actions'}</span>
+        </button>
+      </nav>
     );
   }
 
@@ -237,11 +287,13 @@ function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }
 
 export default function AppShell({
   activeView,
+  recipeMode = false,
   onNavigate,
   onAddRecipe,
   onImportFolder,
   onAddYarn,
   onAddTool,
+  onRecipeBack,
   children,
 }) {
   const [addOpen, setAddOpen] = useState(false);
@@ -275,11 +327,15 @@ export default function AppShell({
       <MobileNav
         activeView={activeView}
         collapsed={mobileNavCollapsed}
+        recipeMode={recipeMode}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
         onMenuClick={() => setMenuOpen(true)}
+        onRecipeBack={onRecipeBack}
+        onRecipeInfo={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'info' }))}
+        onRecipeActions={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'actions' }))}
       />
       <AddActionMenu
         open={addOpen}

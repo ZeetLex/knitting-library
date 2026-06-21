@@ -1220,6 +1220,8 @@ a.viewer-action-btn { text-decoration: none; }
 
 /* ── Suppress old mobile chrome on mobile ─────────────────────────────────── */
 @media (max-width: 768px) {
+  .viewer-topbar { display: none; }
+
   /* Old fixed sidebar — replaced by the mobile Info panel */
   .viewer-sidebar { display: none !important; }
 
@@ -1229,74 +1231,11 @@ a.viewer-action-btn { text-decoration: none; }
   .image-controls-wrap { display: none; }
 
   /*
-   * Push content above the tab bar.
-   * Tab bar is 50px tall + iOS safe area (home indicator ≈ 34px in PWA mode).
+   * Push content above the contextual app nav.
    * Using env() here ensures content never hides behind the bar in PWA/standalone mode.
    */
   .viewer-body {
-    padding-bottom: calc(50px + var(--app-mobile-nav-space, 0px));
-  }
-}
-
-/* ── Mobile tab bar ─────────────────────────────────────────────────────────── */
-.mobile-tab-bar { display: none; } /* desktop: hidden */
-
-@media (max-width: 768px) {
-  .mobile-tab-bar {
-    display: flex;
-    position: fixed;
-    bottom: var(--app-mobile-nav-space, 0px);
-    left: 0;
-    right: 0;
-    /* 50px content area + safe area padding for iPhone home indicator */
-    height: 50px;
-    z-index: 130;
-    align-items: flex-start; /* buttons align to top of bar, safe area is below */
-    /* Use app theme colours — adapts to light/dark and colour themes */
-    background: var(--card-bg);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -1px 10px rgba(0, 0, 0, 0.10);
-    /* No backdrop-filter — solid background is faster and less laggy in PWA mode */
-  }
-
-  .mobile-tab-btn {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    /* Use theme text colours so the bar matches light/dark mode */
-    color: var(--text-light);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 9px;
-    font-weight: 500;
-    letter-spacing: 0.03em;
-    padding: 7px 4px 5px;
-    height: 50px; /* fixed height, ignores safe area padding */
-    transition: color 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-    position: relative;
-  }
-
-  .mobile-tab-btn:active { opacity: 0.60; }
-
-  .mobile-tab-btn--active { color: var(--accent); }
-
-  /* Slim pill indicator at top of active tab */
-  .mobile-tab-btn--active::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 28px;
-    height: 2px;
-    background: var(--accent);
-    border-radius: 0 0 3px 3px;
+    padding-bottom: var(--app-mobile-nav-space, 0px);
   }
 }
 
@@ -1308,13 +1247,13 @@ a.viewer-action-btn { text-decoration: none; }
     display: flex;
     flex-direction: column;
     position: fixed;
-    /* Sit directly above the tab bar — 50px content + safe area */
-    bottom: calc(50px + var(--app-mobile-nav-space, 0px));
+    /* Sit directly above the contextual app nav */
+    bottom: var(--app-mobile-nav-space, 0px);
     left: 0;
     right: 0;
     z-index: 125;
     border-radius: 18px 18px 0 0;
-    max-height: 68dvh;
+    max-height: min(82dvh, calc(100dvh - var(--app-mobile-nav-space, 0px) - 18px));
     overflow: hidden;
     /* GPU-accelerated — transform instead of max-height for buttery performance */
     transform: translateY(105%);
@@ -1323,16 +1262,10 @@ a.viewer-action-btn { text-decoration: none; }
     will-change: transform;
   }
 
-  .mobile-panel--open { transform: translateY(0); }
+  .mobile-panel--open { transform: translateY(var(--panel-drag-y, 0px)); }
 
-  /* Images panel — dark solid (overlaps the image viewer; solid = faster in PWA mode) */
-  .mobile-panel--images {
-    background: #1a1a20;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  /* Info panel — themed (follows light/dark colour scheme) */
-  .mobile-panel--info {
+  .mobile-panel--info,
+  .mobile-panel--actions {
     background: var(--card-bg);
     border-top: 1px solid var(--border);
   }
@@ -1349,6 +1282,7 @@ a.viewer-action-btn { text-decoration: none; }
     border: none;
     background: none;
     width: 100%;
+    touch-action: none;
   }
 
   .mobile-panel-pill {
@@ -1360,10 +1294,12 @@ a.viewer-action-btn { text-decoration: none; }
     pointer-events: none;
   }
 
-  .mobile-panel--info .mobile-panel-pill { background: var(--border); }
+  .mobile-panel--info .mobile-panel-pill,
+  .mobile-panel--actions .mobile-panel-pill { background: var(--border); }
 
   .mobile-panel-handle:active .mobile-panel-pill { background: rgba(255, 255, 255, 0.42); }
-  .mobile-panel--info .mobile-panel-handle:active .mobile-panel-pill { background: var(--text-secondary); }
+  .mobile-panel--info .mobile-panel-handle:active .mobile-panel-pill,
+  .mobile-panel--actions .mobile-panel-handle:active .mobile-panel-pill { background: var(--text-secondary); }
 
   /* ── Panel scrollable body ── */
   .mobile-panel-body {
@@ -1371,6 +1307,63 @@ a.viewer-action-btn { text-decoration: none; }
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0 16px 24px;
+  }
+
+  .mobile-actions-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 0 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-actions-section:last-child {
+    border-bottom: none;
+    padding-bottom: 28px;
+  }
+
+  .mobile-actions-heading {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-light);
+  }
+
+  .mobile-action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .mobile-action-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 46px;
+    padding: 0 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .mobile-action-row svg {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .mobile-action-row--danger {
+    color: #d94c4c;
+  }
+
+  .mobile-action-row--danger svg {
+    color: #d94c4c;
   }
 
   /* ── Thumbnail strip inside Images panel ── */
@@ -1394,10 +1387,10 @@ a.viewer-action-btn { text-decoration: none; }
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    border-radius: 16px;
-    color: rgba(255, 255, 255, 0.80);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
     font-family: 'DM Sans', sans-serif;
     font-size: 10px;
     font-weight: 500;
@@ -1411,7 +1404,7 @@ a.viewer-action-btn { text-decoration: none; }
   }
 
   .mobile-image-actions button:active {
-    background: rgba(255, 255, 255, 0.18);
+    background: var(--bg-hover);
     transform: scale(0.93);
   }
 

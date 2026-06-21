@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Info, Wrench, Scissors, ImagePlus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
@@ -33,9 +33,39 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [controlsOpen, setControlsOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 641 : true
   );
-  // Mobile bottom tab bar: null = closed, 'images' | 'info' | 'tools' = open panel
-  const [mobileTab, setMobileTab] = useState(null);
+  // Mobile bottom sheet: null = closed, 'info' | 'actions' = open panel.
+  // The global AppShell mobile nav dispatches events to open these panels.
+  const [mobilePanel, setMobilePanel] = useState(null);
+  const [panelDragY, setPanelDragY] = useState(0);
+  const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
+
+  useEffect(() => {
+    const openPanel = (event) => {
+      setPanelDragY(0);
+      setMobilePanel(prev => prev === event.detail ? null : event.detail);
+    };
+    window.addEventListener('knitting-recipe-mobile-panel', openPanel);
+    return () => window.removeEventListener('knitting-recipe-mobile-panel', openPanel);
+  }, []);
+
+  const beginPanelDrag = (event) => {
+    panelDragStartY.current = event.clientY;
+    setPanelDragY(0);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const movePanelDrag = (event) => {
+    if (panelDragStartY.current == null) return;
+    setPanelDragY(Math.max(0, event.clientY - panelDragStartY.current));
+  };
+
+  const endPanelDrag = () => {
+    if (panelDragStartY.current == null) return;
+    if (panelDragY > 70) setMobilePanel(null);
+    setPanelDragY(0);
+    panelDragStartY.current = null;
+  };
 
   const handleSetThumbnail = async (source, filename) => {
     try {
@@ -490,112 +520,23 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
         />
       )}
 
-      {/* ── Knitting tools panel — controlled by mobile tab bar on small screens ── */}
-      <KnittingToolbar
-        recipeId={recipeId}
-        t={t}
-        mobileOpen={mobileTab === 'tools' ? true : (mobileTab !== null ? false : undefined)}
-        onMobileClose={() => setMobileTab(null)}
-      />
-
-      {/* ══ Mobile bottom tab bar — hidden on desktop via CSS ══ */}
-      <div className="mobile-tab-bar">
-        {recipe.file_type === 'images' && (
-          <button
-            className={`mobile-tab-btn ${mobileTab === 'images' ? 'mobile-tab-btn--active' : ''}`}
-            onClick={() => setMobileTab(prev => prev === 'images' ? null : 'images')}
-          >
-            <LucideImage size={18} />
-            <span>{t('mobileTabImages') || 'Images'}</span>
-          </button>
-        )}
-        <button
-          className={`mobile-tab-btn ${mobileTab === 'info' ? 'mobile-tab-btn--active' : ''}`}
-          onClick={() => setMobileTab(prev => prev === 'info' ? null : 'info')}
-        >
-          <Info size={18} />
-          <span>{t('mobileTabInfo') || 'Info'}</span>
-        </button>
-        <button
-          className={`mobile-tab-btn ${mobileTab === 'tools' ? 'mobile-tab-btn--active' : ''}`}
-          onClick={() => setMobileTab(prev => prev === 'tools' ? null : 'tools')}
-        >
-          <Wrench size={18} />
-          <span>{t('mobileTabTools') || 'Tools'}</span>
-        </button>
-      </div>
-
-      {/* ── Mobile Images panel ── */}
-      {recipe.file_type === 'images' && (
-        <div className={`mobile-panel mobile-panel--images ${mobileTab === 'images' ? 'mobile-panel--open' : ''}`}>
-          <button className="mobile-panel-handle" onClick={() => setMobileTab(null)} aria-label="Close panel">
-            <span className="mobile-panel-pill" />
-          </button>
-          <div className="mobile-panel-body">
-            {/* Thumbnail strip */}
-            {recipe.images.length > 1 && (
-              <div className="image-strip mobile-image-strip">
-                {recipe.images.map((img, i) => (
-                  <button key={img} className={`strip-thumb ${i === imageIndex ? 'active' : ''}`}
-                    onClick={() => setImageIndex(i)}>
-                    <img src={imageUrl(recipeId, img, imageVersions[img] || recipe.thumbnail_version)} alt={`Page ${i + 1}`} loading="lazy" />
-                  </button>
-                ))}
-              </div>
-            )}
-            {/* Image action buttons */}
-            <div className="mobile-image-actions">
-              <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}>
-                <ZoomOut size={20} /><span>{t('zoomOut') || '−'}</span>
-              </button>
-              <button onClick={() => setZoom(1)}>
-                <span>{t('resetZoom') || 'Reset'}</span>
-              </button>
-              <button onClick={() => setZoom(z => Math.min(4, z + 0.25))}>
-                <ZoomIn size={20} /><span>{t('zoomIn') || '+'}</span>
-              </button>
-              <button onClick={() => { setFullscreen(f => !f); setZoom(1); }}>
-                <Maximize2 size={20} /><span>{fullscreen ? (t('exitFullscreen') || 'Exit') : (t('openFull') || 'Full')}</span>
-              </button>
-              {recipe.images.length > 0 && (
-                <>
-                  <button onClick={() => handleRotate('ccw')}>
-                    <RotateCcw size={20} /><span>{t('rotateCCW') || '↺'}</span>
-                  </button>
-                  <button onClick={() => handleRotate('cw')}>
-                    <RotateCw size={20} /><span>{t('rotateCW') || '↻'}</span>
-                  </button>
-                  <button onClick={() => { setCropOpen(true); setMobileTab(null); }}>
-                    <Scissors size={20} /><span>{t('cropImage') || 'Crop'}</span>
-                  </button>
-                  <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])}>
-                    <LucideImage size={20} /><span>Cover</span>
-                  </button>
-                  <button className="mobile-action-btn--danger" onClick={() => setDeleteImageConfirm(true)}>
-                    <Trash2 size={20} /><span>{t('deleteImage') || 'Delete'}</span>
-                  </button>
-                </>
-              )}
-              {recipe.images.length > 1 && (
-                <button onClick={() => setReordering(true)}>
-                  <GripVertical size={20} /><span>{t('reorderImages') || 'Reorder'}</span>
-                </button>
-              )}
-              {/* Add images — reuses the same hidden input */}
-              <button
-                onClick={() => { setMobileTab(null); setTimeout(() => addImagesInputRef.current?.click(), 150); }}
-                disabled={addingImages}
-              >
-                <ImagePlus size={20} /><span>{addingImages ? t('addingImages') : t('addImages')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Knitting tools remain available on desktop through their floating button. ── */}
+      <KnittingToolbar recipeId={recipeId} t={t} />
 
       {/* ── Mobile Info panel ── */}
-      <div className={`mobile-panel mobile-panel--info ${mobileTab === 'info' ? 'mobile-panel--open' : ''}`}>
-        <button className="mobile-panel-handle" onClick={() => setMobileTab(null)} aria-label="Close panel">
+      <div
+        className={`mobile-panel mobile-panel--info ${mobilePanel === 'info' ? 'mobile-panel--open' : ''}`}
+        style={{ '--panel-drag-y': `${panelDragY}px` }}
+      >
+        <button
+          className="mobile-panel-handle"
+          onClick={() => setMobilePanel(null)}
+          onPointerDown={beginPanelDrag}
+          onPointerMove={movePanelDrag}
+          onPointerUp={endPanelDrag}
+          onPointerCancel={endPanelDrag}
+          aria-label="Close panel"
+        >
           <span className="mobile-panel-pill" />
         </button>
         <div className="mobile-panel-body">
@@ -607,6 +548,108 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               thumbSet={thumbSet}
               onUpdated={setRecipe}
             />
+          )}
+        </div>
+      </div>
+
+      {/* ── Mobile Actions panel ── */}
+      <div
+        className={`mobile-panel mobile-panel--actions ${mobilePanel === 'actions' ? 'mobile-panel--open' : ''}`}
+        style={{ '--panel-drag-y': `${panelDragY}px` }}
+      >
+        <button
+          className="mobile-panel-handle"
+          onClick={() => setMobilePanel(null)}
+          onPointerDown={beginPanelDrag}
+          onPointerMove={movePanelDrag}
+          onPointerUp={endPanelDrag}
+          onPointerCancel={endPanelDrag}
+          aria-label="Close panel"
+        >
+          <span className="mobile-panel-pill" />
+        </button>
+        <div className="mobile-panel-body">
+          <div className="mobile-actions-section">
+            <span className="mobile-actions-heading">{t('recipeActions') || 'Actions'}</span>
+            <div className="mobile-action-list">
+              <a
+                className="mobile-action-row"
+                href={downloadUrl(recipeId)}
+                download
+                onClick={() => setMobilePanel(null)}
+              >
+                <Download size={19} />
+                <span>{recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images'}</span>
+              </a>
+              <button className="mobile-action-row" onClick={() => { setEditing(true); setMobilePanel(null); }}>
+                <Pencil size={19} />
+                <span>{t('editRecipe')}</span>
+              </button>
+              <button className="mobile-action-row mobile-action-row--danger" onClick={() => { setDeleteConfirm(true); setMobilePanel(null); }}>
+                <Trash2 size={19} />
+                <span>{t('deleteRecipe')}</span>
+              </button>
+            </div>
+          </div>
+
+          {recipe.file_type === 'images' && (
+            <div className="mobile-actions-section">
+              <span className="mobile-actions-heading">{t('mobileTabImages') || 'Images'}</span>
+              {recipe.images.length > 1 && (
+                <div className="image-strip mobile-image-strip">
+                  {recipe.images.map((img, i) => (
+                    <button key={img} className={`strip-thumb ${i === imageIndex ? 'active' : ''}`}
+                      onClick={() => setImageIndex(i)}>
+                      <img src={imageUrl(recipeId, img, imageVersions[img] || recipe.thumbnail_version)} alt={`Page ${i + 1}`} loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="mobile-image-actions">
+                <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}>
+                  <ZoomOut size={20} /><span>{t('zoomOut') || '−'}</span>
+                </button>
+                <button onClick={() => setZoom(1)}>
+                  <span>{t('resetZoom') || 'Reset'}</span>
+                </button>
+                <button onClick={() => setZoom(z => Math.min(4, z + 0.25))}>
+                  <ZoomIn size={20} /><span>{t('zoomIn') || '+'}</span>
+                </button>
+                <button onClick={() => { setFullscreen(f => !f); setZoom(1); setMobilePanel(null); }}>
+                  <Maximize2 size={20} /><span>{fullscreen ? (t('exitFullscreen') || 'Exit') : (t('openFull') || 'Full')}</span>
+                </button>
+                {recipe.images.length > 0 && (
+                  <>
+                    <button onClick={() => handleRotate('ccw')}>
+                      <RotateCcw size={20} /><span>{t('rotateCCW') || '↺'}</span>
+                    </button>
+                    <button onClick={() => handleRotate('cw')}>
+                      <RotateCw size={20} /><span>{t('rotateCW') || '↻'}</span>
+                    </button>
+                    <button onClick={() => { setCropOpen(true); setMobilePanel(null); }}>
+                      <Scissors size={20} /><span>{t('cropImage') || 'Crop'}</span>
+                    </button>
+                    <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])}>
+                      <LucideImage size={20} /><span>Cover</span>
+                    </button>
+                    <button className="mobile-action-btn--danger" onClick={() => { setDeleteImageConfirm(true); setMobilePanel(null); }}>
+                      <Trash2 size={20} /><span>{t('deleteImage') || 'Delete'}</span>
+                    </button>
+                  </>
+                )}
+                {recipe.images.length > 1 && (
+                  <button onClick={() => { setReordering(true); setMobilePanel(null); }}>
+                    <GripVertical size={20} /><span>{t('reorderImages') || 'Reorder'}</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => { setMobilePanel(null); setTimeout(() => addImagesInputRef.current?.click(), 150); }}
+                  disabled={addingImages}
+                >
+                  <ImagePlus size={20} /><span>{addingImages ? t('addingImages') : t('addImages')}</span>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

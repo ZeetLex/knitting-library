@@ -196,6 +196,18 @@
   border-radius: 22px;
 }
 
+.mobile-nav--recipe {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: 64px;
+  border-radius: 22px;
+  animation: recipeNavIn 0.22s ease both;
+}
+
+@keyframes recipeNavIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .mobile-nav-collapse,
 .mobile-nav-peek {
   display: flex;
@@ -290,6 +302,10 @@
   opacity: 0;
   max-height: 0;
   overflow: hidden;
+}
+
+.mobile-nav--recipe .mobile-nav-item-main span {
+  font-size: 10px;
 }
 
 .mobile-nav-item-main.active {

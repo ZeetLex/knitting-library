@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  SlidersHorizontal, X, Grid2X2, LayoutGrid, Square,
+  SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2, Plus,
   MousePointer2, Tag,
 } from 'lucide-react';
@@ -18,6 +18,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     small:  { label: t('gridSmall'),  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
     medium: { label: t('gridMedium'), icon: <LayoutGrid size={16} />, cols: 'grid-medium' },
     large:  { label: t('gridLarge'),  icon: <Square size={16} />,     cols: 'grid-large'  },
+    list:   { label: t('gridList') || 'List', icon: <List size={16} />, cols: 'grid-list' },
   };
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -505,6 +506,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               selectionMode={selectionMode}
               selected={selectedIds.has(recipe.id)}
               onToggleSelect={toggleSelect}
+              variant={gridSize === 'list' ? 'list' : 'card'}
             />
           ))
         )}

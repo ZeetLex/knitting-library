@@ -209,11 +209,13 @@ function AppInner() {
     <div className="app">
       <AppShell
         activeView={activeView}
+        recipeMode={activeView === 'recipes' && Boolean(viewingRecipeId)}
         onNavigate={navigateApp}
         onAddRecipe={handleAddRecipe}
         onImportFolder={handleImportFolder}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
+        onRecipeBack={() => setViewingRecipeId(null)}
       >
 
         {activeView === 'home' && (

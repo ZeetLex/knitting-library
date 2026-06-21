@@ -4,7 +4,7 @@ import { thumbnailUrl } from '../utils/api';
 import { useApp } from '../utils/AppContext';
 import './RecipeCard.css';
 
-export default function RecipeCard({ recipe, onClick, style, selectionMode, selected, onToggleSelect }) {
+export default function RecipeCard({ recipe, onClick, style, selectionMode, selected, onToggleSelect, variant = 'card' }) {
   const { t } = useApp();
   const [imgError, setImgError] = useState(false);
   const status = recipe.project_status || 'none';
@@ -28,6 +28,7 @@ export default function RecipeCard({ recipe, onClick, style, selectionMode, sele
     <button
       className={[
         'recipe-card fade-in',
+        variant === 'list' ? 'recipe-card--list' : '',
         status !== 'none' ? `recipe-card--${status}` : '',
         selectionMode ? 'recipe-card--selectable' : '',
         selected       ? 'recipe-card--selected'   : '',

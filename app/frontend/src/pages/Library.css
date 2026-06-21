@@ -348,6 +348,7 @@
 .grid-small  { grid-template-columns: repeat(3, 1fr); }
 .grid-medium { grid-template-columns: repeat(2, 1fr); }
 .grid-large  { grid-template-columns: repeat(1, 1fr); gap: 12px; }
+.grid-list   { grid-template-columns: 1fr; gap: 10px; }
 
 /* ── Tablet (480–900px) ── */
 @media (min-width: 480px) {
@@ -355,6 +356,7 @@
   .grid-small  { grid-template-columns: repeat(3, 1fr); }
   .grid-medium { grid-template-columns: repeat(2, 1fr); }
   .grid-large  { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .grid-list   { grid-template-columns: 1fr; gap: 12px; }
 }
 
 /* ── Desktop (> 900px) ── */
@@ -363,6 +365,7 @@
   .grid-small  { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
   .grid-large  { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+  .grid-list   { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
