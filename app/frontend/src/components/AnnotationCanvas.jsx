@@ -29,7 +29,7 @@ const PRESET_COLORS = [
    ImageAnnotationCanvas
    Replaces the <img> tag entirely. Canvas draws the image then annotations.
 ───────────────────────────────────────────────────────────────────────────── */
-export function ImageAnnotationCanvas({ recipeId, pageKey, src }) {
+export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer = false }) {
   const { t } = useApp();
   const canvasRef   = useRef(null);
   const imageRef    = useRef(null);
@@ -78,8 +78,16 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src }) {
     const wrap   = containerRef.current;
     if (!canvas || !img || !wrap) return;
 
-    const displayW = wrap.offsetWidth || 600;
-    const displayH = Math.round(displayW * img.naturalHeight / img.naturalWidth);
+    const ratio = img.naturalHeight / img.naturalWidth;
+    let displayW = wrap.offsetWidth || 600;
+    let displayH = Math.round(displayW * ratio);
+    if (fitToContainer) {
+      const availableH = wrap.parentElement?.clientHeight || 0;
+      if (availableH > 0 && displayH > availableH) {
+        displayH = availableH;
+        displayW = Math.round(displayH / ratio);
+      }
+    }
 
     // Only resize if dimensions changed (avoids clearing on every render)
     if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
@@ -90,7 +98,7 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src }) {
     // CSS display size = container width
     canvas.style.width  = displayW + 'px';
     canvas.style.height = displayH + 'px';
-  }, []);
+  }, [fitToContainer]);
 
   // ── Draw image + all strokes ──────────────────────────────────────────────
   const redraw = useCallback((strokeList, liveStroke) => {

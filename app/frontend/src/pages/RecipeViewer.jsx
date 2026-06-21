@@ -222,7 +222,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   );
 
   return (
-    <div className="viewer">
+    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
@@ -336,6 +336,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                     pageKey={recipe.images[imageIndex]}
                     src={imageUrl(recipeId, recipe.images[imageIndex], imageVersions[recipe.images[imageIndex]] || recipe.thumbnail_version)}
                     zoom={zoom}
+                    fitToContainer
                   />
                 ) : (
                   <div className="image-placeholder">{t('noImages')}</div>

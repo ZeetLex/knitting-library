@@ -1245,17 +1245,53 @@ a.viewer-action-btn { text-decoration: none; }
 
 /* ── Suppress old mobile chrome on mobile ─────────────────────────────────── */
 @media (max-width: 768px) {
+  .viewer {
+    --mobile-recipe-viewer-height: calc(100dvh - var(--app-mobile-nav-space, 0px));
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .viewer--mobile-editing {
+    --mobile-recipe-viewer-height: calc(100dvh - var(--app-mobile-nav-space, 0px) - 148px);
+  }
+
   .viewer-topbar { display: none; }
+
+  .viewer-body {
+    height: var(--mobile-recipe-viewer-height);
+    min-height: 0;
+    overflow: hidden;
+    transition: height 0.22s ease;
+  }
 
   .viewer-content,
   .image-viewer,
   .image-viewer-main {
-    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: var(--mobile-recipe-viewer-height);
+    min-height: 0;
+    flex: 0 0 var(--mobile-recipe-viewer-height);
     background: var(--bg-primary);
+    overflow: hidden;
+    transition: height 0.22s ease, flex-basis 0.22s ease;
+  }
+
+  .image-viewer-main {
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+  }
+
+  .image-viewer-main .iac-wrap {
+    align-items: center;
+    max-height: 100%;
   }
 
   .image-viewer.fullscreen,
   .image-viewer.fullscreen .image-viewer-main {
+    height: 100dvh;
+    flex-basis: 100dvh;
     background: #111;
   }
 
@@ -1271,9 +1307,7 @@ a.viewer-action-btn { text-decoration: none; }
    * Push content above the contextual app nav.
    * Using env() here ensures content never hides behind the bar in PWA/standalone mode.
    */
-  .viewer-body {
-    padding-bottom: var(--app-mobile-nav-space, 0px);
-  }
+  .viewer-body { padding-bottom: 0; }
 }
 
 /* ── Mobile slide-up panels ─────────────────────────────────────────────────── */

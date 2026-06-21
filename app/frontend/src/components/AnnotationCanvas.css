@@ -6,6 +6,8 @@
 .iac-wrap {
   position: relative;  /* toolbar button anchors here */
   width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 /* The canvas IS the image — fills full width, height grows naturally */
@@ -17,6 +19,7 @@
   cursor: default;
   touch-action: auto;   /* allow scroll/pinch by default */
   user-select: none;
+  margin: 0 auto;
 }
 
 /* In drawing mode: block scroll so brush strokes register instead */
