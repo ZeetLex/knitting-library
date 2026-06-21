@@ -85,6 +85,8 @@ const translations = {
     addRecipe: "Add Recipe",
 
     // Library
+    recipeLibraryTitle: "Recipe Library",
+    recipeLibrarySubtitle: "Browse, filter, and organize your patterns",
     searchPlaceholder: "Search recipes, tags…",
     filters: "Filters",
     category: "Category",
@@ -462,6 +464,8 @@ Knitting Library`,
     tabInventory: "Inventory",
     tabYarnDatabase: "Yarn & Thread Database",
     // Inventory
+    inventoryViewTitle: "Inventory",
+    inventoryViewSubtitle: "Yarn, samples, tools, and notions",
     inventory: "Inventory",
     inventoryEmpty: "Your inventory is empty",
     inventoryEmptyHint: "Add yarn/thread samples, yarn stock, needles, tools, or notions",
@@ -809,6 +813,8 @@ hu: {
     addRecipe: "Minta hozzáadása",
 
     // Library
+    recipeLibraryTitle: "Mintakönyvtár",
+    recipeLibrarySubtitle: "Böngészd, szűrd és rendezd a mintáidat",
     searchPlaceholder: "Minták, címkék keresése…",
     filters: "Szűrők",
     category: "Kategória",
@@ -1194,6 +1200,8 @@ Knitting Library`,
     tabYarnDatabase: "Fonal- és cérnaadatbázis",
 
     // Inventory
+    inventoryViewTitle: "Készlet",
+    inventoryViewSubtitle: "Fonalak, minták, eszközök és kellékek",
     inventory: "Készlet",
     inventoryEmpty: "A készleted jelenleg üres",
     inventoryEmptyHint: "Adj hozzá fonal/cérna mintákat, fonalkészletet, tűket, eszközöket vagy kellékeket",
@@ -1543,6 +1551,8 @@ Knitting Library`,
     addRecipe: "Legg til oppskrift",
 
     // Library
+    recipeLibraryTitle: "Oppskriftsbibliotek",
+    recipeLibrarySubtitle: "Bla gjennom, filtrer og organiser oppskriftene dine",
     searchPlaceholder: "Søk etter oppskrifter, tagger…",
     filters: "Filtre",
     category: "Kategori",
@@ -1918,6 +1928,8 @@ Knitting Library`,
     tabInventory: "Beholdning",
     tabYarnDatabase: "Garn- og tråddatabase",
     // Inventory
+    inventoryViewTitle: "Beholdning",
+    inventoryViewSubtitle: "Garn, prøver, verktøy og tilbehør",
     inventory: "Beholdning",
     inventoryEmpty: "Beholdningen er tom",
     inventoryEmptyHint: "Legg til garn-/trådprøver, garnlager, pinner, verktøy eller tilbehør",

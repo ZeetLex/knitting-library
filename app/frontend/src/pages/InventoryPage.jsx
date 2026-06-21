@@ -563,6 +563,8 @@ export default function InventoryPage({ onRequestAddYarn, addRequest, refreshKey
   return (
     <div className="inv-page">
       <CollectionToolbar
+        title={t('inventoryViewTitle')}
+        subtitle={t('inventoryViewSubtitle')}
         searchValue={search}
         onSearchChange={setSearch}
         placeholder={`${t('search')}…`}

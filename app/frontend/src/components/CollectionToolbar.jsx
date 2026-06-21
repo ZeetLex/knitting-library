@@ -3,6 +3,8 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import './CollectionToolbar.css';
 
 export default function CollectionToolbar({
+  title,
+  subtitle,
   searchValue,
   onSearchChange,
   placeholder,
@@ -37,6 +39,13 @@ export default function CollectionToolbar({
   return (
     <div className="collection-toolbar">
       <div className="collection-toolbar-inner">
+        {title && (
+          <div className="collection-toolbar-heading">
+            <h1>{title}</h1>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+        )}
+
         <div className={`collection-search ${hasFieldSelector ? 'collection-search--with-field' : ''}`}>
           {hasFieldSelector && (
             <div className="collection-field" ref={fieldRef}>

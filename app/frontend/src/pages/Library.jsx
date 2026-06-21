@@ -304,6 +304,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   return (
     <div className="library">
       <CollectionToolbar
+        title={t('recipeLibraryTitle')}
+        subtitle={t('recipeLibrarySubtitle')}
         searchType="text"
         searchValue={search}
         onSearchChange={setSearch}
