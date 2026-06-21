@@ -31,8 +31,6 @@ const no = {
     homeNoFinished: "Ingen fullførte prosjekter ennå.",
     homeNoDiscover: "Ingen oppskrifter å oppdage ennå.",
     homeBrowseRecipes: "Bla i oppskrifter",
-    homeOpenLibrary: "Åpne bibliotek",
-    homeNextShelf: "Neste hylle",
     settingsAppearanceSub: "Tema, bakgrunn, språk og valuta",
     settingsAccountSub: "Passord, 2FA og utlogging",
     settingsDataSub: "Eksporter og sikkerhetskopier biblioteket",

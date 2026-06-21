@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Activity, BookOpen, CheckCircle, ChevronLeft, ChevronRight, Dice5,
+  Activity, BookOpen, CheckCircle, Dice5,
   FolderOpen, Package, Play, Sparkles, Star,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
@@ -238,21 +238,6 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
               </button>
             </div>
           )}
-        </div>
-
-        <div className="home-quick-actions">
-          <button onClick={() => onNavigate('recipes')}>
-            <ChevronLeft size={16} />
-            <span>{t('homeOpenLibrary')}</span>
-          </button>
-          <button onClick={() => {
-            if (panel === 'active') setPanel('finished');
-            else if (panel === 'finished') setPanel('discover');
-            else setPanel('active');
-          }}>
-            <span>{t('homeNextShelf')}</span>
-            <ChevronRight size={16} />
-          </button>
         </div>
 
         <div className="home-project-columns">

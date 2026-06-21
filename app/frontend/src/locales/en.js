@@ -31,8 +31,6 @@ const en = {
     homeNoFinished: "No finished projects yet.",
     homeNoDiscover: "No recipes to discover yet.",
     homeBrowseRecipes: "Browse recipes",
-    homeOpenLibrary: "Open library",
-    homeNextShelf: "Next shelf",
     settingsAppearanceSub: "Theme, background, language, and currency",
     settingsAccountSub: "Password, 2FA, and sign out",
     settingsDataSub: "Export and backup your library",
