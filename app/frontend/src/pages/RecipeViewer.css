@@ -418,6 +418,8 @@ a.viewer-action-btn { text-decoration: none; }
   inset: 0;
   z-index: 200;
   min-height: 100dvh;
+  background: #111;
+  overflow-y: auto;
 }
 
 .image-viewer-main {
@@ -428,6 +430,29 @@ a.viewer-action-btn { text-decoration: none; }
   padding: 0;
   /* Allow content to grow — canvas scrolls with the page */
   overflow: visible;
+}
+
+.fullscreen-exit-btn {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  z-index: 230;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(255,255,255,0.24);
+  border-radius: 999px;
+  background: rgba(26,26,46,0.78);
+  color: white;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.32);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 /* recipe-image class removed — ImageAnnotationCanvas renders into canvas directly */
@@ -1222,6 +1247,18 @@ a.viewer-action-btn { text-decoration: none; }
 @media (max-width: 768px) {
   .viewer-topbar { display: none; }
 
+  .viewer-content,
+  .image-viewer,
+  .image-viewer-main {
+    flex: 0 0 auto;
+    background: var(--bg-primary);
+  }
+
+  .image-viewer.fullscreen,
+  .image-viewer.fullscreen .image-viewer-main {
+    background: #111;
+  }
+
   /* Old fixed sidebar — replaced by the mobile Info panel */
   .viewer-sidebar { display: none !important; }
 
@@ -1256,13 +1293,19 @@ a.viewer-action-btn { text-decoration: none; }
     max-height: min(82dvh, calc(100dvh - var(--app-mobile-nav-space, 0px) - 18px));
     overflow: hidden;
     /* GPU-accelerated — transform instead of max-height for buttery performance */
-    transform: translateY(105%);
-    transition: transform 0.30s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(calc(100% + var(--app-mobile-nav-space, 0px) + 96px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.30s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
     box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.38);
     will-change: transform;
   }
 
-  .mobile-panel--open { transform: translateY(var(--panel-drag-y, 0px)); }
+  .mobile-panel--open {
+    transform: translateY(var(--panel-drag-y, 0px));
+    opacity: 1;
+    pointer-events: auto;
+  }
 
   .mobile-panel--info,
   .mobile-panel--actions {
@@ -1441,7 +1484,7 @@ a.viewer-action-btn { text-decoration: none; }
     box-shadow: 0 14px 40px rgba(26, 26, 46, 0.24);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
-    transform: translateY(calc(100% + 24px));
+    transform: translateY(calc(100% + var(--app-mobile-nav-space, 0px) + 96px));
     opacity: 0;
     pointer-events: none;
     transition: transform 0.22s ease, opacity 0.18s ease;

@@ -319,6 +319,16 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           ) : (
             <div className={`image-viewer ${fullscreen ? 'fullscreen' : ''}`}
               onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+              {fullscreen && (
+                <button
+                  className="fullscreen-exit-btn"
+                  onClick={() => { setFullscreen(false); setZoom(1); }}
+                  aria-label={t('exitFullscreen')}
+                >
+                  <ArrowLeft size={19} />
+                  <span>{t('exitFullscreen')}</span>
+                </button>
+              )}
               <div className="image-viewer-main">
                 {recipe.images.length > 0 ? (
                   <ImageAnnotationCanvas
