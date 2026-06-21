@@ -1237,6 +1237,8 @@ a.viewer-action-btn { text-decoration: none; }
 .add-images-btn:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
 .add-images-btn:disabled { opacity: 0.5; cursor: default; }
 
+.mobile-quick-strip { display: none; }
+
 /* ══════════════════════════════════════════════════════════════════════════════
    Mobile Bottom Tab Bar & Slide-up Panels
    Replaces the old fixed sidebar + image chrome on mobile (< 769px).
@@ -1500,6 +1502,57 @@ a.viewer-action-btn { text-decoration: none; }
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .mobile-quick-strip {
+    position: fixed;
+    left: max(14px, env(safe-area-inset-left, 14px));
+    bottom: calc(var(--app-mobile-nav-space, 0px) + 12px);
+    z-index: 138;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    max-width: min(54vw, 260px);
+    padding: 6px;
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.56);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+    box-shadow: 0 12px 34px rgba(26, 26, 46, 0.22);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    scrollbar-width: none;
+    animation: mobileQuickStripIn 0.18s ease both;
+  }
+
+  .mobile-quick-strip::-webkit-scrollbar { display: none; }
+
+  .mobile-quick-thumb {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 38px;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+  }
+
+  .mobile-quick-thumb.active {
+    border-color: var(--accent);
+  }
+
+  .mobile-quick-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  @keyframes mobileQuickStripIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .mobile-edit-tray {

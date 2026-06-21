@@ -628,19 +628,13 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
       </div>
 
       {recipe.file_type === 'images' && (
-        <div className={`mobile-edit-tray ${mobileImageEditing ? 'mobile-edit-tray--open' : ''}`}>
-          <div className="mobile-edit-tray-top">
-            <span className="mobile-edit-tray-title">{t('editImagesTitle') || 'Edit images'}</span>
-            <button className="mobile-edit-tray-done" onClick={() => setMobileImageEditing(false)}>
-              {t('done') || 'Done'}
-            </button>
-          </div>
-          {recipe.images.length > 1 && (
-            <div className="mobile-edit-strip">
+        <>
+          {recipe.images.length > 1 && !mobileImageEditing && !fullscreen && (
+            <div className="mobile-quick-strip" aria-label="Recipe images">
               {recipe.images.map((img, i) => (
                 <button
                   key={img}
-                  className={`mobile-edit-thumb ${i === imageIndex ? 'active' : ''}`}
+                  className={`mobile-quick-thumb ${i === imageIndex ? 'active' : ''}`}
                   onClick={() => setImageIndex(i)}
                   aria-label={`Page ${i + 1}`}
                 >
@@ -649,44 +643,67 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               ))}
             </div>
           )}
-          <div className="mobile-edit-actions">
-            <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} aria-label={t('zoomOut') || 'Zoom out'} title={t('zoomOut') || 'Zoom out'}>
-              <ZoomOut size={18} />
-            </button>
-            <button onClick={() => setZoom(1)} aria-label={t('resetZoom') || 'Reset'} title={t('resetZoom') || 'Reset'}>
-              <span>1x</span>
-            </button>
-            <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} aria-label={t('zoomIn') || 'Zoom in'} title={t('zoomIn') || 'Zoom in'}>
-              <ZoomIn size={18} />
-            </button>
-            <button onClick={() => { setFullscreen(f => !f); setZoom(1); }} aria-label={fullscreen ? t('exitFullscreen') : t('openFull')} title={fullscreen ? t('exitFullscreen') : t('openFull')}>
-              <Maximize2 size={18} />
-            </button>
-            <button onClick={() => handleRotate('ccw')} disabled={recipe.images.length === 0} aria-label={t('rotateCCW')} title={t('rotateCCW')}>
-              <RotateCcw size={18} />
-            </button>
-            <button onClick={() => handleRotate('cw')} disabled={recipe.images.length === 0} aria-label={t('rotateCW')} title={t('rotateCW')}>
-              <RotateCw size={18} />
-            </button>
-            <button onClick={() => { setCropOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('cropImage')} title={t('cropImage')}>
-              <Scissors size={18} />
-            </button>
-            <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])} disabled={recipe.images.length === 0} aria-label="Set cover" title="Set cover">
-              <LucideImage size={18} />
-            </button>
-            {recipe.images.length > 1 && (
-              <button onClick={() => { setReordering(true); setMobileImageEditing(false); }} aria-label={t('reorderImages')} title={t('reorderImages')}>
-                <GripVertical size={18} />
+
+          <div className={`mobile-edit-tray ${mobileImageEditing ? 'mobile-edit-tray--open' : ''}`}>
+            <div className="mobile-edit-tray-top">
+              <span className="mobile-edit-tray-title">{t('editImagesTitle') || 'Edit images'}</span>
+              <button className="mobile-edit-tray-done" onClick={() => setMobileImageEditing(false)}>
+                {t('done') || 'Done'}
               </button>
+            </div>
+            {recipe.images.length > 1 && (
+              <div className="mobile-edit-strip">
+                {recipe.images.map((img, i) => (
+                  <button
+                    key={img}
+                    className={`mobile-edit-thumb ${i === imageIndex ? 'active' : ''}`}
+                    onClick={() => setImageIndex(i)}
+                    aria-label={`Page ${i + 1}`}
+                  >
+                    <img src={imageUrl(recipeId, img, imageVersions[img] || recipe.thumbnail_version)} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
             )}
-            <button onClick={() => addImagesInputRef.current?.click()} disabled={addingImages} aria-label={addingImages ? t('addingImages') : t('addImages')} title={addingImages ? t('addingImages') : t('addImages')}>
-              <ImagePlus size={18} />
-            </button>
-            <button className="mobile-edit-action--danger" onClick={() => { setDeleteImageConfirm(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('deleteImage')} title={t('deleteImage')}>
-              <Trash2 size={18} />
-            </button>
+            <div className="mobile-edit-actions">
+              <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} aria-label={t('zoomOut') || 'Zoom out'} title={t('zoomOut') || 'Zoom out'}>
+                <ZoomOut size={18} />
+              </button>
+              <button onClick={() => setZoom(1)} aria-label={t('resetZoom') || 'Reset'} title={t('resetZoom') || 'Reset'}>
+                <span>1x</span>
+              </button>
+              <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} aria-label={t('zoomIn') || 'Zoom in'} title={t('zoomIn') || 'Zoom in'}>
+                <ZoomIn size={18} />
+              </button>
+              <button onClick={() => { setFullscreen(f => !f); setZoom(1); }} aria-label={fullscreen ? t('exitFullscreen') : t('openFull')} title={fullscreen ? t('exitFullscreen') : t('openFull')}>
+                <Maximize2 size={18} />
+              </button>
+              <button onClick={() => handleRotate('ccw')} disabled={recipe.images.length === 0} aria-label={t('rotateCCW')} title={t('rotateCCW')}>
+                <RotateCcw size={18} />
+              </button>
+              <button onClick={() => handleRotate('cw')} disabled={recipe.images.length === 0} aria-label={t('rotateCW')} title={t('rotateCW')}>
+                <RotateCw size={18} />
+              </button>
+              <button onClick={() => { setCropOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('cropImage')} title={t('cropImage')}>
+                <Scissors size={18} />
+              </button>
+              <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])} disabled={recipe.images.length === 0} aria-label="Set cover" title="Set cover">
+                <LucideImage size={18} />
+              </button>
+              {recipe.images.length > 1 && (
+                <button onClick={() => { setReordering(true); setMobileImageEditing(false); }} aria-label={t('reorderImages')} title={t('reorderImages')}>
+                  <GripVertical size={18} />
+                </button>
+              )}
+              <button onClick={() => addImagesInputRef.current?.click()} disabled={addingImages} aria-label={addingImages ? t('addingImages') : t('addImages')} title={addingImages ? t('addingImages') : t('addImages')}>
+                <ImagePlus size={18} />
+              </button>
+              <button className="mobile-edit-action--danger" onClick={() => { setDeleteImageConfirm(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('deleteImage')} title={t('deleteImage')}>
+                <Trash2 size={18} />
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
