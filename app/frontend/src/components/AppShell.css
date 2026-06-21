@@ -28,6 +28,30 @@
   padding-bottom: 0;
 }
 
+@media (max-width: 899px) {
+  html.recipe-view-lock,
+  body.recipe-view-lock {
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-shell--recipe {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-shell--recipe .app-content {
+    height: 100dvh;
+    min-height: 0;
+    padding-bottom: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
 @media (min-width: 900px) {
   .app-shell {
     --desktop-sidebar-width: 248px;

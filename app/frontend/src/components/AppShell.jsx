@@ -307,6 +307,16 @@ export default function AppShell({
     return () => window.removeEventListener('knitting-open-app-menu', openMenu);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('recipe-view-lock', recipeMode);
+    document.body.classList.toggle('recipe-view-lock', recipeMode);
+
+    return () => {
+      document.documentElement.classList.remove('recipe-view-lock');
+      document.body.classList.remove('recipe-view-lock');
+    };
+  }, [recipeMode]);
+
   const collapseMobileNav = () => {
     setAddOpen(false);
     setMenuOpen(false);
@@ -314,7 +324,7 @@ export default function AppShell({
   };
 
   return (
-    <div className={`app-shell ${isHome ? 'app-shell--home' : 'app-shell--compact'} ${mobileNavCollapsed ? 'app-shell--nav-collapsed' : ''}`}>
+    <div className={`app-shell ${isHome ? 'app-shell--home' : 'app-shell--compact'} ${recipeMode ? 'app-shell--recipe' : ''} ${mobileNavCollapsed ? 'app-shell--nav-collapsed' : ''}`}>
       <DesktopSidebar
         activeView={activeView}
         onNavigate={onNavigate}
