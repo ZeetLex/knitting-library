@@ -1297,7 +1297,10 @@ a.viewer-action-btn { text-decoration: none; }
 .add-images-btn:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
 .add-images-btn:disabled { opacity: 0.5; cursor: default; }
 
-.mobile-quick-strip { display: none; }
+.mobile-quick-strip,
+.mobile-edit-tray {
+  display: none;
+}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    Mobile Bottom Tab Bar & Slide-up Panels

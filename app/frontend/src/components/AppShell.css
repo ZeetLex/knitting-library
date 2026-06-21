@@ -19,6 +19,31 @@
   --mobile-nav-height: 48px;
 }
 
+@media (max-width: 899px) {
+  body {
+    background-image: none;
+  }
+
+  .app-shell {
+    position: relative;
+    isolation: isolate;
+    background: transparent;
+  }
+
+  .app-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: var(--app-background-color, var(--bg-primary));
+    background-image: var(--app-background-image, none);
+    background-size: var(--app-background-size, cover);
+    background-position: var(--app-background-position, center);
+    background-repeat: var(--app-background-repeat, no-repeat);
+  }
+}
+
 .app-content {
   min-height: 100dvh;
   padding-bottom: calc(var(--mobile-nav-gap) + 14px);
