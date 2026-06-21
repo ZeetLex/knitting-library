@@ -12,6 +12,13 @@
   .viewer { min-height: 100dvh; }
 }
 
+@media (min-width: 769px) {
+  .viewer {
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
 /* ── Top Bar ────────────────────────────────────────────────────────────────── */
 .viewer-topbar {
   display: flex;
@@ -93,13 +100,22 @@ a.viewer-action-btn { text-decoration: none; }
     display: grid;
     grid-template-columns: 1fr 280px;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     padding-bottom: 0;
+  }
+
+  .viewer--info-collapsed .viewer-body {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (min-width: 1100px) {
   .viewer-body { grid-template-columns: 1fr 320px; }
+
+  .viewer--info-collapsed .viewer-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
@@ -181,6 +197,11 @@ a.viewer-action-btn { text-decoration: none; }
     min-width: 0;            /* critical: allows grid child to respect column width */
     width: 100%;             /* fill the grid column exactly */
   }
+
+  .viewer--info-collapsed .viewer-sidebar {
+    display: none;
+  }
+
   .sidebar-mobile-toggle { display: none; }
   .sidebar-content {
     padding: 24px 20px;
@@ -268,6 +289,7 @@ a.viewer-action-btn { text-decoration: none; }
   .viewer-content {
     min-height: 0;
     order: 0;
+    overflow: hidden;
   }
 }
 
@@ -413,6 +435,13 @@ a.viewer-action-btn { text-decoration: none; }
   overflow: visible;
 }
 
+@media (min-width: 769px) {
+  .image-viewer {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
 .image-viewer.fullscreen {
   position: fixed;
   inset: 0;
@@ -430,6 +459,21 @@ a.viewer-action-btn { text-decoration: none; }
   padding: 0;
   /* Allow content to grow — canvas scrolls with the page */
   overflow: visible;
+}
+
+@media (min-width: 769px) {
+  .image-viewer-main {
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .image-viewer-main .iac-wrap {
+    align-items: center;
+    max-height: 100%;
+    overflow: hidden;
+  }
 }
 
 .fullscreen-exit-btn {
@@ -603,6 +647,12 @@ a.viewer-action-btn { text-decoration: none; }
   scrollbar-width: thin;
 }
 
+@media (min-width: 769px) {
+  .image-strip {
+    overflow-y: hidden;
+  }
+}
+
 .strip-thumb {
   flex-shrink: 0;
   width: 42px;
@@ -649,6 +699,16 @@ a.viewer-action-btn { text-decoration: none; }
   padding: 10px 20px;
   cursor: pointer;
   font-size: 14px;
+}
+
+.viewer-info-toggle {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .viewer-info-toggle {
+    display: flex;
+  }
 }
 
 /* ── Edit / Confirm Modals ──────────────────────────────────────────────────── */

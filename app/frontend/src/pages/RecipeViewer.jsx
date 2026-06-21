@@ -19,6 +19,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopInfoOpen, setDesktopInfoOpen] = useState(true);
   const [pdfPages, setPdfPages]     = useState([]);
   const [converting, setConverting] = useState(false);
   const [thumbSet, setThumbSet]         = useState(null);  // filename of last set thumbnail
@@ -222,12 +223,21 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   );
 
   return (
-    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''}`}>
+    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
         </button>
         <div className="viewer-actions">
+          <button
+            className="viewer-action-btn viewer-info-toggle"
+            onClick={() => setDesktopInfoOpen(open => !open)}
+            title={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+            aria-label={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+            aria-pressed={!desktopInfoOpen}
+          >
+            {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
           <a
             className="viewer-action-btn"
             href={downloadUrl(recipeId)}
