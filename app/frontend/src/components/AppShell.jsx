@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronRight, ChevronUp,
+  ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
@@ -233,7 +233,7 @@ function MobileNav({
   );
 }
 
-function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }) {
+function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick }) {
   const { t } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
@@ -247,11 +247,22 @@ function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }
   ];
 
   return (
-    <aside className="desktop-sidebar">
-      <button className="desktop-brand-button" onClick={() => onNavigate('home')}>
-        <BrandMark />
-      </button>
-      <button className="desktop-add-btn" onClick={onAddClick}>
+    <aside className={`desktop-sidebar ${collapsed ? 'desktop-sidebar--collapsed' : ''}`}>
+      <div className="desktop-sidebar-top">
+        <button className="desktop-brand-button" onClick={() => onNavigate('home')} title={collapsed ? 'Knitting Library' : undefined}>
+          <BrandMark compact={collapsed} />
+        </button>
+        <button
+          className="desktop-sidebar-toggle"
+          onClick={onToggleCollapsed}
+          title={collapsed ? t('navShowNavigation') : t('navHideNavigation')}
+          aria-label={collapsed ? t('navShowNavigation') : t('navHideNavigation')}
+          aria-pressed={collapsed}
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
+      </div>
+      <button className="desktop-add-btn" onClick={onAddClick} title={collapsed ? t('navAddSomething') : undefined}>
         <Plus size={18} />
         <span>{t('navAddSomething')}</span>
       </button>
@@ -263,6 +274,7 @@ function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }
               activeView === item.key || (item.key === 'inventory' && activeView === 'yarnDatabase') ? 'active' : ''
             }`}
             onClick={() => onNavigate(item.key)}
+            title={collapsed ? item.label : undefined}
           >
             {item.icon}
             <span>{item.label}</span>
@@ -275,6 +287,7 @@ function DesktopSidebar({ activeView, onNavigate, onAddClick, onInventoryClick }
             key={item.key}
             className={`desktop-nav-item ${activeView === item.key ? 'active' : ''}`}
             onClick={() => onNavigate(item.key)}
+            title={collapsed ? item.label : undefined}
           >
             {item.icon}
             <span>{item.label}</span>
@@ -299,6 +312,13 @@ export default function AppShell({
   const [addOpen, setAddOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavCollapsed, setMobileNavCollapsed] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('knitting_desktop_sidebar_collapsed') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
   const isHome = activeView === 'home';
 
   useEffect(() => {
@@ -323,10 +343,20 @@ export default function AppShell({
     setMobileNavCollapsed(true);
   };
 
+  const toggleDesktopSidebar = () => {
+    setDesktopSidebarCollapsed(collapsed => {
+      const next = !collapsed;
+      try { localStorage.setItem('knitting_desktop_sidebar_collapsed', String(next)); } catch (_) {}
+      return next;
+    });
+  };
+
   return (
-    <div className={`app-shell ${isHome ? 'app-shell--home' : 'app-shell--compact'} ${recipeMode ? 'app-shell--recipe' : ''} ${mobileNavCollapsed ? 'app-shell--nav-collapsed' : ''}`}>
+    <div className={`app-shell ${isHome ? 'app-shell--home' : 'app-shell--compact'} ${recipeMode ? 'app-shell--recipe' : ''} ${mobileNavCollapsed ? 'app-shell--nav-collapsed' : ''} ${desktopSidebarCollapsed ? 'app-shell--desktop-sidebar-collapsed' : ''}`}>
       <DesktopSidebar
         activeView={activeView}
+        collapsed={desktopSidebarCollapsed}
+        onToggleCollapsed={toggleDesktopSidebar}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}

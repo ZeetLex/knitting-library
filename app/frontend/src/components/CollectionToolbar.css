@@ -258,14 +258,13 @@
 
 @media (min-width: 760px) {
   .collection-toolbar-inner {
-    grid-template-columns: minmax(320px, 1fr) minmax(0, auto);
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     padding: 14px 0;
   }
 
   .collection-toolbar-rail {
-    justify-content: flex-end;
+    justify-content: flex-start;
     flex-wrap: wrap;
     overflow-x: visible;
     padding-bottom: 0;
@@ -275,23 +274,9 @@
   .collection-field { max-width: 210px; }
 }
 
-@media (min-width: 760px) and (max-width: 1180px) {
-  .collection-toolbar-inner {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .collection-search {
-    width: min(100%, 760px);
-  }
-
+@media (min-width: 1180px) {
   .collection-toolbar-rail {
-    justify-content: flex-start;
-  }
-}
-
-@media (min-width: 1181px) {
-  .collection-toolbar-rail {
-    max-width: min(58vw, 760px);
+    justify-content: space-between;
   }
 }
 

@@ -2,7 +2,7 @@
    Library Page
 ══════════════════════════════════════════════════════════════════════════════ */
 .library {
-  max-width: 1400px;
+  max-width: 2560px;
   margin: 0 auto;
   padding: 12px 12px 80px;
   /* Never wider than screen */
@@ -15,7 +15,11 @@
 }
 
 @media (min-width: 900px) {
-  .library { padding: 22px 28px 80px; }
+  .library { padding: 22px clamp(28px, 2.4vw, 56px) 80px; }
+}
+
+@media (min-width: 1800px) {
+  .library { padding-inline: clamp(40px, 3vw, 72px); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -362,10 +366,22 @@
 /* ── Desktop (> 900px) ── */
 @media (min-width: 900px) {
   .recipe-grid { gap: 20px; }
-  .grid-small  { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  .grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-  .grid-large  { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+  .grid-small  { grid-template-columns: repeat(auto-fill, minmax(150px, 220px)); }
+  .grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 280px)); }
+  .grid-large  { grid-template-columns: repeat(auto-fill, minmax(300px, 380px)); gap: 20px; }
   .grid-list   { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+}
+
+@media (min-width: 1500px) {
+  .recipe-grid {
+    gap: 22px;
+  }
+}
+
+@media (min-width: 1900px) {
+  .grid-small  { grid-template-columns: repeat(auto-fill, minmax(150px, 210px)); }
+  .grid-medium { grid-template-columns: repeat(auto-fill, minmax(220px, 260px)); }
+  .grid-large  { grid-template-columns: repeat(auto-fill, minmax(300px, 360px)); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

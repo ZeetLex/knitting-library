@@ -55,8 +55,14 @@
 @media (min-width: 900px) {
   .app-shell {
     --desktop-sidebar-width: 248px;
+    --desktop-sidebar-collapsed-width: 76px;
     display: grid;
     grid-template-columns: var(--desktop-sidebar-width) minmax(0, 1fr);
+    transition: grid-template-columns 0.22s ease;
+  }
+
+  .app-shell--desktop-sidebar-collapsed {
+    grid-template-columns: var(--desktop-sidebar-collapsed-width) minmax(0, 1fr);
   }
 
   .app-content {
@@ -73,6 +79,10 @@
   min-width: 0;
 }
 
+.app-brand--compact {
+  justify-content: center;
+}
+
 .app-brand-logo {
   width: 44px;
   height: 44px;
@@ -87,6 +97,10 @@
   flex-direction: column;
   line-height: 0.95;
   min-width: 0;
+}
+
+.app-brand--compact .app-brand-text {
+  display: none;
 }
 
 .app-brand-main,
@@ -121,7 +135,27 @@
     border-right: 1px solid var(--border);
     box-shadow: 10px 0 28px rgba(26, 26, 46, 0.06);
     z-index: 120;
+    transition: padding 0.22s ease, gap 0.22s ease;
   }
+
+  .desktop-sidebar--collapsed {
+    align-items: center;
+    gap: 14px;
+    padding: 20px 10px;
+  }
+}
+
+.desktop-sidebar-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.desktop-sidebar--collapsed .desktop-sidebar-top {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
 .desktop-brand-button {
@@ -131,6 +165,32 @@
   cursor: pointer;
   padding: 4px 4px 10px;
   max-width: 100%;
+}
+
+.desktop-sidebar-toggle {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .desktop-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .desktop-sidebar-toggle:hover {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  }
 }
 
 .desktop-add-btn {
@@ -149,6 +209,17 @@
   transition: transform 0.16s ease, background 0.16s ease;
 }
 
+.desktop-sidebar--collapsed .desktop-add-btn {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.desktop-sidebar--collapsed .desktop-add-btn span {
+  display: none;
+}
+
 .desktop-add-btn:hover {
   background: var(--accent-light);
   transform: translateY(-1px);
@@ -158,6 +229,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: 100%;
 }
 
 .desktop-nav-group--secondary {
@@ -178,6 +250,22 @@
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.desktop-nav-item svg {
+  flex-shrink: 0;
+}
+
+.desktop-sidebar--collapsed .desktop-nav-item {
+  justify-content: center;
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.desktop-sidebar--collapsed .desktop-nav-item span {
+  display: none;
 }
 
 .desktop-nav-item:hover {
@@ -296,7 +384,8 @@
 .mobile-nav-collapse:focus-visible,
 .mobile-nav-peek:focus-visible,
 .desktop-nav-item:focus-visible,
-.desktop-add-btn:focus-visible {
+.desktop-add-btn:focus-visible,
+.desktop-sidebar-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
