@@ -43,6 +43,7 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
   const [size, setSize]               = useState(DEFAULTS.pencil.size);
   const [opacity, setOpacity]         = useState(DEFAULTS.pencil.opacity);
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [toolbarPanelOpen, setToolbarPanelOpen] = useState(false);
   const [ready, setReady]             = useState(false);
 
   const strokesRef = useRef(strokes);
@@ -62,6 +63,8 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
   useEffect(() => {
     if (!recipeId || !pageKey) return;
     fetchAnnotations(recipeId, pageKey).then(setStrokes).catch(() => {});
+    setToolbarOpen(false);
+    setToolbarPanelOpen(false);
   }, [recipeId, pageKey]);
 
   // ── Flush on unmount / page change ───────────────────────────────────────
@@ -163,6 +166,7 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
   const onDown = useCallback((e) => {
     if (!toolbarOpen) return;
     e.preventDefault();
+    setToolbarPanelOpen(false);
     drawing.current     = true;
     currentPath.current = [getPos(e)];
   }, [toolbarOpen]);
@@ -177,7 +181,10 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
   const onUp = useCallback(() => {
     if (!drawing.current) return;
     drawing.current = false;
-    if (currentPath.current.length < 2) return;
+    if (currentPath.current.length < 2) {
+      currentPath.current = [];
+      return;
+    }
     const next = [...strokes, { tool, color, size, opacity, points: currentPath.current }];
     currentPath.current = [];
     setStrokes(next);
@@ -200,6 +207,18 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
     setOpacity(DEFAULTS[nt].opacity);
     setColor(DEFAULTS[nt].color);
   };
+  const handleToolbarToggle = () => {
+    if (!toolbarOpen) {
+      setToolbarOpen(true);
+      setToolbarPanelOpen(true);
+      return;
+    }
+    if (toolbarPanelOpen) {
+      setToolbarPanelOpen(false);
+      return;
+    }
+    setToolbarOpen(false);
+  };
 
   return (
     <div ref={containerRef} className="iac-wrap">
@@ -212,8 +231,8 @@ export function ImageAnnotationCanvas({ recipeId, pageKey, src, fitToContainer =
       />
       <AnnotationToolbar
         t={t} tool={tool} color={color} size={size} opacity={opacity}
-        toolbarOpen={toolbarOpen} strokes={strokes}
-        onToggle={() => setToolbarOpen(o => !o)}
+        toolbarOpen={toolbarOpen} panelOpen={toolbarPanelOpen} strokes={strokes}
+        onToggle={handleToolbarToggle}
         onSwitchTool={switchTool}
         onColorChange={setColor} onSizeChange={setSize} onOpacityChange={setOpacity}
         onUndo={handleUndo} onClear={handleClear}
@@ -239,6 +258,7 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
   const [size, setSize]               = useState(DEFAULTS.pencil.size);
   const [opacity, setOpacity]         = useState(DEFAULTS.pencil.opacity);
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [toolbarPanelOpen, setToolbarPanelOpen] = useState(false);
 
   const strokesRef = useRef(strokes);
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
@@ -246,6 +266,8 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
   useEffect(() => {
     if (!recipeId || !pageKey) return;
     fetchAnnotations(recipeId, pageKey).then(setStrokes).catch(() => {});
+    setToolbarOpen(false);
+    setToolbarPanelOpen(false);
   }, [recipeId, pageKey]);
 
   useEffect(() => {
@@ -303,7 +325,10 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
   }
 
   const onDown = useCallback((e) => {
-    e.preventDefault(); drawing.current = true; currentPath.current = [getPos(e)];
+    e.preventDefault();
+    setToolbarPanelOpen(false);
+    drawing.current = true;
+    currentPath.current = [getPos(e)];
   }, []);
   const onMove = useCallback((e) => {
     if (!drawing.current) return;
@@ -314,7 +339,10 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
   const onUp = useCallback(() => {
     if (!drawing.current) return;
     drawing.current = false;
-    if (currentPath.current.length < 2) return;
+    if (currentPath.current.length < 2) {
+      currentPath.current = [];
+      return;
+    }
     const next = [...strokes, { tool, color, size, opacity, points: currentPath.current }];
     currentPath.current = [];
     setStrokes(next);
@@ -334,6 +362,18 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
     setTool(nt); setSize(DEFAULTS[nt].size);
     setOpacity(DEFAULTS[nt].opacity); setColor(DEFAULTS[nt].color);
   };
+  const handleToolbarToggle = () => {
+    if (!toolbarOpen) {
+      setToolbarOpen(true);
+      setToolbarPanelOpen(true);
+      return;
+    }
+    if (toolbarPanelOpen) {
+      setToolbarPanelOpen(false);
+      return;
+    }
+    setToolbarOpen(false);
+  };
 
   return (
     <div className="pdf-annotation-layer">
@@ -350,8 +390,8 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
       />
       <AnnotationToolbar
         t={t} tool={tool} color={color} size={size} opacity={opacity}
-        toolbarOpen={toolbarOpen} strokes={strokes}
-        onToggle={() => setToolbarOpen(o => !o)}
+        toolbarOpen={toolbarOpen} panelOpen={toolbarPanelOpen} strokes={strokes}
+        onToggle={handleToolbarToggle}
         onSwitchTool={switchTool}
         onColorChange={setColor} onSizeChange={setSize} onOpacityChange={setOpacity}
         onUndo={handleUndo} onClear={handleClear}
@@ -364,7 +404,7 @@ export function PdfAnnotationLayer({ recipeId, pageKey }) {
    Shared toolbar
 ───────────────────────────────────────────────────────────────────────────── */
 function AnnotationToolbar({
-  t, tool, color, size, opacity, toolbarOpen, strokes,
+  t, tool, color, size, opacity, toolbarOpen, panelOpen, strokes,
   onToggle, onSwitchTool, onColorChange, onSizeChange, onOpacityChange,
   onUndo, onClear,
 }) {
@@ -376,10 +416,10 @@ function AnnotationToolbar({
       >
         <Pencil size={16} />
         {strokes.length > 0 && <span className="annotation-dot" />}
-        {toolbarOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {toolbarOpen && panelOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
       </button>
 
-      {toolbarOpen && (
+      {toolbarOpen && panelOpen && (
         <div className="annotation-toolbar">
           <div className="at-group">
             <button className={`at-tool-btn ${tool==='pencil'?'active':''}`} onClick={() => onSwitchTool('pencil')}>

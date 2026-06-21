@@ -384,6 +384,31 @@ def get_db() -> sqlite3.Connection:
         if "background" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN background TEXT NOT NULL DEFAULT 'default'")
             conn.commit()
+    if "annotations" in tables:
+        annotation_cols = [r["name"] for r in conn.execute("PRAGMA table_info(annotations)").fetchall()]
+        if "user_id" not in annotation_cols:
+            fallback_user = conn.execute(
+                "SELECT id FROM users ORDER BY is_admin DESC, created_date ASC LIMIT 1"
+            ).fetchone() if "users" in tables else None
+            fallback_user_id = fallback_user["id"] if fallback_user else ""
+            conn.execute("ALTER TABLE annotations RENAME TO annotations_legacy_user_migration")
+            conn.execute("""
+                CREATE TABLE annotations (
+                    recipe_id TEXT NOT NULL,
+                    page_key  TEXT NOT NULL,
+                    user_id   TEXT NOT NULL DEFAULT '',
+                    data      TEXT NOT NULL DEFAULT '[]',
+                    updated   TEXT NOT NULL,
+                    PRIMARY KEY (recipe_id, page_key, user_id)
+                )
+            """)
+            conn.execute(
+                "INSERT INTO annotations (recipe_id,page_key,user_id,data,updated) "
+                "SELECT recipe_id,page_key,?,data,updated FROM annotations_legacy_user_migration",
+                (fallback_user_id,)
+            )
+            conn.execute("DROP TABLE annotations_legacy_user_migration")
+            conn.commit()
     return conn
 
 
@@ -446,9 +471,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS annotations (
             recipe_id TEXT NOT NULL,
             page_key  TEXT NOT NULL,
+            user_id   TEXT NOT NULL DEFAULT '',
             data      TEXT NOT NULL DEFAULT '[]',
             updated   TEXT NOT NULL,
-            PRIMARY KEY (recipe_id, page_key)
+            PRIMARY KEY (recipe_id, page_key, user_id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id              TEXT PRIMARY KEY,
@@ -2111,7 +2137,10 @@ def clear_sessions(recipe_id: str, current_user: dict = Depends(get_current_user
 @app.get("/api/recipes/{recipe_id}/annotations/{page_key}")
 def get_annotations(recipe_id: str, page_key: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
-    row  = conn.execute("SELECT data FROM annotations WHERE recipe_id=? AND page_key=?", (recipe_id, page_key)).fetchone()
+    row  = conn.execute(
+        "SELECT data FROM annotations WHERE recipe_id=? AND page_key=? AND user_id=?",
+        (recipe_id, page_key, current_user["id"])
+    ).fetchone()
     conn.close()
     return {"strokes": json.loads(row["data"]) if row else []}
 
@@ -2120,9 +2149,9 @@ def get_annotations(recipe_id: str, page_key: str, current_user: dict = Depends(
 def save_annotations(recipe_id: str, page_key: str, data: dict, current_user: dict = Depends(get_current_user)):
     conn = get_db()
     conn.execute(
-        "INSERT INTO annotations (recipe_id,page_key,data,updated) VALUES (?,?,?,?) "
-        "ON CONFLICT(recipe_id,page_key) DO UPDATE SET data=excluded.data, updated=excluded.updated",
-        (recipe_id, page_key, json.dumps(data.get("strokes", [])), datetime.utcnow().isoformat())
+        "INSERT INTO annotations (recipe_id,page_key,user_id,data,updated) VALUES (?,?,?,?,?) "
+        "ON CONFLICT(recipe_id,page_key,user_id) DO UPDATE SET data=excluded.data, updated=excluded.updated",
+        (recipe_id, page_key, current_user["id"], json.dumps(data.get("strokes", [])), datetime.utcnow().isoformat())
     )
     conn.commit()
     conn.close()
@@ -2132,7 +2161,10 @@ def save_annotations(recipe_id: str, page_key: str, data: dict, current_user: di
 @app.delete("/api/recipes/{recipe_id}/annotations/{page_key}")
 def clear_annotations(recipe_id: str, page_key: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
-    conn.execute("DELETE FROM annotations WHERE recipe_id=? AND page_key=?", (recipe_id, page_key))
+    conn.execute(
+        "DELETE FROM annotations WHERE recipe_id=? AND page_key=? AND user_id=?",
+        (recipe_id, page_key, current_user["id"])
+    )
     conn.commit()
     conn.close()
     return {"ok": True}
