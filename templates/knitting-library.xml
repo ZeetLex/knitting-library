@@ -17,8 +17,6 @@
   <ReadMe>https://raw.githubusercontent.com/ZeetLex/knitting-library/main/README.md</ReadMe>
 
   <Category>Tools:Utilities</Category>
-  <Beta>true</Beta>
-  <License>MIT</License>
 
   <Config Name="WebUI" Target="8080" Default="3000" Mode="tcp" Description="HTTP port for the Knitting Library web interface." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/knitting-library/data" Mode="rw" Description="Persistent app data, including the SQLite database, uploaded patterns, thumbnails, yarn images, annotations, and settings." Type="Path" Display="always" Required="true" Mask="false"/>
