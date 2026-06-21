@@ -9,7 +9,7 @@ import CropModal from '../components/CropModal';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
-  const { t } = useApp();
+  const { t, language } = useApp();
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
@@ -751,7 +751,7 @@ function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpda
 
       <p className="viewer-date">
         {t('added')} {new Date(recipe.created_date).toLocaleDateString(
-          t('language') === 'no' ? 'nb-NO' : 'en-US',
+          language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : 'en-US',
           { year: 'numeric', month: 'long', day: 'numeric' }
         )}
       </p>

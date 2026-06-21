@@ -1,5 +1,6 @@
 import React from 'react';
 import { Megaphone, X } from 'lucide-react';
+import { useApp } from '../utils/AppContext';
 import './AnnouncementModal.css';
 
 /**
@@ -7,6 +8,7 @@ import './AnnouncementModal.css';
  * Dismisses all of them when "Got it!" is clicked.
  */
 export default function AnnouncementModal({ announcements, onDismiss }) {
+  const { t, language } = useApp();
   if (!announcements || announcements.length === 0) return null;
 
   // Show the most recent announcement (first in the sorted list)
@@ -14,7 +16,12 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
   const remaining = announcements.length - 1;
 
   const formatDate = (iso) => {
-    try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+    try {
+      return new Date(iso).toLocaleDateString(
+        language === 'no' ? 'nb-NO' : language === 'hu' ? 'hu-HU' : undefined,
+        { year: 'numeric', month: 'short', day: 'numeric' }
+      );
+    }
     catch { return iso; }
   };
 
@@ -26,7 +33,7 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
             <Megaphone size={20} />
           </div>
           <div className="ann-header-text">
-            <span className="ann-label">Update Notes</span>
+            <span className="ann-label">{t('updateNotes')}</span>
             <h2 className="ann-title" id="ann-title">{latest.title}</h2>
           </div>
         </div>
@@ -41,11 +48,11 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
           <div className="ann-meta">
             {formatDate(latest.created_at)}
             {remaining > 0 && (
-              <span className="ann-more"> · +{remaining} more update{remaining > 1 ? 's' : ''}</span>
+              <span className="ann-more"> · {t('announcementMoreUpdates').replace('{COUNT}', remaining)}</span>
             )}
           </div>
           <button className="ann-dismiss-btn" onClick={onDismiss} autoFocus>
-            Got it!
+            {t('gotIt')}
           </button>
         </div>
       </div>

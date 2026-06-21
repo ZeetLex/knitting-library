@@ -35,7 +35,7 @@ export default function SettingsPage({ onBack }) {
       { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs'), sub: t('settingsLogsSub') },
       { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail'), sub: t('settingsMailSub') },
       { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA'), sub: t('settingsTwoFASub') },
-      { id: 'announcements', icon: <Megaphone size={18} />,   label: 'Update Notes', sub: t('settingsAnnouncementsSub') },
+      { id: 'announcements', icon: <Megaphone size={18} />,   label: t('updateNotes'), sub: t('settingsAnnouncementsSub') },
     ] : []),
   ];
   const activeItem = navItems.find(item => item.id === activeSection);
@@ -678,44 +678,10 @@ function LogsSection() {
 }
 
 /* ─── Mail default templates (mirrors backend _DEFAULT_* constants) ──────── */
-const DEFAULT_FORGOT_SUBJECT = 'Your new Knitting Library password';
-const DEFAULT_FORGOT_BODY =
-`Hi {USERNAME},
-
-We received a password reset request for your Knitting Library account. A temporary password has been generated for you.
-
-────────────────────────────
-  Temporary password: {PASSWORD}
-────────────────────────────
-
-To get back in:
-  1. Log in with your temporary password
-  2. Go to Settings → Account → Change Password
-  3. Set a new password you will remember
-
-If you did not request a password reset, you can safely ignore this email — your existing password has not been changed.
-
-Happy knitting,
-Knitting Library`;
-
-const DEFAULT_WELCOME_SUBJECT = 'Welcome to your Knitting Library!';
-const DEFAULT_WELCOME_BODY =
-`Hi {USERNAME},
-
-Your Knitting Library account is ready. Here are your login details:
-
-────────────────────────────
-  Username: {USERNAME}
-  Password: {PASSWORD}
-  App URL:  {APP_URL}
-────────────────────────────
-
-Once you are logged in, we recommend changing your password right away. You can do this under Settings → Account → Change Password.
-
-Knitting Library lets you store and organise your patterns, track your projects, and keep an inventory of your yarn stash — all in one place.
-
-Happy knitting,
-Knitting Library`;
+const defaultForgotSubject = (t) => t('defaultForgotSubject');
+const defaultForgotBody = (t) => t('defaultForgotBody');
+const defaultWelcomeSubject = (t) => t('defaultWelcomeSubject');
+const defaultWelcomeBody = (t) => t('defaultWelcomeBody');
 
 /* ─── Mail Section (Admin) ────────────────────────────────────────────────── */
 function MailSection() {
@@ -773,8 +739,8 @@ function MailSection() {
       <div className="form-stack">
         <div className="settings-row" style={{ padding: '0.5rem 0', marginBottom: '0.25rem' }}>
           <div className="settings-row-info">
-            <p className="settings-row-label">Enable email</p>
-            <p className="settings-row-sub">Master switch. Mail will only be sent when this is on.</p>
+            <p className="settings-row-label">{t('mailEnable')}</p>
+            <p className="settings-row-sub">{t('mailEnableSub')}</p>
           </div>
           <button className={`theme-toggle ${cfg.mail_enabled === 'true' ? 'dark' : ''}`}
             onClick={() => f('mail_enabled', cfg.mail_enabled === 'true' ? 'false' : 'true')}>
@@ -835,36 +801,36 @@ function MailSection() {
 
         {/* ── Email Templates ── */}
         <div className="settings-divider" />
-        <h4 className="section-subheading">Email Templates</h4>
+        <h4 className="section-subheading">{t('emailTemplates')}</h4>
 
         <div className="settings-row">
           <div className="settings-row-info">
-            <p className="settings-row-label">Forgot Password Email</p>
-            <p className="settings-row-sub">Sent when a user requests a password reset. Requires <code>{'{USERNAME}'}</code> and <code>{'{PASSWORD}'}</code>.</p>
+            <p className="settings-row-label">{t('forgotPasswordEmail')}</p>
+            <p className="settings-row-sub">{t('forgotPasswordEmailSub')} <code>{'{USERNAME}'}</code> {t('and')} <code>{'{PASSWORD}'}</code>.</p>
           </div>
           <button className="btn-secondary btn-icon-label" onClick={() => setTemplateModal('forgot')}>
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> {t('edit')}
           </button>
         </div>
 
         <div className="settings-row">
           <div className="settings-row-info">
-            <p className="settings-row-label">Welcome Email</p>
-            <p className="settings-row-sub">Sent when a new user is created with an email address. Requires <code>{'{USERNAME}'}</code> and <code>{'{PASSWORD}'}</code>.</p>
+            <p className="settings-row-label">{t('welcomeEmail')}</p>
+            <p className="settings-row-sub">{t('welcomeEmailSub')} <code>{'{USERNAME}'}</code> {t('and')} <code>{'{PASSWORD}'}</code>.</p>
           </div>
           <button className="btn-secondary btn-icon-label" onClick={() => setTemplateModal('welcome')}>
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> {t('edit')}
           </button>
         </div>
 
         {/* ── Announcement emails ── */}
         <div className="settings-divider" />
-        <h4 className="section-subheading">Notifications</h4>
+        <h4 className="section-subheading">{t('notifications')}</h4>
 
         <div className="settings-row">
           <div className="settings-row-info">
-            <p className="settings-row-label">Email Update Notes to users</p>
-            <p className="settings-row-sub">When you publish an Update Note, send it by email to all users who have an email address on file.</p>
+            <p className="settings-row-label">{t('emailUpdateNotes')}</p>
+            <p className="settings-row-sub">{t('emailUpdateNotesSub')}</p>
           </div>
           <button
             className={`theme-toggle ${cfg.mail_announcements_enabled === 'true' ? 'dark' : ''}`}
@@ -878,11 +844,11 @@ function MailSection() {
       {templateModal === 'forgot' && (
         <TemplateEditorModal
           t={t}
-          title="Forgot Password Email"
+          title={t('forgotPasswordEmail')}
           subjectKey="mail_tmpl_forgot_subject"
           bodyKey="mail_tmpl_forgot_body"
-          subject={cfg.mail_tmpl_forgot_subject || DEFAULT_FORGOT_SUBJECT}
-          body={cfg.mail_tmpl_forgot_body || DEFAULT_FORGOT_BODY}
+          subject={cfg.mail_tmpl_forgot_subject || defaultForgotSubject(t)}
+          body={cfg.mail_tmpl_forgot_body || defaultForgotBody(t)}
           requiredTokens={['{USERNAME}', '{PASSWORD}']}
           availableTokens={['{USERNAME}', '{PASSWORD}']}
           onClose={() => setTemplateModal(null)}
@@ -892,11 +858,11 @@ function MailSection() {
       {templateModal === 'welcome' && (
         <TemplateEditorModal
           t={t}
-          title="Welcome Email"
+          title={t('welcomeEmail')}
           subjectKey="mail_tmpl_welcome_subject"
           bodyKey="mail_tmpl_welcome_body"
-          subject={cfg.mail_tmpl_welcome_subject || DEFAULT_WELCOME_SUBJECT}
-          body={cfg.mail_tmpl_welcome_body || DEFAULT_WELCOME_BODY}
+          subject={cfg.mail_tmpl_welcome_subject || defaultWelcomeSubject(t)}
+          body={cfg.mail_tmpl_welcome_body || defaultWelcomeBody(t)}
           requiredTokens={['{USERNAME}', '{PASSWORD}']}
           availableTokens={['{USERNAME}', '{PASSWORD}', '{APP_URL}']}
           onClose={() => setTemplateModal(null)}
@@ -921,7 +887,7 @@ function TwoFASection() {
   useEffect(() => { load(); }, []);
 
   const handleReset = async (uid, uname) => {
-    if (!window.confirm(`Reset 2FA for "${uname}"? They will need to set it up again.`)) return;
+    if (!window.confirm(t('reset2FAConfirm').replace('{USERNAME}', uname))) return;
     setResetting(uid);
     try {
       await adminReset2FA(uid);
@@ -987,21 +953,21 @@ function AnnouncementsSection() {
   return (
     <div className="settings-section">
       <div className="section-heading-row">
-        <h3 className="section-heading">Update Notes</h3>
+        <h3 className="section-heading">{t('updateNotes')}</h3>
         <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           onClick={() => setShowPush(true)}>
           <Megaphone size={15} />
-          Push Update Notes
+          {t('pushUpdateNotes')}
         </button>
       </div>
       <p className="settings-row-sub" style={{ marginBottom: '1.25rem' }}>
-        Push a patch note or update message to all users — they'll see a popup the next time they open the app.
+        {t('updateNotesSub')}
       </p>
 
       {loading ? (
         <p className="loading-text">Loading…</p>
       ) : announcements.length === 0 ? (
-        <p className="settings-row-sub">No announcements pushed yet.</p>
+        <p className="settings-row-sub">{t('noAnnouncements')}</p>
       ) : (
         <div className="announcement-history">
           {announcements.map(a => (
@@ -1009,7 +975,7 @@ function AnnouncementsSection() {
               <div className="announcement-history-title">{a.title}</div>
               {a.body && <div className="announcement-history-body">{a.body}</div>}
               <div className="announcement-history-meta">
-                Pushed by <strong>{a.created_by}</strong> · {formatDate(a.created_at)}
+                {t('pushedBy')} <strong>{a.created_by}</strong> · {formatDate(a.created_at)}
               </div>
             </div>
           ))}
@@ -1035,13 +1001,13 @@ function PushAnnouncementModal({ t, onClose, onPushed }) {
   const [error, setError]   = useState('');
 
   const handlePush = async () => {
-    if (!title.trim()) { setError('A title is required.'); return; }
+    if (!title.trim()) { setError(t('titleRequired')); return; }
     setSaving(true); setError('');
     try {
       await createAnnouncement(title.trim(), body.trim());
       onPushed();
     } catch (e) {
-      setError(e.message || 'Could not push announcement.');
+      setError(e.message || t('announcementPushError'));
       setSaving(false);
     }
   };
@@ -1050,15 +1016,15 @@ function PushAnnouncementModal({ t, onClose, onPushed }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="settings-modal announcement-push-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3><Megaphone size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Push Update Notes</h3>
+          <h3><Megaphone size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />{t('pushUpdateNotes')}</h3>
           <button className="modal-close" onClick={onClose}><X size={20} /></button>
         </div>
         <div className="modal-body">
           <div className="form-field">
-            <label className="form-label">Title</label>
+            <label className="form-label">{t('title')}</label>
             <input
               className="form-input"
-              placeholder="e.g. v1.4 — New features"
+              placeholder={t('announcementTitlePlaceholder')}
               value={title}
               onChange={e => setTitle(e.target.value)}
               autoFocus
@@ -1066,10 +1032,10 @@ function PushAnnouncementModal({ t, onClose, onPushed }) {
             />
           </div>
           <div className="form-field">
-            <label className="form-label">Update Notes</label>
+            <label className="form-label">{t('updateNotes')}</label>
             <textarea
               className="form-input announcement-textarea"
-              placeholder="What's new? Write your update notes here…"
+              placeholder={t('announcementBodyPlaceholder')}
               value={body}
               onChange={e => setBody(e.target.value)}
               rows={7}
@@ -1077,13 +1043,13 @@ function PushAnnouncementModal({ t, onClose, onPushed }) {
           </div>
           {error && <p className="status-error">{error}</p>}
           <p className="modal-hint">
-            All users will see this popup the next time they open or refresh the app.
+            {t('announcementModalHint')}
           </p>
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
           <button className="btn-primary" onClick={handlePush} disabled={saving || !title.trim()}>
-            {saving ? 'Pushing…' : <><Send size={14} style={{ marginRight: 6 }} />Push to all users</>}
+            {saving ? t('pushing') : <><Send size={14} style={{ marginRight: 6 }} />{t('pushToAllUsers')}</>}
           </button>
         </div>
       </div>
@@ -1133,7 +1099,7 @@ function AddUserModal({ t, onClose, onAdded }) {
           <div className="form-field"><label className="form-label">{t('username')}</label><input className="form-input" value={username} onChange={e => setUsername(e.target.value)} autoFocus /></div>
           <div className="form-field"><label className="form-label">{t('password')}</label><input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div>
           <div className="form-field">
-            <label className="form-label">Email <span className="form-label-optional">(optional)</span></label>
+            <label className="form-label">{t('email')} <span className="form-label-optional">({t('optional')})</span></label>
             <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@example.com" />
           </div>
           <label className="checkbox-row"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} /><span>{t('isAdmin')}</span></label>
@@ -1169,25 +1135,25 @@ function WelcomeMailModal({ t, user, onDone }) {
     <div className="modal-overlay modal-overlay--bottom-mobile">
       <div className="settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>User Created</h3>
+          <h3>{t('userCreated')}</h3>
         </div>
         <div className="modal-body">
           <p className="modal-hint">
-            <strong>{user.username}</strong> has been created.
-            {user.email && <> Send a welcome email to <strong>{user.email}</strong>?</>}
+            {t('userCreatedMessage').replace('{USERNAME}', user.username)}
+            {user.email && <> {t('sendWelcomeEmailPrompt').replace('{EMAIL}', user.email)}</>}
           </p>
-          {status === 'ok' && <p className="status-success">Welcome email sent!</p>}
+          {status === 'ok' && <p className="status-success">{t('welcomeEmailSent')}</p>}
           {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
         </div>
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={onDone}>Skip</button>
+          <button className="btn-secondary" onClick={onDone}>{t('skip')}</button>
           {!status && (
             <button className="btn-primary" onClick={handleSend} disabled={sending}>
               <Mail size={14} style={{ marginRight: 6 }} />
-              {sending ? 'Sending…' : 'Send Welcome Email'}
+              {sending ? t('sending') : t('sendWelcomeEmail')}
             </button>
           )}
-          {status && <button className="btn-primary" onClick={onDone}>Done</button>}
+          {status && <button className="btn-primary" onClick={onDone}>{t('done')}</button>}
         </div>
       </div>
     </div>
@@ -1212,19 +1178,19 @@ function EditEmailModal({ t, targetUser, onClose, onSaved }) {
     <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
       <div className="settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Email — {targetUser.username}</h3>
+          <h3>{t('email')} — {targetUser.username}</h3>
           <button className="modal-close" onClick={onClose}><X size={20} /></button>
         </div>
         <div className="modal-body">
           <div className="form-field">
-            <label className="form-label">Email address <span className="form-label-optional">(leave blank to remove)</span></label>
+            <label className="form-label">{t('emailAddress')} <span className="form-label-optional">({t('leaveBlankToRemove')})</span></label>
             <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} autoFocus placeholder="user@example.com" />
           </div>
           {error && <p className="status-error">{error}</p>}
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : 'Save Email'}</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : t('saveEmail')}</button>
         </div>
       </div>
     </div>
@@ -1243,7 +1209,7 @@ function TemplateEditorModal({ t, title, subjectKey, bodyKey, subject, body, req
   const validate = () => {
     for (const tok of requiredTokens) {
       if (!subj.includes(tok) && !bodyText.includes(tok)) {
-        return `Required token ${tok} is missing from both subject and body.`;
+        return t('requiredTokenMissing').replace('{TOKEN}', tok);
       }
     }
     return '';
@@ -1278,36 +1244,36 @@ function TemplateEditorModal({ t, title, subjectKey, bodyKey, subject, body, req
         </div>
         <div className="modal-body">
           <div className="form-field">
-            <label className="form-label">Subject</label>
-            <input className="form-input" value={subj} onChange={e => { setSubj(e.target.value); setError(''); }} placeholder="Email subject line" />
+            <label className="form-label">{t('emailSubject')}</label>
+            <input className="form-input" value={subj} onChange={e => { setSubj(e.target.value); setError(''); }} placeholder={t('emailSubjectPlaceholder')} />
           </div>
           <div className="form-field" style={{ marginTop: '0.75rem' }}>
-            <label className="form-label">Body</label>
+            <label className="form-label">{t('emailBody')}</label>
             <textarea
               className="form-input form-textarea"
               value={bodyText}
               onChange={e => { setBody(e.target.value); setError(''); }}
               rows={10}
-              placeholder="Email body text…"
+              placeholder={t('emailBodyPlaceholder')}
             />
           </div>
           <div className="template-tokens">
-            <span className="template-tokens-label">Insert token:</span>
+            <span className="template-tokens-label">{t('insertToken')}</span>
             {availableTokens.map(tok => (
               <button key={tok} className={`token-chip ${requiredTokens.includes(tok) ? 'token-chip--required' : ''}`} onClick={() => insertToken(tok)} type="button">
                 {tok}
               </button>
             ))}
-            <span className="template-tokens-hint">Required tokens are highlighted.</span>
+            <span className="template-tokens-hint">{t('requiredTokensHint')}</span>
           </div>
           {error && <p className="status-error" style={{ marginTop: '0.5rem' }}>{error}</p>}
 
           <div className="settings-divider" style={{ margin: '1rem 0' }} />
-          <p className="settings-row-sub" style={{ marginBottom: '0.5rem' }}>Send a test email using this template (tokens will be replaced with sample values):</p>
+          <p className="settings-row-sub" style={{ marginBottom: '0.5rem' }}>{t('templateTestHint')}</p>
           <div className="mail-test-row">
             <input className="form-input" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="test@example.com" type="email" />
             <button className="btn-secondary" onClick={handleTest} disabled={testing || !testTo}>
-              <Send size={15} /> {testing ? t('sending') : 'Send Test'}
+              <Send size={15} /> {testing ? t('sending') : t('sendTestEmail')}
             </button>
           </div>
           {testStatus === 'ok' && <p className="status-success" style={{ marginTop: '0.5rem' }}>{t('mailTestOk')}</p>}
@@ -1315,7 +1281,7 @@ function TemplateEditorModal({ t, title, subjectKey, bodyKey, subject, body, req
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleSave}>Save Template</button>
+          <button className="btn-primary" onClick={handleSave}>{t('saveTemplate')}</button>
         </div>
       </div>
     </div>

@@ -57,7 +57,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
   };
 
   const handleSubmit = async () => {
-    if (!fields.name.trim()) { setError(t('yarnName') + ' is required'); return; }
+    if (!fields.name.trim()) { setError(t('fieldRequired').replace('{FIELD}', t('yarnName'))); return; }
     setSaving(true); setError('');
     try {
       const fd = new FormData();
@@ -167,7 +167,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <div className="yum-image-placeholder">
                 <ImagePlus size={32} />
                 <span>{t('uploadImage')}</span>
-                <span className="yum-image-hint">JPG, PNG, WebP · drag & drop · paste</span>
+                <span className="yum-image-hint">{t('imageUploadHint')}</span>
               </div>
             )}
             {imagePreview && (
@@ -225,7 +225,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
             <Field label={t('woolType')}>
               <input
                 type="text" value={fields.wool_type}
-                placeholder="e.g. 65% Alpaca, 35% Wool"
+                placeholder={t('woolTypePlaceholder')}
                 onChange={(e) => set('wool_type', e.target.value)}
                 className="yum-input"
               />
@@ -235,7 +235,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <Field label={t('yardage')}>
                 <input
                   type="text" value={fields.yardage}
-                  placeholder="e.g. Approx. 100m per 50g"
+                  placeholder={t('yardagePlaceholder')}
                   onChange={(e) => set('yardage', e.target.value)}
                   className="yum-input"
                 />
@@ -243,7 +243,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <Field label={t('needles')}>
                 <input
                   type="text" value={fields.needles}
-                  placeholder="e.g. No. 3½–5"
+                  placeholder={t('needlesPlaceholder')}
                   onChange={(e) => set('needles', e.target.value)}
                   className="yum-input"
                 />
@@ -254,7 +254,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <Field label={t('tension')}>
                 <input
                   type="text" value={fields.tension}
-                  placeholder="e.g. 22–19 sts = 10 cm"
+                  placeholder={t('tensionPlaceholder')}
                   onChange={(e) => set('tension', e.target.value)}
                   className="yum-input"
                 />
@@ -262,7 +262,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <Field label={t('origin')}>
                 <input
                   type="text" value={fields.origin}
-                  placeholder="e.g. Alpaca from Peru, Wool from Australia"
+                  placeholder={t('originPlaceholder')}
                   onChange={(e) => set('origin', e.target.value)}
                   className="yum-input"
                 />
@@ -273,7 +273,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
               <Field label={t('seller')}>
                 <input
                   type="text" value={fields.seller}
-                  placeholder="e.g. Sandnes Garn"
+                  placeholder={t('sellerPlaceholder')}
                   onChange={(e) => set('seller', e.target.value)}
                   className="yum-input"
                 />
@@ -289,7 +289,7 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
             <Field label={t('productInfo')}>
               <textarea
                 value={fields.product_info}
-                placeholder="Care instructions, properties, notes…"
+                placeholder={t('productInfoPlaceholder')}
                 onChange={(e) => set('product_info', e.target.value)}
                 className="yum-textarea"
                 rows={5}

@@ -26,10 +26,10 @@ function useSections(t) {
       titleKey: 'helpS1Title',
       items: [
         { key: 'helpS1Intro' },
-        { label: 'Sign in',          key: 'helpS1SignIn' },
-        { label: 'Home dashboard',   key: 'helpS1Home' },
-        { label: 'Navigation',        key: 'helpS1Nav' },
-        { label: 'Home shortcut',     key: 'helpS1Logo' },
+        { labelKey: 'helpLabelSignIn',        key: 'helpS1SignIn' },
+        { labelKey: 'helpLabelHomeDashboard', key: 'helpS1Home' },
+        { labelKey: 'helpLabelNavigation',    key: 'helpS1Nav' },
+        { labelKey: 'helpLabelHomeShortcut',  key: 'helpS1Logo' },
       ],
     },
     {
@@ -38,11 +38,11 @@ function useSections(t) {
       titleKey: 'helpS2Title',
       items: [
         { key: 'helpS2Intro' },
-        { label: 'Adding recipes',    key: 'helpS2Add' },
-        { label: 'Search & filters',  key: 'helpS2Search' },
-        { label: 'Grid sizes',        key: 'helpS2Grid' },
-        { label: 'Categories',        key: 'helpS2Categories' },
-        { label: 'Tags',              key: 'helpS2Tags' },
+        { labelKey: 'helpLabelAddingRecipes', key: 'helpS2Add' },
+        { labelKey: 'helpLabelSearchFilters', key: 'helpS2Search' },
+        { labelKey: 'helpLabelGridSizes',     key: 'helpS2Grid' },
+        { labelKey: 'categories',             key: 'helpS2Categories' },
+        { labelKey: 'tags',                   key: 'helpS2Tags' },
       ],
     },
     {
@@ -51,11 +51,11 @@ function useSections(t) {
       titleKey: 'helpS3Title',
       items: [
         { key: 'helpS3Intro' },
-        { label: 'PDF recipes',       key: 'helpS3PDF' },
-        { label: 'Image recipes',     key: 'helpS3Images' },
-        { label: 'Download',          key: 'helpS3Download' },
-        { label: 'Editing details',   key: 'helpS3Edit' },
-        { label: 'Mobile layout',     key: 'helpS3Mobile' },
+        { labelKey: 'helpLabelPdfRecipes',     key: 'helpS3PDF' },
+        { labelKey: 'helpLabelImageRecipes',   key: 'helpS3Images' },
+        { labelKey: 'helpLabelDownload',       key: 'helpS3Download' },
+        { labelKey: 'helpLabelEditingDetails', key: 'helpS3Edit' },
+        { labelKey: 'helpLabelMobileLayout',   key: 'helpS3Mobile' },
       ],
     },
     {
@@ -64,10 +64,10 @@ function useSections(t) {
       titleKey: 'helpS4Title',
       items: [
         { key: 'helpS4Intro' },
-        { label: 'Annotations',       key: 'helpS4Annotate' },
-        { label: 'Row counter',       key: 'helpS4RowCounter' },
-        { label: 'Saved rows',        key: 'helpS4SaveRow' },
-        { label: 'Notes',             key: 'helpS4Notes' },
+        { labelKey: 'helpLabelAnnotations', key: 'helpS4Annotate' },
+        { labelKey: 'helpLabelRowCounter',  key: 'helpS4RowCounter' },
+        { labelKey: 'helpLabelSavedRows',   key: 'helpS4SaveRow' },
+        { labelKey: 'toolNotes',            key: 'helpS4Notes' },
       ],
     },
     {
@@ -76,10 +76,10 @@ function useSections(t) {
       titleKey: 'helpS5Title',
       items: [
         { key: 'helpS5Intro' },
-        { label: 'Starting a project', key: 'helpS5Start' },
-        { label: 'Finishing',          key: 'helpS5Finish' },
-        { label: 'Session history',    key: 'helpS5History' },
-        { label: 'Status filter',      key: 'helpS5Filter' },
+        { labelKey: 'helpLabelStartingProject', key: 'helpS5Start' },
+        { labelKey: 'helpLabelFinishing',       key: 'helpS5Finish' },
+        { labelKey: 'helpLabelSessionHistory',  key: 'helpS5History' },
+        { labelKey: 'helpLabelStatusFilter',    key: 'helpS5Filter' },
       ],
     },
     {
@@ -88,9 +88,9 @@ function useSections(t) {
       titleKey: 'helpS6Title',
       items: [
         { key: 'helpS6Intro' },
-        { label: 'Adding yarn',        key: 'helpS6Add' },
-        { label: 'Auto-fill from URL', key: 'helpS6URL' },
-        { label: 'Colour variants',    key: 'helpS6Colours' },
+        { labelKey: 'helpLabelAddingYarn',     key: 'helpS6Add' },
+        { labelKey: 'helpLabelAutoFillUrl',    key: 'helpS6URL' },
+        { labelKey: 'helpLabelColourVariants', key: 'helpS6Colours' },
       ],
     },
     {
@@ -99,10 +99,10 @@ function useSections(t) {
       titleKey: 'helpS7Title',
       items: [
         { key: 'helpS7Intro' },
-        { label: 'Adding items',       key: 'helpS7Add' },
-        { label: 'Adjusting stock',    key: 'helpS7Adjust' },
-        { label: 'Linking to projects',key: 'helpS7Link' },
-        { label: 'Adjustment log',     key: 'helpS7Log' },
+        { labelKey: 'helpLabelAddingItems',     key: 'helpS7Add' },
+        { labelKey: 'helpLabelAdjustingStock',  key: 'helpS7Adjust' },
+        { labelKey: 'helpLabelLinkingProjects', key: 'helpS7Link' },
+        { labelKey: 'helpLabelAdjustmentLog',   key: 'helpS7Log' },
       ],
     },
     {
@@ -111,8 +111,8 @@ function useSections(t) {
       titleKey: 'helpS8Title',
       items: [
         { key: 'helpS8Intro' },
-        { label: 'How to import',      key: 'helpS8How' },
-        { label: 'The wizard',         key: 'helpS8Wizard' },
+        { labelKey: 'helpLabelHowToImport', key: 'helpS8How' },
+        { labelKey: 'helpLabelWizard',      key: 'helpS8Wizard' },
       ],
     },
     {
@@ -121,9 +121,9 @@ function useSections(t) {
       titleKey: 'helpS9Title',
       items: [
         { key: 'helpS9Intro' },
-        { label: 'Rotate',             key: 'helpS9Rotate' },
-        { label: 'Perspective crop',   key: 'helpS9Crop' },
-        { label: 'Reorder pages',      key: 'helpS9Reorder' },
+        { labelKey: 'helpLabelRotate',          key: 'helpS9Rotate' },
+        { labelKey: 'helpLabelPerspectiveCrop', key: 'helpS9Crop' },
+        { labelKey: 'helpLabelReorderPages',    key: 'helpS9Reorder' },
       ],
     },
     {
@@ -132,12 +132,12 @@ function useSections(t) {
       titleKey: 'helpS10Title',
       items: [
         { key: 'helpS10Intro' },
-        { label: 'Appearance',         key: 'helpS10Appearance' },
-        { label: 'Language',           key: 'helpS10Language' },
-        { label: 'Currency',           key: 'helpS10Currency' },
-        { label: 'Password',           key: 'helpS10Password' },
-        { label: 'Two-factor auth',    key: 'helpS10TwoFA' },
-        { label: 'Statistics',         key: 'helpS10Stats' },
+        { labelKey: 'appearance',             key: 'helpS10Appearance' },
+        { labelKey: 'language',               key: 'helpS10Language' },
+        { labelKey: 'currency',               key: 'helpS10Currency' },
+        { labelKey: 'password',               key: 'helpS10Password' },
+        { labelKey: 'helpLabelTwoFactorAuth', key: 'helpS10TwoFA' },
+        { labelKey: 'statistics',             key: 'helpS10Stats' },
       ],
     },
   ];
@@ -276,11 +276,11 @@ export default function HelpPage({ onBack }) {
                   {/* Inner wrapper needed for overflow:hidden to work with grid animation */}
                   <div className="help-section-body-inner">
                     {section.items.map((item, j) => (
-                      <div key={j} className={`help-item ${item.label ? 'help-item--labelled' : 'help-item--intro'}`}>
-                        {item.label && (
+                      <div key={j} className={`help-item ${item.labelKey ? 'help-item--labelled' : 'help-item--intro'}`}>
+                        {item.labelKey && (
                           <div className="help-item-label">
                             <ArrowRight size={13} />
-                            <span>{item.label}</span>
+                            <span>{t(item.labelKey)}</span>
                           </div>
                         )}
                         <p className="help-item-text">{t(item.key)}</p>
@@ -295,7 +295,7 @@ export default function HelpPage({ onBack }) {
           {/* Footer note */}
           <div className="help-footer-note">
             <span>🧶</span>
-            <span>Happy knitting!</span>
+            <span>{t('happyKnitting')}</span>
           </div>
         </article>
       </div>

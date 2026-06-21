@@ -283,7 +283,7 @@ function ImportHelpModal({ onClose }) {
         </div>
 
         <div className="iw-help-footer">
-          <button className="iw-btn-primary" onClick={onClose}>Got it!</button>
+          <button className="iw-btn-primary" onClick={onClose}>{t('gotIt')}</button>
         </div>
       </div>
     </div>,

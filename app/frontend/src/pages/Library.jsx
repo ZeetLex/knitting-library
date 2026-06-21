@@ -358,10 +358,10 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                   <button
                     className={`cat-manage-btn ${managingCats ? 'active' : ''}`}
                     onClick={() => { setManagingCats(m => !m); setCatError(''); setNewCatName(''); }}
-                    title={managingCats ? 'Done managing' : 'Add or remove categories'}
+                    title={managingCats ? t('doneManagingCategories') : t('manageCategoriesHint')}
                   >
                     <Settings2 size={13} />
-                    {managingCats ? 'Done' : 'Manage'}
+                    {managingCats ? t('done') : t('manage')}
                   </button>
                 </div>
 
@@ -370,7 +370,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                     {catError && <p className="cat-manage-error">{catError}</p>}
                     <div className="cat-manage-pills">
                       {allCategories.length === 0 && (
-                        <span className="cat-manage-empty">No categories yet</span>
+                        <span className="cat-manage-empty">{t('noCategoriesShort')}</span>
                       )}
                       {allCategories.map(cat => (
                         <span key={cat} className="cat-manage-pill">
@@ -378,8 +378,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                           <button
                             className="cat-manage-delete"
                             onClick={() => handleDeleteCategory(cat)}
-                            title={`Delete "${cat}"`}
-                            aria-label={`Delete category ${cat}`}
+                            title={`${t('deleteCategoryConfirm')} "${cat}"`}
+                            aria-label={`${t('deleteCategoryConfirm')} ${cat}`}
                           >
                             <X size={11} />
                           </button>
@@ -392,7 +392,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                         type="text"
                         value={newCatName}
                         onChange={e => setNewCatName(e.target.value)}
-                        placeholder="New category name…"
+                        placeholder={t('newCategoryNamePlaceholder')}
                         className="cat-manage-input"
                         disabled={catSaving}
                         maxLength={60}

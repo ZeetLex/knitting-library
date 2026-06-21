@@ -23,7 +23,7 @@ const TOOL_CATEGORIES = ['needle', 'tool', 'notion', 'other'];
 // ── Helper: format date ───────────────────────────────────────────────────────
 function fmtDate(iso, lang) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(lang === 'no' ? 'nb-NO' : 'en-US', {
+  return new Date(iso).toLocaleDateString(lang === 'no' ? 'nb-NO' : lang === 'hu' ? 'hu-HU' : 'en-US', {
     year: 'numeric', month: 'short', day: 'numeric'
   });
 }
@@ -95,7 +95,7 @@ function InventoryCard({ item, onAdjust, onEdit, onDelete, t, language, currency
           </button>
           <span className={`inv-qty-value ${item.quantity === 0 ? 'inv-qty-zero' : ''}`}>
             {item.quantity}
-            <span className="inv-qty-unit">{isYarn ? t('skeinCount') : 'stk'}</span>
+            <span className="inv-qty-unit">{isYarn ? t('skeinCount') : t('pieceCount')}</span>
           </span>
           <button className="inv-qty-btn" onClick={() => onAdjust(item, 1)}>
             <Plus size={14} />
@@ -195,7 +195,7 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
       setError(t('selectYarnFromDatabase')); return;
     }
     if (itemType === 'tool' && !name.trim()) {
-      setError(t('inventoryItemName') + ' is required'); return;
+      setError(t('fieldRequired').replace('{FIELD}', t('inventoryItemName'))); return;
     }
     setSaving(true); setError('');
     try {
@@ -298,7 +298,7 @@ function InventoryModal({ editItem, initialType = 'yarn', onClose, onSaved, t, l
                     />
                   ))}
                   {filteredYarns.length === 0 && (
-                    <p className="inv-yarn-empty">{yarnSearch ? t('noResults') || 'No results' : t('inventoryEmpty')}</p>
+                    <p className="inv-yarn-empty">{yarnSearch ? t('noResults') : t('inventoryEmpty')}</p>
                   )}
                 </div>
 
