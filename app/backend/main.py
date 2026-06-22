@@ -3,6 +3,7 @@ Knitting Recipe Library — Backend API
 """
 
 import io
+import asyncio
 import json
 import logging
 import logging.handlers
