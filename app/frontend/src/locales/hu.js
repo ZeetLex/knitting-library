@@ -10,9 +10,9 @@ export const language = {
 const hu = {
     // App
     appName: "Knitting Library",
-	navHome: "Kezdőlap",
-	navAdd: "Hozzáadás",
-	navAddSomething: "Valami hozzáadása",
+    navHome: "Kezdőlap",
+    navAdd: "Hozzáadás",
+    navAddSomething: "Valami hozzáadása",
     navAddYarnHint: "Minta vagy készlet projektekhez",
     navAddToolHint: "Tűk, horgolótűk, eszközök és kellékek",
     navMenu: "Menü",
