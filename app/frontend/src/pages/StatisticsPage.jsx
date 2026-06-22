@@ -8,8 +8,11 @@ import {
   Activity,
   Archive,
   BookOpen,
+  Bot,
   CheckCircle2,
   CircleDot,
+  Clock3,
+  FileText,
   FolderKanban,
   Package,
   Palette,
@@ -118,6 +121,13 @@ export default function StatisticsPage() {
   const totalSessions = stats?.total_sessions || 0;
   const activeShare = totalSessions ? Math.round((stats.active_projects / totalSessions) * 100) : 0;
   const finishedShare = totalSessions ? Math.round((stats.finished_projects / totalSessions) * 100) : 0;
+  const ai = stats?.ai || {};
+  const fmtDuration = useCallback((seconds) => {
+    const total = Math.round(Number(seconds) || 0);
+    if (!total) return '0s';
+    if (total < 60) return `${total}s`;
+    return `${Math.floor(total / 60)}m ${total % 60}s`;
+  }, []);
 
   return (
     <div className="stats-page">
@@ -218,6 +228,52 @@ export default function StatisticsPage() {
                   tone="blue"
                 />
               </div>
+            </article>
+
+            <article className="stats-panel stats-panel--ai">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsAI')}</span>
+                  <h2>{t('statsAITextGenerated')}</h2>
+                </div>
+                <Bot size={23} />
+              </div>
+              {(ai.total_jobs || 0) > 0 ? (
+                <>
+                  <div className="stats-mini-grid">
+                    <div>
+                      <Sparkles size={17} />
+                      <strong>{fmtNum(ai.finished_jobs)}</strong>
+                      <span>{t('aiJob_finished')}</span>
+                    </div>
+                    <div>
+                      <FileText size={17} />
+                      <strong>{fmtNum(ai.generated_words)}</strong>
+                      <span>{t('statsGeneratedWords')}</span>
+                    </div>
+                    <div>
+                      <Tags size={17} />
+                      <strong>{fmtNum(ai.total_tokens)}</strong>
+                      <span>{t('statsTokenUse')}</span>
+                    </div>
+                    <div>
+                      <Clock3 size={17} />
+                      <strong>{fmtDuration(ai.avg_duration_seconds)}</strong>
+                      <span>{t('statsAverageTime')}</span>
+                    </div>
+                  </div>
+                  <div className="stats-ai-detail">
+                    <span>{fmtNum(ai.prompt_tokens)} / {fmtNum(ai.completion_tokens)} {t('statsPromptCompletion')}</span>
+                    <span>{fmtNum(ai.pages_processed)} {t('statsPagesProcessed')}</span>
+                    <span>{ai.success_rate || 0}% {t('statsSuccessRate')}</span>
+                    {(ai.top_model || ai.top_provider) && (
+                      <span>{t('statsTopModel')}: <strong>{[ai.top_provider, ai.top_model].filter(Boolean).join(' · ')}</strong></span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="stats-note">{t('statsNoAIYet')}</p>
+              )}
             </article>
 
             <article className="stats-panel">

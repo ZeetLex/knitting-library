@@ -112,7 +112,7 @@ function HomeProjectPanel({ panelKey, panel, loading, onOpenRecipe, onNavigate, 
   );
 }
 
-export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
+export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, workQueueDock }) {
   const { t } = useApp();
   const [stats, setStats] = useState(null);
   const [active, setActive] = useState([]);
@@ -190,6 +190,8 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
         <StatBubble icon={<Package size={22} />} value={stats?.inventory_items} label={t('statsInventory')} />
         <StatBubble icon={<CheckCircle size={22} />} value={stats?.finished_projects} label={t('statsFinished')} />
       </section>
+
+      {workQueueDock}
 
       <section className="home-projects">
         <div className="home-slider-top">

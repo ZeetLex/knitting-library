@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Sparkles, Save } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, generateTextVersion } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -9,7 +9,7 @@ import CropModal from '../components/CropModal';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
-export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
+export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
   const { t, language } = useApp();
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -31,7 +31,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [cropOpen, setCropOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
-  const [viewMode, setViewMode] = useState('original');
+  const [viewMode, setViewMode] = useState(initialViewMode);
   const [textVersion, setTextVersion] = useState(null);
   const [textLoading, setTextLoading] = useState(false);
   const addImagesInputRef = useRef(null);
@@ -187,7 +187,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    setViewMode('original');
+    setViewMode(initialViewMode || 'original');
     setTextVersion(null);
     fetchRecipe(recipeId)
       .then(r => {
@@ -210,7 +210,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
       })
       .catch(() => setError('Could not load this recipe.'))
       .finally(() => setLoading(false));
-  }, [recipeId]);
+  }, [recipeId, initialViewMode]);
 
   useEffect(() => {
     if (viewMode !== 'text') return;
@@ -327,6 +327,7 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               setTextVersion={setTextVersion}
               loading={textLoading}
               setLoading={setTextLoading}
+              onTextJobQueued={onTextJobQueued}
             />
           ) : recipe.file_type === 'pdf' ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
@@ -891,7 +892,7 @@ function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
   );
 }
 
-function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading }) {
+function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -906,8 +907,8 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
     if (textVersion?.exists && !window.confirm(t('regenerateTextConfirm'))) return;
     setLoading(true); setError('');
     try {
-      const result = await generateTextVersion(recipeId, language);
-      setTextVersion(result);
+      await createTextVersionJob(recipeId, language);
+      onTextJobQueued?.();
     } catch (e) {
       setError(e.message || t('textVersionGenerateError'));
     } finally {
@@ -945,7 +946,7 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
           {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
           {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
           <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
-            <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : t('createTextVersion')}
+            <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
           </button>
         </div>
       </div>

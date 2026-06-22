@@ -389,6 +389,11 @@ def get_db() -> sqlite3.Connection:
         if "image_order" not in cols:
             conn.execute("ALTER TABLE recipes ADD COLUMN image_order TEXT NOT NULL DEFAULT ''")
             conn.commit()
+    if "ai_text_jobs" in tables:
+        job_cols = [r["name"] for r in conn.execute("PRAGMA table_info(ai_text_jobs)").fetchall()]
+        if "dismissed" not in job_cols:
+            conn.execute("ALTER TABLE ai_text_jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
     if "users" in tables:
         user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
         if "email" not in user_cols:
@@ -436,6 +441,47 @@ def get_db() -> sqlite3.Connection:
                 generated_by       TEXT NOT NULL DEFAULT '',
                 created_at         TEXT NOT NULL,
                 updated_at         TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+    if "ai_text_jobs" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_text_jobs (
+                id                    TEXT PRIMARY KEY,
+                recipe_id             TEXT NOT NULL,
+                recipe_title          TEXT NOT NULL DEFAULT '',
+                status                TEXT NOT NULL DEFAULT 'queued',
+                progress_stage        TEXT NOT NULL DEFAULT 'queued',
+                error                 TEXT NOT NULL DEFAULT '',
+                language              TEXT NOT NULL DEFAULT '',
+                provider              TEXT NOT NULL DEFAULT '',
+                model                 TEXT NOT NULL DEFAULT '',
+                generated_by          TEXT NOT NULL DEFAULT '',
+                pages_sent            INTEGER NOT NULL DEFAULT 0,
+                result_text_chars     INTEGER NOT NULL DEFAULT 0,
+                duration_seconds      REAL,
+                created_at            TEXT NOT NULL,
+                started_at            TEXT NOT NULL DEFAULT '',
+                finished_at           TEXT NOT NULL DEFAULT '',
+                dismissed             INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_usage_events (
+                id                 TEXT PRIMARY KEY,
+                job_id             TEXT NOT NULL,
+                recipe_id          TEXT NOT NULL,
+                provider           TEXT NOT NULL DEFAULT '',
+                model              TEXT NOT NULL DEFAULT '',
+                prompt_tokens      INTEGER,
+                completion_tokens  INTEGER,
+                total_tokens       INTEGER,
+                generated_chars    INTEGER NOT NULL DEFAULT 0,
+                generated_words    INTEGER NOT NULL DEFAULT 0,
+                pages_sent         INTEGER NOT NULL DEFAULT 0,
+                duration_seconds   REAL,
+                success            INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -619,6 +665,41 @@ def init_db():
             created_at         TEXT NOT NULL,
             updated_at         TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS ai_text_jobs (
+            id                    TEXT PRIMARY KEY,
+            recipe_id             TEXT NOT NULL,
+            recipe_title          TEXT NOT NULL DEFAULT '',
+            status                TEXT NOT NULL DEFAULT 'queued',
+            progress_stage        TEXT NOT NULL DEFAULT 'queued',
+            error                 TEXT NOT NULL DEFAULT '',
+            language              TEXT NOT NULL DEFAULT '',
+            provider              TEXT NOT NULL DEFAULT '',
+            model                 TEXT NOT NULL DEFAULT '',
+            generated_by          TEXT NOT NULL DEFAULT '',
+            pages_sent            INTEGER NOT NULL DEFAULT 0,
+            result_text_chars     INTEGER NOT NULL DEFAULT 0,
+            duration_seconds      REAL,
+            created_at            TEXT NOT NULL,
+            started_at            TEXT NOT NULL DEFAULT '',
+            finished_at           TEXT NOT NULL DEFAULT '',
+            dismissed             INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS ai_usage_events (
+            id                 TEXT PRIMARY KEY,
+            job_id             TEXT NOT NULL,
+            recipe_id          TEXT NOT NULL,
+            provider           TEXT NOT NULL DEFAULT '',
+            model              TEXT NOT NULL DEFAULT '',
+            prompt_tokens      INTEGER,
+            completion_tokens  INTEGER,
+            total_tokens       INTEGER,
+            generated_chars    INTEGER NOT NULL DEFAULT 0,
+            generated_words    INTEGER NOT NULL DEFAULT 0,
+            pages_sent         INTEGER NOT NULL DEFAULT 0,
+            duration_seconds   REAL,
+            success            INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT NOT NULL
+        );
 
         -- Indexes: speed up the most common queries as the library grows
         CREATE INDEX IF NOT EXISTS idx_recipes_created_date   ON recipes (created_date DESC);
@@ -636,6 +717,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_yarn_colours_yarn_id   ON yarn_colours (yarn_id);
         CREATE INDEX IF NOT EXISTS idx_inventory_items_type   ON inventory_items (type);
         CREATE INDEX IF NOT EXISTS idx_inventory_log_item_id  ON inventory_log (item_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_text_jobs_status    ON ai_text_jobs (status, dismissed, created_at);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
     """)
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -1445,6 +1528,180 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
     row = conn2.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
     conn2.close()
     return _text_version_dict(row, fingerprint)
+
+
+def _job_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    for key in ("pages_sent", "result_text_chars", "dismissed"):
+        data[key] = int(data.get(key) or 0)
+    data["dismissed"] = bool(data["dismissed"])
+    return data
+
+
+def _update_ai_job(job_id: str, **fields) -> None:
+    if not fields:
+        return
+    allowed = {
+        "status", "progress_stage", "error", "provider", "model", "pages_sent",
+        "result_text_chars", "duration_seconds", "started_at", "finished_at",
+        "dismissed",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    conn = get_db()
+    assignments = ", ".join(f"{key}=?" for key in updates)
+    conn.execute(f"UPDATE ai_text_jobs SET {assignments} WHERE id=?", (*updates.values(), job_id))
+    conn.commit()
+    conn.close()
+
+
+def _ai_job_cancelled(job_id: str) -> bool:
+    conn = get_db()
+    row = conn.execute("SELECT status FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    return bool(row and row["status"] == "cancelled")
+
+
+def _record_ai_usage(
+    job_id: str,
+    recipe_id: str,
+    provider: str,
+    model: str,
+    usage: dict,
+    content: str,
+    pages_sent: int,
+    duration: float,
+    success: bool,
+) -> None:
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO ai_usage_events (id,job_id,recipe_id,provider,model,prompt_tokens,completion_tokens,total_tokens,generated_chars,generated_words,pages_sent,duration_seconds,success,created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            str(uuid.uuid4()),
+            job_id,
+            recipe_id,
+            provider,
+            model,
+            usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+            usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            usage.get("total_tokens") if isinstance(usage, dict) else None,
+            len(content or ""),
+            len(re.findall(r"\S+", content or "")),
+            pages_sent,
+            duration,
+            1 if success else 0,
+            datetime.utcnow().isoformat(),
+        )
+    )
+    conn.commit()
+    conn.close()
+
+
+async def _run_ai_text_job(job_id: str) -> None:
+    start_ts = time.time()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    if not row or row["status"] == "cancelled":
+        return
+    started_at = datetime.utcnow().isoformat()
+    _update_ai_job(job_id, status="running", progress_stage="loading", started_at=started_at, error="")
+    recipe_id = row["recipe_id"]
+    language = row["language"] or "en"
+    provider = ""
+    model = ""
+    pages_sent = 0
+    content = ""
+    usage = {}
+    try:
+        conn = get_db()
+        cfg = _ai_settings(conn, reveal_secret=True)
+        if cfg.get("ai_enabled", "false").lower() != "true":
+            raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+        base_url = cfg.get("ai_base_url", "").rstrip("/")
+        model = cfg.get("ai_model", "").strip()
+        provider = cfg.get("ai_provider", "openai_compatible")
+        _update_ai_job(job_id, provider=provider, model=model)
+        if not base_url or not model:
+            raise HTTPException(status_code=400, detail="AI base URL and model are required")
+        timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
+        timeout = max(300, timeout)
+        max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+        prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
+        image_payloads = _collect_recipe_image_payloads(recipe_id, conn, max_pages)
+        pages_sent = len(image_payloads)
+        fingerprint = _source_fingerprint(recipe_id, conn)
+        conn.close()
+        _update_ai_job(job_id, pages_sent=pages_sent, progress_stage="generating")
+
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"{prompt}\n\nImportant: output only the finished Markdown transcription. Do not output reasoning, thoughts, or channel markers. If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"},
+                *image_payloads,
+            ],
+        }]
+        headers = {"Content-Type": "application/json"}
+        if cfg.get("ai_api_key"):
+            headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.1,
+                    "stream": False,
+                    "max_tokens": 4096,
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+        content = _clean_ai_transcription(data["choices"][0]["message"]["content"])
+        usage = data.get("usage") or {}
+        duration = time.time() - start_ts
+        _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
+
+        if _ai_job_cancelled(job_id):
+            _update_ai_job(job_id, progress_stage="cancelled", finished_at=datetime.utcnow().isoformat(), duration_seconds=duration)
+            return
+
+        now = datetime.utcnow().isoformat()
+        _update_ai_job(job_id, progress_stage="saving")
+        conn2 = get_db()
+        conn2.execute(
+            "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
+            (recipe_id, content, "ready", language, prompt, provider, model, fingerprint, row["generated_by"], now, now)
+        )
+        conn2.commit()
+        conn2.close()
+        _update_ai_job(
+            job_id,
+            status="finished",
+            progress_stage="finished",
+            result_text_chars=len(content),
+            duration_seconds=duration,
+            finished_at=datetime.utcnow().isoformat(),
+        )
+    except Exception as e:
+        duration = time.time() - start_ts
+        if not content:
+            _record_ai_usage(job_id, recipe_id, provider, model, usage or {}, "", pages_sent, duration, False)
+        detail = getattr(e, "detail", None) or str(e) or e.__class__.__name__
+        if not _ai_job_cancelled(job_id):
+            _update_ai_job(
+                job_id,
+                status="failed",
+                progress_stage="failed",
+                error=str(detail),
+                duration_seconds=duration,
+                finished_at=datetime.utcnow().isoformat(),
+            )
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -2343,6 +2600,112 @@ def save_recipe_text_version(recipe_id: str, data: dict = Body(...), current_use
 async def generate_recipe_text_version(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     language = str(data.get("language", "") or current_user.get("language", "en"))
     return await _generate_text_version(recipe_id, language, current_user)
+
+
+@app.post("/api/recipes/{recipe_id}/text-version/jobs")
+def create_recipe_text_job(
+    recipe_id: str,
+    background_tasks: BackgroundTasks,
+    data: dict = Body(default={}),
+    current_user: dict = Depends(get_current_user),
+):
+    language = str(data.get("language", "") or current_user.get("language", "en"))
+    conn = get_db()
+    recipe = conn.execute("SELECT id, title FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+    if not recipe:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    existing = conn.execute(
+        "SELECT * FROM ai_text_jobs WHERE recipe_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
+        (recipe_id,)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return {"job": _job_dict(existing)}
+    job_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    cfg = _ai_settings(conn, reveal_secret=False)
+    conn.execute(
+        "INSERT INTO ai_text_jobs (id,recipe_id,recipe_title,status,progress_stage,language,provider,model,generated_by,created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            job_id,
+            recipe_id,
+            recipe["title"],
+            "queued",
+            "queued",
+            language,
+            cfg.get("ai_provider", "openai_compatible"),
+            cfg.get("ai_model", ""),
+            current_user["username"],
+            now,
+        )
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    background_tasks.add_task(_run_ai_text_job, job_id)
+    return {"job": _job_dict(row)}
+
+
+@app.get("/api/work-queue")
+def get_work_queue(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    job_rows = conn.execute(
+        "SELECT * FROM ai_text_jobs "
+        "WHERE dismissed=0 AND (status IN ('queued','running') OR finished_at > datetime('now', '-7 days')) "
+        "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'finished' THEN 3 ELSE 4 END, created_at DESC"
+    ).fetchall()
+    import_rows = conn.execute(
+        "SELECT iq.recipe_id, iq.group_name, r.title, r.file_type "
+        "FROM import_queue iq LEFT JOIN recipes r ON r.id=iq.recipe_id "
+        "WHERE iq.status='staged' ORDER BY iq.rowid"
+    ).fetchall()
+    conn.close()
+    return {
+        "ai_jobs": [_job_dict(row) for row in job_rows],
+        "imports": {
+            "count": len(import_rows),
+            "items": [dict(row) for row in import_rows[:8]],
+        },
+    }
+
+
+@app.post("/api/work-queue/ai/{job_id}/cancel")
+def cancel_ai_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["status"] in ("finished", "failed"):
+        conn.close()
+        return {"job": _job_dict(row)}
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "UPDATE ai_text_jobs SET status='cancelled', progress_stage='cancelled', finished_at=?, dismissed=0 WHERE id=?",
+        (now, job_id)
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    return {"job": _job_dict(updated)}
+
+
+@app.post("/api/work-queue/ai/{job_id}/dismiss")
+def dismiss_ai_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["status"] in ("queued", "running"):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Only completed jobs can be dismissed")
+    conn.execute("UPDATE ai_text_jobs SET dismissed=1 WHERE id=?", (job_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @app.get("/api/recipes/{recipe_id}/download")
@@ -3643,6 +4006,25 @@ def get_stats(current_user: dict = Depends(get_current_user)):
         GROUP BY COALESCE(NULLIF(category, ''), 'other')
     """).fetchall()
     tool_categories = {row["category"]: row["count"] for row in tool_category_rows}
+    ai_total_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs")
+    ai_finished_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='finished'")
+    ai_failed_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='failed'")
+    ai_cancelled_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='cancelled'")
+    ai_prompt_tokens = scalar("SELECT COALESCE(SUM(prompt_tokens), 0) as value FROM ai_usage_events")
+    ai_completion_tokens = scalar("SELECT COALESCE(SUM(completion_tokens), 0) as value FROM ai_usage_events")
+    ai_total_tokens = scalar("SELECT COALESCE(SUM(total_tokens), 0) as value FROM ai_usage_events")
+    ai_generated_chars = scalar("SELECT COALESCE(SUM(generated_chars), 0) as value FROM ai_usage_events WHERE success=1")
+    ai_generated_words = scalar("SELECT COALESCE(SUM(generated_words), 0) as value FROM ai_usage_events WHERE success=1")
+    ai_pages_processed = scalar("SELECT COALESCE(SUM(pages_sent), 0) as value FROM ai_usage_events")
+    ai_avg_duration = scalar("SELECT COALESCE(AVG(duration_seconds), 0) as value FROM ai_usage_events WHERE success=1")
+    ai_model_row = conn.execute("""
+        SELECT provider, model, COUNT(*) as count
+        FROM ai_usage_events
+        WHERE success=1 AND (provider!='' OR model!='')
+        GROUP BY provider, model
+        ORDER BY count DESC
+        LIMIT 1
+    """).fetchone()
     total_sessions = active + finished
     conn.close()
     return {
@@ -3673,6 +4055,22 @@ def get_stats(current_user: dict = Depends(get_current_user)):
             "tool": tool_categories.get("tool", 0),
             "notion": tool_categories.get("notion", 0),
             "other": tool_categories.get("other", 0),
+        },
+        "ai": {
+            "total_jobs": ai_total_jobs,
+            "finished_jobs": ai_finished_jobs,
+            "failed_jobs": ai_failed_jobs,
+            "cancelled_jobs": ai_cancelled_jobs,
+            "success_rate": round((ai_finished_jobs / ai_total_jobs) * 100) if ai_total_jobs else 0,
+            "prompt_tokens": ai_prompt_tokens,
+            "completion_tokens": ai_completion_tokens,
+            "total_tokens": ai_total_tokens,
+            "generated_chars": ai_generated_chars,
+            "generated_words": ai_generated_words,
+            "pages_processed": ai_pages_processed,
+            "avg_duration_seconds": round(float(ai_avg_duration), 1),
+            "top_provider": ai_model_row["provider"] if ai_model_row else "",
+            "top_model": ai_model_row["model"] if ai_model_row else "",
         },
     }
 

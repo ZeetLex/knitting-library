@@ -4,6 +4,7 @@ import {
   CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import WorkQueueDock from './WorkQueueDock';
 import './AppShell.css';
 
 function BrandMark({ compact = false }) {
@@ -18,7 +19,7 @@ function BrandMark({ compact = false }) {
   );
 }
 
-function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, onAddYarn, onAddTool }) {
+function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAddTool }) {
   const { t } = useApp();
   const ref = useRef(null);
 
@@ -34,8 +35,7 @@ function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, on
   if (!open) return null;
 
   const actions = [
-    { icon: <BookOpen size={18} />, label: t('addRecipe'), sub: t('pdfOrImages'), onClick: onAddRecipe },
-    { icon: <Import size={18} />, label: t('importFolder'), sub: t('workThroughFolder'), onClick: onImportFolder },
+    { icon: <Import size={18} />, label: t('importRecipe') || t('importWizardTitle'), sub: t('importRecipeHint') || t('workThroughFolder'), onClick: onImportRecipe },
     { icon: <PackagePlus size={18} />, label: t('addYarn'), sub: t('navAddYarnHint'), onClick: onAddYarn },
     { icon: <Wrench size={18} />, label: t('addToolToInventory'), sub: t('navAddToolHint'), onClick: onAddTool },
   ];
@@ -233,7 +233,7 @@ function MobileNav({
   );
 }
 
-function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick }) {
+function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
   const { t } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
@@ -281,6 +281,16 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
           </button>
         ))}
       </div>
+      {!collapsed && (
+        <WorkQueueDock
+          queue={queue}
+          variant="desktop"
+          onOpenImport={onOpenImport}
+          onOpenRecipe={onOpenRecipe}
+          onCancelAI={onCancelAI}
+          onDismissAI={onDismissAI}
+        />
+      )}
       <div className="desktop-nav-group desktop-nav-group--secondary">
         {secondary.map(item => (
           <button
@@ -304,9 +314,15 @@ export default function AppShell({
   onNavigate,
   onAddRecipe,
   onImportFolder,
+  onImportRecipe,
   onAddYarn,
   onAddTool,
   onRecipeBack,
+  queue,
+  onOpenImport,
+  onOpenRecipe,
+  onCancelAI,
+  onDismissAI,
   children,
 }) {
   const [addOpen, setAddOpen] = useState(false);
@@ -360,6 +376,11 @@ export default function AppShell({
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
+        queue={queue}
+        onOpenImport={onOpenImport}
+        onOpenRecipe={onOpenRecipe}
+        onCancelAI={onCancelAI}
+        onDismissAI={onDismissAI}
       />
       <main className="app-content">
         {children}
@@ -381,8 +402,7 @@ export default function AppShell({
         open={addOpen}
         variant="responsive"
         onClose={() => setAddOpen(false)}
-        onAddRecipe={onAddRecipe}
-        onImportFolder={onImportFolder}
+        onImportRecipe={onImportRecipe || onImportFolder || onAddRecipe}
         onAddYarn={onAddYarn}
         onAddTool={onAddTool}
       />

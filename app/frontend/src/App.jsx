@@ -11,12 +11,12 @@ import InventoryPage from './pages/InventoryPage';
 import SettingsPage from './pages/SettingsPage';
 import StatisticsPage from './pages/StatisticsPage';
 import HelpPage from './pages/HelpPage';
-import UploadModal from './components/UploadModal';
 import YarnUploadModal from './components/YarnUploadModal';
 import ImportWizard from './components/ImportWizard';
 import AppShell from './components/AppShell';
 import AnnouncementModal from './components/AnnouncementModal';
-import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement } from './utils/api';
+import WorkQueueDock from './components/WorkQueueDock';
+import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement, fetchWorkQueue, cancelAIJob, dismissAIJob } from './utils/api';
 import './App.css';
 
 function AppInner() {
@@ -24,7 +24,6 @@ function AppInner() {
   const [activeView, setActiveView]           = useState('home');
   const [viewingRecipeId, setViewingRecipeId] = useState(null);
   const [viewingYarnId, setViewingYarnId]     = useState(null);
-  const [uploadOpen, setUploadOpen]           = useState(false);
   const [yarnUploadOpen, setYarnUploadOpen]   = useState(false);
   const [importOpen, setImportOpen]           = useState(false);
   const [importCount, setImportCount]         = useState(0);
@@ -35,10 +34,22 @@ function AppInner() {
   const [yarnRefreshKey, setYarnRefreshKey]   = useState(0);
   const [inventoryAddRequest, setInventoryAddRequest] = useState(null);
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
+  const [workQueue, setWorkQueue]         = useState(null);
+  const [recipeInitialView, setRecipeInitialView] = useState('original');
 
   const checkImport = useCallback(() => {
     getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
   }, []);
+
+  const refreshWorkQueue = useCallback(() => {
+    if (!user) return;
+    fetchWorkQueue()
+      .then(data => {
+        setWorkQueue(data);
+        setImportCount(data?.imports?.count || 0);
+      })
+      .catch(() => {});
+  }, [user]);
 
   // ── Announcements ─────────────────────────────────────────────────────────
   const [pendingAnnouncements, setPendingAnnouncements] = useState([]);
@@ -52,7 +63,16 @@ function AppInner() {
   }, [pendingAnnouncements]);
 
   // Only poll import queue once user is confirmed logged in.
-  useEffect(() => { if (user) checkImport(); }, [user, checkImport]);
+  useEffect(() => { if (user) { checkImport(); refreshWorkQueue(); } }, [user, checkImport, refreshWorkQueue]);
+
+  useEffect(() => {
+    if (!user) {
+      setWorkQueue(null);
+      return undefined;
+    }
+    const timer = setInterval(refreshWorkQueue, 3000);
+    return () => clearInterval(timer);
+  }, [user, refreshWorkQueue]);
 
   // Fetch pending announcements once the user logs in
   useEffect(() => {
@@ -65,15 +85,11 @@ function AppInner() {
     }
   }, [user]);
 
-  const handleUploadSuccess = useCallback(() => {
-    setUploadOpen(false);
-    setRefreshKey(k => k + 1);
-  }, []);
-
   const handleNavigate = (view) => {
     setActiveView(view);
     setViewingRecipeId(null);
     setViewingYarnId(null);
+    setRecipeInitialView('original');
     setShowStats(false);
     setShowSettings(false);
     setShowHelp(false);
@@ -107,8 +123,12 @@ function AppInner() {
     handleNavigate(view);
   };
 
-  const openRecipe = (id) => {
+  const openRecipe = (id, initialView = 'original') => {
     setActiveView('recipes');
+    setShowSettings(false);
+    setShowStats(false);
+    setShowHelp(false);
+    setRecipeInitialView(initialView);
     setViewingRecipeId(id);
   };
 
@@ -117,16 +137,15 @@ function AppInner() {
     setViewingYarnId(id);
   };
 
-  const handleAddRecipe = () => {
+  const handleImportRecipe = () => {
     setActiveView('recipes');
     setViewingRecipeId(null);
-    setUploadOpen(true);
+    setRecipeInitialView('original');
+    setImportOpen(true);
   };
 
   const handleImportFolder = () => {
-    setActiveView('recipes');
-    setViewingRecipeId(null);
-    setImportOpen(true);
+    handleImportRecipe();
   };
 
   const handleAddYarn = () => {
@@ -159,10 +178,16 @@ function AppInner() {
       <AppShell
         activeView="settings"
         onNavigate={navigateApp}
-        onAddRecipe={handleAddRecipe}
+        onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
+        onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
+        queue={workQueue}
+        onOpenImport={() => setImportOpen(true)}
+        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
         <SettingsPage onBack={() => setShowSettings(false)} />
       </AppShell>
@@ -180,10 +205,16 @@ function AppInner() {
       <AppShell
         activeView="stats"
         onNavigate={navigateApp}
-        onAddRecipe={handleAddRecipe}
+        onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
+        onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
+        queue={workQueue}
+        onOpenImport={() => setImportOpen(true)}
+        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
         <StatisticsPage />
       </AppShell>
@@ -195,10 +226,16 @@ function AppInner() {
       <AppShell
         activeView="help"
         onNavigate={navigateApp}
-        onAddRecipe={handleAddRecipe}
+        onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
+        onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
+        queue={workQueue}
+        onOpenImport={() => setImportOpen(true)}
+        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
         <HelpPage onBack={() => setShowHelp(false)} />
       </AppShell>
@@ -211,18 +248,34 @@ function AppInner() {
         activeView={activeView}
         recipeMode={activeView === 'recipes' && Boolean(viewingRecipeId)}
         onNavigate={navigateApp}
-        onAddRecipe={handleAddRecipe}
+        onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
+        onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
         onRecipeBack={() => setViewingRecipeId(null)}
+        queue={workQueue}
+        onOpenImport={() => setImportOpen(true)}
+        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
 
         {activeView === 'home' && (
           <HomePage
             onOpenRecipe={openRecipe}
             onNavigate={navigateApp}
-            onAddRecipe={handleAddRecipe}
+            onAddRecipe={handleImportRecipe}
+            workQueueDock={(
+              <WorkQueueDock
+                queue={workQueue}
+                variant="mobile"
+                onOpenImport={() => setImportOpen(true)}
+                onOpenRecipe={(id) => openRecipe(id, 'text')}
+                onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+                onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+              />
+            )}
           />
         )}
 
@@ -231,14 +284,16 @@ function AppInner() {
           viewingRecipeId ? (
             <RecipeViewer
               recipeId={viewingRecipeId}
+              initialViewMode={recipeInitialView}
               onBack={() => setViewingRecipeId(null)}
               onDeleted={() => { setViewingRecipeId(null); setRefreshKey(k => k + 1); }}
+              onTextJobQueued={refreshWorkQueue}
             />
           ) : (
             <Library
               refreshKey={refreshKey}
-              onRecipeClick={setViewingRecipeId}
-              onUploadClick={() => setUploadOpen(true)}
+              onRecipeClick={(id) => openRecipe(id, 'original')}
+              onUploadClick={handleImportRecipe}
             />
           )
         )}
@@ -276,9 +331,6 @@ function AppInner() {
 
       </AppShell>
 
-      {uploadOpen && (
-        <UploadModal onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
-      )}
       {yarnUploadOpen && (
         <YarnUploadModal
           allowStockQuantity
@@ -293,8 +345,8 @@ function AppInner() {
       )}
       {importOpen && (
         <ImportWizard
-          onClose={() => { setImportOpen(false); checkImport(); }}
-          onRecipeAdded={() => { setRefreshKey(k => k + 1); checkImport(); }}
+          onClose={() => { setImportOpen(false); checkImport(); refreshWorkQueue(); }}
+          onRecipeAdded={() => { setRefreshKey(k => k + 1); checkImport(); refreshWorkQueue(); }}
         />
       )}
 

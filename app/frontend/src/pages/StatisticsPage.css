@@ -349,6 +349,7 @@
 }
 
 .stats-inventory-strip,
+.stats-ai-detail,
 .stats-list {
   display: flex;
   flex-wrap: wrap;
@@ -357,6 +358,7 @@
 }
 
 .stats-inventory-strip span,
+.stats-ai-detail span,
 .stats-list span {
   display: inline-flex;
   align-items: center;
@@ -371,6 +373,7 @@
 }
 
 .stats-inventory-strip strong,
+.stats-ai-detail strong,
 .stats-list strong {
   color: var(--text-primary);
 }

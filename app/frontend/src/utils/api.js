@@ -250,6 +250,43 @@ export async function generateTextVersion(recipeId, language) {
   return data;
 }
 
+export async function createTextVersionJob(recipeId, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to queue text generation');
+  return data;
+}
+
+export async function fetchWorkQueue() {
+  const res = await fetch(`${API_BASE}/work-queue`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load work queue');
+  return res.json();
+}
+
+export async function cancelAIJob(jobId) {
+  const res = await fetch(`${API_BASE}/work-queue/ai/${jobId}/cancel`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to cancel AI job');
+  return data;
+}
+
+export async function dismissAIJob(jobId) {
+  const res = await fetch(`${API_BASE}/work-queue/ai/${jobId}/dismiss`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to dismiss AI job');
+  return data;
+}
+
 // Export — fetches the ZIP and triggers a browser download
 export async function exportLibrary() {
   const token = getToken();
