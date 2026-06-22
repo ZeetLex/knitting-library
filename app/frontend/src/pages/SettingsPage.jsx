@@ -662,9 +662,9 @@ function LogsSection() {
 
       {/* Source tabs */}
       <div className="log-source-tabs">
-        {['all', 'uvicorn', 'supervisord', 'auth'].map(s => (
+        {['all', 'uvicorn', 'supervisord', 'auth', 'ai'].map(s => (
           <button key={s} className={`log-tab ${source === s ? 'active' : ''}`} onClick={() => setSource(s)}>
-            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : '🔐 Auth'}
+            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : s === 'auth' ? '🔐 Auth' : '✨ AI'}
           </button>
         ))}
       </div>

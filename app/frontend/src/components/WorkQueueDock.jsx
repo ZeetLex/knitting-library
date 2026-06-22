@@ -11,15 +11,36 @@ function statusIcon(status) {
   return <Loader2 size={16} className="wq-spin" />;
 }
 
+function parseUtcTimestamp(value) {
+  if (!value) return null;
+  const text = String(value);
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatElapsed(job) {
-  const start = job.started_at || job.created_at;
+  if (job.status === 'queued') return '';
+  if (job.status !== 'running' && job.duration_seconds !== null && job.duration_seconds !== undefined) {
+    const stored = Math.max(0, Math.round(Number(job.duration_seconds) || 0));
+    if (stored < 60) return `${stored}s`;
+    return `${Math.floor(stored / 60)}m ${stored % 60}s`;
+  }
+  const start = parseUtcTimestamp(job.started_at);
   if (!start) return '';
-  const end = job.finished_at || new Date().toISOString();
-  const seconds = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000));
+  const end = parseUtcTimestamp(job.finished_at) || new Date();
+  const seconds = Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${minutes}m ${rest}s`;
+}
+
+function statusLabel(t, job) {
+  if (job.status === 'queued') {
+    return job.queue_position === 2 ? (t('aiJob_next') || 'Next up') : (t('aiJob_waiting') || 'Waiting');
+  }
+  return t(`aiJob_${job.status}`) || job.status;
 }
 
 export default function WorkQueueDock({
@@ -67,12 +88,15 @@ export default function WorkQueueDock({
             onClick={() => onOpenRecipe?.(job.recipe_id)}
             onKeyDown={e => { if (e.key === 'Enter') onOpenRecipe?.(job.recipe_id); }}
           >
-            <span className="wq-icon"><Bot size={16} /></span>
+            <span className="wq-icon wq-icon--numbered">
+              <Bot size={16} />
+              {job.queue_position && <span className="wq-position">#{job.queue_position}</span>}
+            </span>
             <span className="wq-main">
               <span className="wq-title">{job.recipe_title || t('textVersion')}</span>
               <span className="wq-meta">
                 {statusIcon(job.status)}
-                {t(`aiJob_${job.status}`) || job.status}
+                {statusLabel(t, job)}
                 {formatElapsed(job) && <> · {formatElapsed(job)}</>}
                 {job.pages_sent ? <> · {job.pages_sent} {t('aiPagesShort') || 'pages'}</> : null}
               </span>

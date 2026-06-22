@@ -74,6 +74,7 @@
 }
 
 .wq-icon {
+  position: relative;
   width: 30px;
   height: 30px;
   display: inline-flex;
@@ -82,6 +83,29 @@
   border-radius: 10px;
   background: var(--accent-muted);
   color: var(--accent);
+}
+
+.wq-icon--numbered {
+  overflow: visible;
+}
+
+.wq-position {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--card-bg));
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 950;
+  box-shadow: 0 4px 10px rgba(26, 26, 46, 0.14);
 }
 
 .wq-main {

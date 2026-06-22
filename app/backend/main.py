@@ -114,6 +114,8 @@ AI_SETTING_KEYS = {
 SESSION_COOKIE = "knitting_session"
 CSRF_COOKIE = "knitting_csrf"
 MAX_SCRAPE_BYTES = 5 * 1024 * 1024
+_ai_queue_task: Optional[asyncio.Task] = None
+_ai_queue_lock = asyncio.Lock()
 
 def _parse_trusted_proxies() -> list[ipaddress._BaseNetwork]:
     networks = []
@@ -751,6 +753,13 @@ def init_db():
     # Valid staged drafts intentionally still have rows in recipes; keep those
     # resumable so "Stop for now" survives restarts.
     _cleanup_stale_import_queue(conn)
+    # Background AI work is in-process. If the container stopped mid-generation,
+    # put those jobs back in line so they do not remain stuck as running.
+    conn.execute("""
+        UPDATE ai_text_jobs
+        SET status='queued', progress_stage='queued', started_at='', error=''
+        WHERE status='running'
+    """)
 
     conn.commit()
     conn.close()
@@ -1540,6 +1549,8 @@ def _job_dict(row: sqlite3.Row) -> dict:
     for key in ("pages_sent", "result_text_chars", "dismissed"):
         data[key] = int(data.get(key) or 0)
     data["dismissed"] = bool(data["dismissed"])
+    if data.get("duration_seconds") is not None:
+        data["duration_seconds"] = round(float(data["duration_seconds"]), 1)
     return data
 
 
@@ -1605,12 +1616,12 @@ def _record_ai_usage(
 
 
 async def _run_ai_text_job(job_id: str) -> None:
-    start_ts = time.time()
     conn = get_db()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
     conn.close()
     if not row or row["status"] == "cancelled":
         return
+    start_ts = time.time()
     started_at = datetime.utcnow().isoformat()
     _update_ai_job(job_id, status="running", progress_stage="loading", started_at=started_at, error="")
     recipe_id = row["recipe_id"]
@@ -1707,6 +1718,38 @@ async def _run_ai_text_job(job_id: str) -> None:
                 duration_seconds=duration,
                 finished_at=datetime.utcnow().isoformat(),
             )
+
+
+async def _process_ai_text_queue() -> None:
+    global _ai_queue_task
+    try:
+        async with _ai_queue_lock:
+            while True:
+                conn = get_db()
+                row = conn.execute(
+                    "SELECT * FROM ai_text_jobs WHERE status='queued' ORDER BY created_at ASC LIMIT 1"
+                ).fetchone()
+                conn.close()
+                if not row:
+                    break
+                await _run_ai_text_job(row["id"])
+    finally:
+        _ai_queue_task = None
+
+
+def _ensure_ai_queue_processor() -> None:
+    global _ai_queue_task
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if _ai_queue_task is None or _ai_queue_task.done():
+        _ai_queue_task = loop.create_task(_process_ai_text_queue())
+
+
+@app.on_event("startup")
+async def _resume_ai_queue_on_startup():
+    _ensure_ai_queue_processor()
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -2608,9 +2651,8 @@ async def generate_recipe_text_version(recipe_id: str, data: dict = Body(default
 
 
 @app.post("/api/recipes/{recipe_id}/text-version/jobs")
-def create_recipe_text_job(
+async def create_recipe_text_job(
     recipe_id: str,
-    background_tasks: BackgroundTasks,
     data: dict = Body(default={}),
     current_user: dict = Depends(get_current_user),
 ):
@@ -2649,7 +2691,7 @@ def create_recipe_text_job(
     conn.commit()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
     conn.close()
-    background_tasks.add_task(_run_ai_text_job, job_id)
+    _ensure_ai_queue_processor()
     return {"job": _job_dict(row)}
 
 
@@ -2661,7 +2703,8 @@ def get_work_queue(current_user: dict = Depends(get_current_user)):
     job_rows = conn.execute(
         "SELECT * FROM ai_text_jobs "
         "WHERE dismissed=0 AND (status IN ('queued','running') OR finished_at > datetime('now', '-7 days')) "
-        "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'finished' THEN 3 ELSE 4 END, created_at DESC"
+        "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'finished' THEN 3 ELSE 4 END, "
+        "CASE WHEN status IN ('running','queued') THEN created_at END ASC, created_at DESC"
     ).fetchall()
     import_rows = conn.execute(
         "SELECT iq.recipe_id, iq.group_name, r.title, r.file_type "
@@ -2669,8 +2712,18 @@ def get_work_queue(current_user: dict = Depends(get_current_user)):
         "WHERE iq.status='staged' ORDER BY iq.rowid"
     ).fetchall()
     conn.close()
+    ai_jobs = []
+    queue_position = 1
+    for row in job_rows:
+        job = _job_dict(row)
+        if job["status"] in ("running", "queued"):
+            job["queue_position"] = queue_position
+            queue_position += 1
+        else:
+            job["queue_position"] = None
+        ai_jobs.append(job)
     return {
-        "ai_jobs": [_job_dict(row) for row in job_rows],
+        "ai_jobs": ai_jobs,
         "imports": {
             "count": len(import_rows),
             "items": [dict(row) for row in import_rows[:8]],
@@ -3683,10 +3736,50 @@ async def scrape_yarn_url(body: dict = Body(...), current_user: dict = Depends(g
 
 # ── Admin: live logs ──────────────────────────────────────────────────────────
 
+def _ai_log_lines(limit: int) -> list[str]:
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            j.id, j.recipe_title, j.status, j.progress_stage, j.error, j.provider, j.model,
+            j.generated_by, j.pages_sent, j.result_text_chars, j.duration_seconds,
+            j.created_at, j.started_at, j.finished_at,
+            u.prompt_tokens, u.completion_tokens, u.total_tokens, u.generated_words, u.success
+        FROM ai_text_jobs j
+        LEFT JOIN ai_usage_events u ON u.job_id=j.id
+        ORDER BY COALESCE(NULLIF(j.finished_at, ''), NULLIF(j.started_at, ''), j.created_at) DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    result = []
+    for row in reversed(rows):
+        ts = row["finished_at"] or row["started_at"] or row["created_at"]
+        model = " / ".join(part for part in (row["provider"], row["model"]) if part) or "unknown-model"
+        bits = [
+            f"{ts} AI_JOB",
+            f"status={row['status']}",
+            f"recipe={row['recipe_title'] or row['id']}",
+            f"model={model}",
+            f"pages={row['pages_sent'] or 0}",
+        ]
+        if row["duration_seconds"] is not None:
+            bits.append(f"duration={round(float(row['duration_seconds']), 1)}s")
+        if row["total_tokens"] is not None:
+            bits.append(f"tokens={row['total_tokens']}")
+            bits.append(f"prompt={row['prompt_tokens'] or 0}")
+            bits.append(f"completion={row['completion_tokens'] or 0}")
+        if row["generated_words"]:
+            bits.append(f"words={row['generated_words']}")
+        if row["generated_by"]:
+            bits.append(f"user={row['generated_by']}")
+        if row["error"]:
+            bits.append(f"error={row['error']}")
+        result.append(" ".join(str(bit) for bit in bits))
+    return result
+
 @app.get("/api/admin/logs")
 def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(require_admin)):
     """Return the last N lines from the persistent log files in /logs/.
-    source: 'all' | 'uvicorn' | 'supervisord' | 'auth'
+    source: 'all' | 'uvicorn' | 'supervisord' | 'auth' | 'ai'
     """
     lines = max(10, min(lines, 1000))
 
@@ -3696,10 +3789,14 @@ def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(requir
         "auth":        Path("/logs/auth.log"),
     }
 
-    sources = list(log_files.keys()) if source == "all" else [source]
+    sources = [*log_files.keys(), "ai"] if source == "all" else [source]
     collected = []
 
     for src in sources:
+        if src == "ai":
+            for line in _ai_log_lines(lines):
+                collected.append(f"[ai] {line}")
+            continue
         path = log_files.get(src)
         if not path or not path.exists():
             collected.append(f"[{src}] no log file yet — container may have just started")
