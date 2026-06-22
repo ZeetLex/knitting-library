@@ -885,6 +885,29 @@ function MailSection() {
 /* ─── AI Text Recognition Section (Admin) ─────────────────────────────────── */
 function AISection() {
   const { t, language } = useApp();
+  const providerPresets = [
+    {
+      id: 'openai',
+      title: t('aiPresetOpenAI'),
+      description: t('aiPresetOpenAISub'),
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    },
+    {
+      id: 'ollama',
+      title: t('aiPresetOllama'),
+      description: t('aiPresetOllamaSub'),
+      baseUrl: 'http://host.docker.internal:11434/v1',
+      model: '',
+    },
+    {
+      id: 'lmstudio',
+      title: t('aiPresetLMStudio'),
+      description: t('aiPresetLMStudioSub'),
+      baseUrl: 'http://host.docker.internal:1234/v1',
+      model: '',
+    },
+  ];
   const [cfg, setCfg] = useState({
     ai_enabled: 'false',
     ai_provider: 'openai_compatible',
@@ -912,6 +935,17 @@ function AISection() {
   }, []);
 
   const f = (key, value) => setCfg(prev => ({ ...prev, [key]: value }));
+
+  const applyProviderPreset = (preset) => {
+    setCfg(prev => ({
+      ...prev,
+      ai_provider: 'openai_compatible',
+      ai_base_url: preset.baseUrl,
+      ai_model: preset.model || prev.ai_model,
+    }));
+    setModels([]);
+    setModelStatus('');
+  };
 
   const loadModels = useCallback(async (nextCfg) => {
     if (!nextCfg.ai_base_url) {
@@ -961,10 +995,10 @@ function AISection() {
   return (
     <div className="settings-section">
       <h3 className="section-heading">{t('adminAI')}</h3>
-      <p className="settings-row-sub" style={{ marginBottom: '1.5rem' }}>{t('aiDesc')}</p>
+      <p className="settings-row-sub ai-section-intro">{t('aiDesc')}</p>
 
-      <div className="form-stack">
-        <div className="settings-row" style={{ padding: '0.5rem 0', marginBottom: '0.25rem' }}>
+      <div className="form-stack ai-settings-form">
+        <div className="ai-settings-card ai-enable-card">
           <div className="settings-row-info">
             <p className="settings-row-label">{t('aiEnable')}</p>
             <p className="settings-row-sub">{t('aiEnableSub')}</p>
@@ -975,83 +1009,105 @@ function AISection() {
           </button>
         </div>
 
-        <div className="settings-divider" />
-
-        <div className="form-field">
-          <label className="form-label">{t('aiProvider')}</label>
-          <select className="form-input" value={cfg.ai_provider} onChange={e => f('ai_provider', e.target.value)}>
-            <option value="openai_compatible">{t('aiProviderOpenAICompatible')}</option>
-          </select>
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">{t('aiBaseUrl')}</label>
-          <input className="form-input" value={cfg.ai_base_url} onChange={e => f('ai_base_url', e.target.value)} placeholder="http://host.docker.internal:11434/v1" />
-          <p className="settings-row-sub ai-inline-help">{t('aiBaseUrlHint')}</p>
-        </div>
-
-        <div className="form-row-two">
-          <div className="form-field">
-            <label className="form-label">{t('aiModel')}</label>
-            <div className="ai-model-row">
-              {models.length > 0 ? (
-                <select className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)}>
-                  {!cfg.ai_model && <option value="">{t('selectModel')}</option>}
-                  {cfg.ai_model && !models.includes(cfg.ai_model) && <option value={cfg.ai_model}>{cfg.ai_model}</option>}
-                  {models.map(model => <option key={model} value={model}>{model}</option>)}
-                </select>
-              ) : (
-                <input className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)} placeholder="llava, llama3.2-vision, gpt-4o-mini" />
-              )}
-              <button className="btn-secondary ai-model-refresh" onClick={() => loadModels(cfg)} disabled={modelsLoading || !cfg.ai_base_url} title={t('refreshModels')}>
-                <RefreshCw size={15} className={modelsLoading ? 'spin-icon' : ''} />
-              </button>
+        <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('aiConnection')}</h4>
+              <p>{t('aiConnectionSub')}</p>
             </div>
-            {modelStatus === 'loaded' && <p className="settings-row-sub ai-inline-help">{t('modelsLoaded').replace('{COUNT}', String(models.length))}</p>}
-            {modelStatus === 'empty' && <p className="settings-row-sub ai-inline-help">{t('noModelsFound')}</p>}
-            {modelStatus?.startsWith('error:') && <p className="status-error ai-inline-help">{modelStatus.slice(6)}</p>}
           </div>
+
+          <div className="ai-provider-grid">
+            {providerPresets.map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`ai-provider-card ${cfg.ai_base_url === preset.baseUrl ? 'active' : ''}`}
+                onClick={() => applyProviderPreset(preset)}
+              >
+                <span>{preset.title}</span>
+                <small>{preset.description}</small>
+              </button>
+            ))}
+          </div>
+
           <div className="form-field">
-            <label className="form-label">{t('aiApiKey')}</label>
-            <input className="form-input" type="password" value={cfg.ai_api_key} onChange={e => f('ai_api_key', e.target.value)} autoComplete="new-password" placeholder={t('optional')} />
+            <label className="form-label">{t('aiProvider')}</label>
+            <select className="form-input" value={cfg.ai_provider} onChange={e => f('ai_provider', e.target.value)}>
+              <option value="openai_compatible">{t('aiProviderOpenAICompatible')}</option>
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label">{t('aiBaseUrl')}</label>
+            <input className="form-input" value={cfg.ai_base_url} onChange={e => f('ai_base_url', e.target.value)} placeholder="https://api.openai.com/v1" />
+            <p className="settings-row-sub ai-inline-help">{t('aiBaseUrlHint')}</p>
+          </div>
+
+          <div className="ai-model-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiModel')}</label>
+              <div className="ai-model-row">
+                {models.length > 0 ? (
+                  <select className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)}>
+                    {!cfg.ai_model && <option value="">{t('selectModel')}</option>}
+                    {cfg.ai_model && !models.includes(cfg.ai_model) && <option value={cfg.ai_model}>{cfg.ai_model}</option>}
+                    {models.map(model => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                ) : (
+                  <input className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)} placeholder="gpt-4o-mini, llava, qwen2.5-vl" />
+                )}
+                <button className="btn-secondary ai-model-refresh" onClick={() => loadModels(cfg)} disabled={modelsLoading || !cfg.ai_base_url} title={t('refreshModels')}>
+                  <RefreshCw size={15} className={modelsLoading ? 'spin-icon' : ''} />
+                </button>
+              </div>
+              {modelStatus === 'loaded' && <p className="settings-row-sub ai-inline-help">{t('modelsLoaded').replace('{COUNT}', String(models.length))}</p>}
+              {modelStatus === 'empty' && <p className="settings-row-sub ai-inline-help">{t('noModelsFound')}</p>}
+              {modelStatus?.startsWith('error:') && <p className="status-error ai-inline-help">{modelStatus.slice(6)}</p>}
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiApiKey')}</label>
+              <input className="form-input" type="password" value={cfg.ai_api_key} onChange={e => f('ai_api_key', e.target.value)} autoComplete="new-password" placeholder={t('optional')} />
+              <p className="settings-row-sub ai-inline-help">{t('aiApiKeyHint')}</p>
+            </div>
+          </div>
+
+          <div className="ai-number-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiTimeout')}</label>
+              <input className="form-input" type="number" min="60" max="1800" value={cfg.ai_timeout} onChange={e => f('ai_timeout', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiMaxPages')}</label>
+              <input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} />
+            </div>
           </div>
         </div>
 
-        <div className="form-row-two">
-          <div className="form-field">
-            <label className="form-label">{t('aiTimeout')}</label>
-            <input className="form-input" type="number" min="60" max="1800" value={cfg.ai_timeout} onChange={e => f('ai_timeout', e.target.value)} />
+        <div className="ai-settings-card">
+          <div className="ai-card-heading ai-card-heading-row">
+            <div>
+              <h4>{t('aiPrompt')}</h4>
+              <p>{t('aiPromptModeSub')}</p>
+            </div>
+            <div className="ai-segmented">
+              <button className={cfg.ai_prompt_mode !== 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'default')}>{t('default')}</button>
+              <button className={cfg.ai_prompt_mode === 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'custom')}>{t('custom')}</button>
+            </div>
           </div>
           <div className="form-field">
-            <label className="form-label">{t('aiMaxPages')}</label>
-            <input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} />
+            <label className="form-label">{cfg.ai_prompt_mode === 'custom' ? t('aiCustomPrompt') : t('aiDefaultPromptPreview')}</label>
+            <textarea
+              className="form-input form-textarea ai-prompt-textarea"
+              value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : t('defaultOcrPrompt')}
+              onChange={e => f('ai_custom_prompt', e.target.value)}
+              readOnly={cfg.ai_prompt_mode !== 'custom'}
+              rows={7}
+            />
+            <p className="settings-row-sub ai-inline-help">
+              {cfg.ai_prompt_mode === 'custom' ? t('aiCustomPromptHint') : t('aiDefaultPromptHint').replace('{LANGUAGE}', language)}
+            </p>
           </div>
-        </div>
-
-        <div className="settings-divider" />
-        <h4 className="section-subheading">{t('aiPrompt')}</h4>
-        <div className="settings-row" style={{ padding: '0.5rem 0' }}>
-          <div className="settings-row-info">
-            <p className="settings-row-label">{t('aiPromptMode')}</p>
-            <p className="settings-row-sub">{t('aiPromptModeSub')}</p>
-          </div>
-          <div className="ai-segmented">
-            <button className={cfg.ai_prompt_mode !== 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'default')}>{t('default')}</button>
-            <button className={cfg.ai_prompt_mode === 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'custom')}>{t('custom')}</button>
-          </div>
-        </div>
-        <div className="form-field">
-          <label className="form-label">{cfg.ai_prompt_mode === 'custom' ? t('aiCustomPrompt') : t('aiDefaultPromptPreview')}</label>
-          <textarea
-            className="form-input form-textarea ai-prompt-textarea"
-            value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : t('defaultOcrPrompt')}
-            onChange={e => f('ai_custom_prompt', e.target.value)}
-            readOnly={cfg.ai_prompt_mode !== 'custom'}
-            rows={7}
-          />
-          <p className="settings-row-sub ai-inline-help">
-            {cfg.ai_prompt_mode === 'custom' ? t('aiCustomPromptHint') : t('aiDefaultPromptHint').replace('{LANGUAGE}', language)}
-          </p>
         </div>
 
         {status === 'saved' && <p className="status-success">{t('saved')}</p>}

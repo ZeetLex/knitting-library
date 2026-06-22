@@ -91,6 +91,21 @@ Upload PDFs or images as a single file, multiple images, or a whole folder. The 
 
 Scrollable pages with zoom and fullscreen. Swipe on mobile, use arrow keys on desktop, and set any page or image as the recipe thumbnail.
 
+Image recipes include editing tools for crop, rotate, reorder, cover selection, and persistent quality adjustment. Quality edits can tune brightness/exposure, contrast, gamma, saturation, warmth, and sharpness, with an original-image restore option.
+
+### Text Version / Image To Text
+
+Recipe pages can have a shared editable text version generated from scanned recipe images. Open a recipe, switch from **Original** to **Text version**, then create, edit, save, or regenerate the Markdown transcription.
+
+AI text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The app uses OpenAI-compatible chat completion endpoints, so it can work with:
+
+- OpenAI GPT vision-capable models, for example `https://api.openai.com/v1` plus an API key
+- Ollama, for example `http://host.docker.internal:11434/v1`
+- LM Studio, for example `http://host.docker.internal:1234/v1`
+- Other OpenAI-compatible local or hosted providers
+
+Generated text is persistent for the whole server, not private per user. AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, and unclear page photos.
+
 ### Annotations
 
 Draw or highlight directly on recipe pages. Brush, opacity, and color are adjustable. Strokes are saved per page to the database and persist across sessions.
@@ -123,7 +138,7 @@ The interface is available in English, Norwegian, and Hungarian. Prices and inve
 
 ### Admin Panel
 
-Create and manage user accounts, view API logs, configure SMTP mail, manage 2FA status, and publish update notes.
+Create and manage user accounts, view API logs, configure SMTP mail, manage AI text recognition, manage 2FA status, and publish update notes.
 
 ### Help And Guide
 
