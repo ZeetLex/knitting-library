@@ -488,6 +488,15 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+def _cleanup_stale_import_queue(conn) -> None:
+    """Hide staged import rows whose draft recipe no longer exists."""
+    conn.execute("""
+        UPDATE import_queue SET status='discarded'
+        WHERE status='staged'
+        AND recipe_id NOT IN (SELECT id FROM recipes)
+    """)
+
+
 def init_db():
     conn = get_db()
     conn.executescript("""
@@ -738,14 +747,10 @@ def init_db():
     conn.execute("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?",
                  (datetime.utcnow().isoformat(),))
 
-    # Clean up stale import_queue entries: if a recipe was already confirmed
-    # (exists in the recipes table) but its queue entry is still 'staged',
-    # mark it done. This can happen if the container restarted mid-confirm.
-    conn.execute("""
-        UPDATE import_queue SET status='done'
-        WHERE status='staged'
-        AND recipe_id IN (SELECT id FROM recipes)
-    """)
+    # Clean up orphaned import_queue entries left by older interrupted imports.
+    # Valid staged drafts intentionally still have rows in recipes; keep those
+    # resumable so "Stop for now" survives restarts.
+    _cleanup_stale_import_queue(conn)
 
     conn.commit()
     conn.close()
@@ -2651,6 +2656,8 @@ def create_recipe_text_job(
 @app.get("/api/work-queue")
 def get_work_queue(current_user: dict = Depends(get_current_user)):
     conn = get_db()
+    _cleanup_stale_import_queue(conn)
+    conn.commit()
     job_rows = conn.execute(
         "SELECT * FROM ai_text_jobs "
         "WHERE dismissed=0 AND (status IN ('queued','running') OR finished_at > datetime('now', '-7 days')) "
@@ -2658,7 +2665,7 @@ def get_work_queue(current_user: dict = Depends(get_current_user)):
     ).fetchall()
     import_rows = conn.execute(
         "SELECT iq.recipe_id, iq.group_name, r.title, r.file_type "
-        "FROM import_queue iq LEFT JOIN recipes r ON r.id=iq.recipe_id "
+        "FROM import_queue iq JOIN recipes r ON r.id=iq.recipe_id "
         "WHERE iq.status='staged' ORDER BY iq.rowid"
     ).fetchall()
     conn.close()
@@ -2966,6 +2973,8 @@ async def import_upload_group(
 @app.get("/api/import/queue")
 def import_get_queue(current_user: dict = Depends(get_current_user)):
     conn  = get_db()
+    _cleanup_stale_import_queue(conn)
+    conn.commit()
     rows  = conn.execute("SELECT recipe_id, group_name FROM import_queue WHERE status='staged' ORDER BY rowid").fetchall()
     items = []
     for row in rows:
