@@ -192,6 +192,27 @@ export async function cropImage(recipeId, filename, points) {
   return res.json();
 }
 
+export async function adjustImage(recipeId, filename, adjustments) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}/adjust`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(adjustments),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to adjust image');
+  return data;
+}
+
+export async function restoreOriginalImage(recipeId, filename) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}/restore-original`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to restore image');
+  return data;
+}
+
 export async function deleteRecipeImage(recipeId, filename) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
@@ -199,6 +220,34 @@ export async function deleteRecipeImage(recipeId, filename) {
   });
   if (!res.ok) throw new Error('Failed to delete image');
   return res.json();
+}
+
+export async function fetchTextVersion(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load text version');
+  return res.json();
+}
+
+export async function saveTextVersion(recipeId, contentMarkdown, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ content_markdown: contentMarkdown, language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save text version');
+  return data;
+}
+
+export async function generateTextVersion(recipeId, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to generate text version');
+  return data;
 }
 
 // Export — fetches the ZIP and triggers a browser download
@@ -626,6 +675,43 @@ export async function testMailTemplate(to, subject, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Test failed');
   return data;
+}
+
+// ── Admin: AI settings ───────────────────────────────────────────────────────
+export async function fetchAISettings() {
+  const res = await fetch(`${API_BASE}/admin/ai`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load AI settings');
+  return res.json();
+}
+export async function saveAISettings(data) {
+  const res = await fetch(`${API_BASE}/admin/ai`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to save AI settings');
+  return result;
+}
+export async function fetchAIModels(data) {
+  const res = await fetch(`${API_BASE}/admin/ai/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to fetch AI models');
+  return result;
+}
+export async function testAISettings(data) {
+  const res = await fetch(`${API_BASE}/admin/ai/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'AI test failed');
+  return result;
 }
 
 // ── Admin: 2FA management ─────────────────────────────────────────────────────

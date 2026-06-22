@@ -15,6 +15,7 @@ import uuid
 import zipfile
 import hashlib
 import secrets
+import base64
 from email.mime.text import MIMEText
 import ipaddress
 import socket
@@ -98,6 +99,17 @@ YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
+AI_SETTING_KEYS = {
+    "ai_enabled",
+    "ai_provider",
+    "ai_base_url",
+    "ai_model",
+    "ai_api_key",
+    "ai_timeout",
+    "ai_max_pages",
+    "ai_prompt_mode",
+    "ai_custom_prompt",
+}
 
 SESSION_COOKIE = "knitting_session"
 CSRF_COOKIE = "knitting_csrf"
@@ -410,6 +422,23 @@ def get_db() -> sqlite3.Connection:
             )
             conn.execute("DROP TABLE annotations_legacy_user_migration")
             conn.commit()
+    if "recipe_text_versions" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_text_versions (
+                recipe_id          TEXT PRIMARY KEY,
+                content_markdown   TEXT NOT NULL DEFAULT '',
+                status             TEXT NOT NULL DEFAULT 'ready',
+                language           TEXT NOT NULL DEFAULT '',
+                prompt             TEXT NOT NULL DEFAULT '',
+                provider           TEXT NOT NULL DEFAULT '',
+                model              TEXT NOT NULL DEFAULT '',
+                source_fingerprint TEXT NOT NULL DEFAULT '',
+                generated_by       TEXT NOT NULL DEFAULT '',
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL
+            )
+        """)
+        conn.commit()
     return conn
 
 
@@ -576,6 +605,19 @@ def init_db():
             announcement_id TEXT NOT NULL,
             read_at         TEXT NOT NULL,
             PRIMARY KEY (user_id, announcement_id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_text_versions (
+            recipe_id          TEXT PRIMARY KEY,
+            content_markdown   TEXT NOT NULL DEFAULT '',
+            status             TEXT NOT NULL DEFAULT 'ready',
+            language           TEXT NOT NULL DEFAULT '',
+            prompt             TEXT NOT NULL DEFAULT '',
+            provider           TEXT NOT NULL DEFAULT '',
+            model              TEXT NOT NULL DEFAULT '',
+            source_fingerprint TEXT NOT NULL DEFAULT '',
+            generated_by       TEXT NOT NULL DEFAULT '',
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL
         );
 
         -- Indexes: speed up the most common queries as the library grows
@@ -1185,6 +1227,225 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
         recipe["project_status"] = "none"
     return recipe
 
+
+def _image_file_for_recipe(recipe_id: str, filename: str) -> tuple[Path, str]:
+    safe_name = Path(filename).name
+    if not safe_name or Path(safe_name).suffix.lower() not in IMAGE_EXTS:
+        raise HTTPException(status_code=400, detail="Invalid image filename")
+    path = DATA_DIR / recipe_id / safe_name
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return path, safe_name
+
+
+def _ensure_image_recipe(recipe_id: str, conn) -> sqlite3.Row:
+    recipe = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    if recipe["file_type"] != "images":
+        raise HTTPException(status_code=400, detail="Recipe is not an image-type recipe")
+    return recipe
+
+
+def _bump_recipe_thumbnail(conn, recipe_id: str) -> Optional[int]:
+    recipe_dir = DATA_DIR / recipe_id
+    thumb = _generate_thumbnail(recipe_dir, "images")
+    if not thumb:
+        return None
+    conn.execute(
+        "UPDATE recipes SET thumbnail_path=?, thumbnail_version=thumbnail_version+1 WHERE id=?",
+        (thumb, recipe_id)
+    )
+    row = conn.execute("SELECT thumbnail_version FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+    return row["thumbnail_version"] if row else None
+
+
+def _clamped_float(value, default: float, minimum: float, maximum: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _source_fingerprint(recipe_id: str, conn) -> str:
+    recipe = _get_recipe_full(recipe_id, conn)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe_dir = DATA_DIR / recipe_id
+    names = recipe["images"] if recipe["file_type"] == "images" else [p.name for p in sorted(recipe_dir.glob("page-*.jpg"))]
+    parts = []
+    for name in names:
+        path = recipe_dir / name
+        if path.exists():
+            stat = path.stat()
+            parts.append(f"{name}:{stat.st_size}:{int(stat.st_mtime)}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+def _text_version_dict(row: Optional[sqlite3.Row], current_fingerprint: str = "") -> dict:
+    if not row:
+        return {
+            "exists": False,
+            "content_markdown": "",
+            "status": "empty",
+            "is_outdated": False,
+        }
+    data = dict(row)
+    data["exists"] = bool(data.get("content_markdown"))
+    data["is_outdated"] = bool(current_fingerprint and data.get("source_fingerprint") and data.get("source_fingerprint") != current_fingerprint)
+    return data
+
+
+def _ai_settings(conn, reveal_secret: bool = False) -> dict:
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
+    cfg = {r["key"]: r["value"] for r in rows}
+    defaults = {
+        "ai_enabled": "false",
+        "ai_provider": "openai_compatible",
+        "ai_base_url": "http://host.docker.internal:11434/v1",
+        "ai_model": "",
+        "ai_api_key": "",
+        "ai_timeout": "600",
+        "ai_max_pages": "8",
+        "ai_prompt_mode": "default",
+        "ai_custom_prompt": "",
+    }
+    defaults.update(cfg)
+    if defaults.get("ai_api_key") and not reveal_secret:
+        defaults["ai_api_key"] = "••••••••"
+    return defaults
+
+
+def _default_ocr_prompt(language: str = "en") -> str:
+    prompts = {
+        "no": (
+            "Svar kun med den ferdige transkripsjonen i Markdown. Ikke inkluder analyse, tankegang, forklaring, kommentarer eller interne kanaler. "
+            "Du transkriberer strikkeoppskrifter fra bilder. Behold originalspråket i oppskriften. "
+            "Skriv resultatet som ryddig Markdown med overskrifter og punktlister der det passer. "
+            "Bevar størrelser, masketall, parenteser, forkortelser, pinne-/garninformasjon og omgang-/radtekst nøyaktig. "
+            "Ikke finn på manglende tekst. Marker usikker tekst som [uklart]. "
+            "Hopp over rene foto-/forsider uten nyttig oppskriftstekst."
+        ),
+        "hu": (
+            "Csak a kész Markdown átírást add vissza. Ne írj elemzést, gondolatmenetet, magyarázatot, kommentárt vagy belső csatornákat. "
+            "Kötésmintákat írsz át képekről. Őrizd meg a minta eredeti nyelvét. "
+            "Az eredményt tiszta Markdown formában add vissza címsorokkal és listákkal, ahol hasznos. "
+            "Pontosan őrizd meg a méreteket, szemszámokat, zárójeleket, rövidítéseket, tű-/fonaladatokat és sor/kör utasításokat. "
+            "Ne találj ki hiányzó szöveget. A bizonytalan részeket jelöld így: [unclear]. "
+            "Hagyd ki a pusztán dekoratív fotókat vagy borítóoldalakat, ha nincs rajtuk hasznos mintaszöveg."
+        ),
+    }
+    return prompts.get(language, (
+        "Return only the final Markdown transcription. Do not include analysis, chain of thought, commentary, explanations, or internal channel markers. "
+        "You transcribe knitting patterns from recipe images. Preserve the original recipe language. "
+        "Return clean Markdown with headings and lists where helpful. Preserve sizes, stitch counts, parentheses, abbreviations, needle/yarn information, and row/round wording exactly. "
+        "Do not invent missing text. Mark uncertain words as [unclear]. Skip purely decorative cover/photo-only pages unless they contain useful pattern text."
+    ))
+
+
+def _clean_ai_transcription(content: str) -> str:
+    content = content.strip()
+    content = re.sub(r"(?is)<\|channel\>.*?(?=<\|channel\>|$)", "", content).strip()
+    content = re.sub(r"(?is)<think>.*?</think>", "", content).strip()
+    return content
+
+
+def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list[dict]:
+    recipe = _get_recipe_full(recipe_id, conn)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe_dir = DATA_DIR / recipe_id
+    if recipe["file_type"] == "pdf":
+        pages = sorted(recipe_dir.glob("page-*.jpg"))
+        if not pages and (recipe_dir / "recipe.pdf").exists():
+            _convert_pdf_to_pages(recipe_dir)
+            pages = sorted(recipe_dir.glob("page-*.jpg"))
+        paths = pages
+    else:
+        paths = [recipe_dir / name for name in recipe["images"]]
+    paths = [p for p in paths if p.exists() and p.suffix.lower() in IMAGE_EXTS][:max(1, max_pages)]
+    if not paths:
+        raise HTTPException(status_code=400, detail="No recipe images available for text generation")
+    payloads = []
+    for path in paths:
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+        mime = "image/png" if path.suffix.lower() == ".png" else "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
+        payloads.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{data}"},
+        })
+    return payloads
+
+
+async def _generate_text_version(recipe_id: str, language: str, current_user: dict) -> dict:
+    conn = get_db()
+    cfg = _ai_settings(conn, reveal_secret=True)
+    if cfg.get("ai_enabled", "false").lower() != "true":
+        conn.close()
+        raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    model = cfg.get("ai_model", "").strip()
+    if not base_url or not model:
+        conn.close()
+        raise HTTPException(status_code=400, detail="AI base URL and model are required")
+    timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
+    timeout = max(300, timeout)
+    max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+    prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
+    image_payloads = _collect_recipe_image_payloads(recipe_id, conn, max_pages)
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    conn.close()
+
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": f"{prompt}\n\nImportant: output only the finished Markdown transcription. Do not output reasoning, thoughts, or channel markers. If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"},
+            *image_payloads,
+        ],
+    }]
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.1,
+                    "stream": False,
+                    "max_tokens": 4096,
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+    except httpx.ReadTimeout:
+        raise HTTPException(status_code=504, detail=f"AI request timed out after {timeout} seconds. Increase the timeout or use fewer pages/a faster model.")
+    except httpx.HTTPError as e:
+        detail = str(e) or e.__class__.__name__
+        raise HTTPException(status_code=502, detail=f"AI request failed: {detail}")
+    try:
+        content = _clean_ai_transcription(data["choices"][0]["message"]["content"])
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="AI response did not contain text")
+
+    now = datetime.utcnow().isoformat()
+    conn2 = get_db()
+    conn2.execute(
+        "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
+        (recipe_id, content, "ready", language, prompt, cfg.get("ai_provider", "openai_compatible"), model, fingerprint, current_user["username"], now, now)
+    )
+    conn2.commit()
+    row = conn2.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
+    conn2.close()
+    return _text_version_dict(row, fingerprint)
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -1538,6 +1799,7 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
     conn.execute("DELETE FROM project_feedback  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM annotations       WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipes           WHERE id=?",        (recipe_id,))
     _prune_orphan_categories(conn)
     conn.commit()
@@ -1966,6 +2228,121 @@ def crop_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), cur
     conn.commit()
     conn.close()
     return {"status": "cropped", "filename": filename, "thumbnail_version": new_version}
+
+
+@app.post("/api/recipes/{recipe_id}/images/{filename}/adjust")
+def adjust_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Apply non-geometric image quality adjustments and keep an original backup."""
+    img_path, safe_name = _image_file_for_recipe(recipe_id, filename)
+    conn = get_db()
+    try:
+        _ensure_image_recipe(recipe_id, conn)
+    except HTTPException:
+        conn.close()
+        raise
+
+    brightness = _clamped_float(data.get("brightness"), 0, -100, 100)
+    contrast   = _clamped_float(data.get("contrast"), 0, -100, 100)
+    gamma      = _clamped_float(data.get("gamma"), 1, 0.2, 3)
+    saturation = _clamped_float(data.get("saturation"), 0, -100, 100)
+    warmth     = _clamped_float(data.get("warmth"), 0, -100, 100)
+    sharpness  = _clamped_float(data.get("sharpness"), 0, -100, 100)
+
+    try:
+        from PIL import Image as PILImage, ImageOps, ImageEnhance
+        originals_dir = DATA_DIR / recipe_id / ".originals"
+        originals_dir.mkdir(exist_ok=True)
+        backup_path = originals_dir / safe_name
+        if not backup_path.exists():
+            shutil.copy2(img_path, backup_path)
+
+        img = PILImage.open(str(img_path))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        if brightness:
+            img = ImageEnhance.Brightness(img).enhance(1 + brightness / 100)
+        if contrast:
+            img = ImageEnhance.Contrast(img).enhance(1 + contrast / 100)
+        if saturation:
+            img = ImageEnhance.Color(img).enhance(max(0, 1 + saturation / 100))
+        if sharpness:
+            img = ImageEnhance.Sharpness(img).enhance(max(0, 1 + sharpness / 50))
+        if warmth:
+            r, g, b = img.split()
+            factor = warmth / 100
+            r = r.point(lambda i: max(0, min(255, i * (1 + 0.16 * factor))))
+            b = b.point(lambda i: max(0, min(255, i * (1 - 0.16 * factor))))
+            img = PILImage.merge("RGB", (r, g, b))
+        if gamma != 1:
+            inv = 1 / gamma
+            table = [max(0, min(255, int(((i / 255) ** inv) * 255))) for i in range(256)]
+            img = img.point(table * 3)
+        img.save(str(img_path), "JPEG", quality=95)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Image adjustment failed: {e}")
+
+    new_version = _bump_recipe_thumbnail(conn, recipe_id)
+    conn.commit()
+    conn.close()
+    return {"status": "adjusted", "filename": safe_name, "thumbnail_version": new_version, "has_original": True}
+
+
+@app.post("/api/recipes/{recipe_id}/images/{filename}/restore-original")
+def restore_original_recipe_image(recipe_id: str, filename: str, current_user: dict = Depends(get_current_user)):
+    """Restore an image from the original backup created by quality adjustments."""
+    img_path, safe_name = _image_file_for_recipe(recipe_id, filename)
+    backup_path = DATA_DIR / recipe_id / ".originals" / safe_name
+    if not backup_path.exists():
+        raise HTTPException(status_code=404, detail="Original backup not found")
+    conn = get_db()
+    try:
+        _ensure_image_recipe(recipe_id, conn)
+        shutil.copy2(backup_path, img_path)
+        new_version = _bump_recipe_thumbnail(conn, recipe_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "restored", "filename": safe_name, "thumbnail_version": new_version}
+
+
+@app.get("/api/recipes/{recipe_id}/text-version")
+def get_recipe_text_version(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
+    conn.close()
+    return _text_version_dict(row, fingerprint)
+
+
+@app.put("/api/recipes/{recipe_id}/text-version")
+def save_recipe_text_version(recipe_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    content = str(data.get("content_markdown", ""))
+    language = str(data.get("language", "") or current_user.get("language", ""))
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    conn.execute(
+        "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
+        (recipe_id, content, "ready", language, "", "manual", "", fingerprint, current_user["username"], now, now)
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
+    conn.close()
+    return _text_version_dict(row, fingerprint)
+
+
+@app.post("/api/recipes/{recipe_id}/text-version/generate")
+async def generate_recipe_text_version(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    language = str(data.get("language", "") or current_user.get("language", "en"))
+    return await _generate_text_version(recipe_id, language, current_user)
 
 
 @app.get("/api/recipes/{recipe_id}/download")
@@ -3112,6 +3489,107 @@ def test_mail_template(data: dict, request: Request, admin: dict = Depends(requi
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Mail send failed: {e}")
+
+
+# ── Admin: AI text recognition settings ─────────────────────────────────────
+
+@app.get("/api/admin/ai")
+def get_ai_settings(admin: dict = Depends(require_admin)):
+    conn = get_db()
+    settings = _ai_settings(conn)
+    conn.close()
+    return settings
+
+
+@app.put("/api/admin/ai")
+def save_ai_settings(data: dict, admin: dict = Depends(require_admin)):
+    conn = get_db()
+    existing = _ai_settings(conn, reveal_secret=True)
+    for key in AI_SETTING_KEYS:
+        if key not in data:
+            continue
+        value = str(data.get(key, ""))
+        if key == "ai_api_key" and value == "••••••••":
+            value = existing.get("ai_api_key", "")
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value)
+        )
+    conn.commit()
+    conn.close()
+    return {"message": "AI settings saved"}
+
+
+@app.post("/api/admin/ai/models")
+async def list_ai_models(data: dict = Body(default={}), admin: dict = Depends(require_admin)):
+    conn = get_db()
+    saved = _ai_settings(conn, reveal_secret=True)
+    conn.close()
+    cfg = {**saved, **{k: str(v) for k, v in data.items() if k in AI_SETTING_KEYS}}
+    if cfg.get("ai_api_key") == "••••••••":
+        cfg["ai_api_key"] = saved.get("ai_api_key", "")
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Base URL is required")
+    headers = {}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    timeout = int(_clamped_float(cfg.get("ai_timeout"), 60, 10, 300))
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.get(f"{base_url}/models", headers=headers)
+            if res.status_code == 404 and base_url.endswith("/v1"):
+                ollama_base = base_url[:-3].rstrip("/")
+                res = await client.get(f"{ollama_base}/api/tags", headers=headers)
+            res.raise_for_status()
+            payload = res.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Model fetch failed: {e}")
+
+    models = []
+    if isinstance(payload.get("data"), list):
+        models = [m.get("id") for m in payload["data"] if isinstance(m, dict) and m.get("id")]
+    elif isinstance(payload.get("models"), list):
+        models = [m.get("name") or m.get("model") for m in payload["models"] if isinstance(m, dict)]
+    models = sorted({m for m in models if m})
+    return {"models": models}
+
+
+@app.post("/api/admin/ai/test")
+async def test_ai_settings(data: dict = Body(default={}), admin: dict = Depends(require_admin)):
+    conn = get_db()
+    saved = _ai_settings(conn, reveal_secret=True)
+    conn.close()
+    cfg = {**saved, **{k: str(v) for k, v in data.items() if k in AI_SETTING_KEYS}}
+    if cfg.get("ai_api_key") == "••••••••":
+        cfg["ai_api_key"] = saved.get("ai_api_key", "")
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    model = cfg.get("ai_model", "").strip()
+    if not base_url or not model:
+        raise HTTPException(status_code=400, detail="Base URL and model are required")
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    timeout = int(_clamped_float(cfg.get("ai_timeout"), 60, 10, 300))
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "Reply with OK."}],
+                    "temperature": 0,
+                    "max_tokens": 8,
+                },
+            )
+            res.raise_for_status()
+            payload = res.json()
+            text = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"AI test failed: {e}")
+    return {"message": "AI test succeeded", "response": text}
 
 # ── Statistics ───────────────────────────────────────────────────────────────────
 

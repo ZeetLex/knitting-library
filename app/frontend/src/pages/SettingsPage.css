@@ -1462,6 +1462,63 @@
   margin: 0 0 0.75rem;
 }
 
+.ai-inline-help {
+  margin-top: 0.35rem;
+  line-height: 1.5;
+}
+
+.ai-segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ai-segmented button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 7px 12px;
+  font: 700 13px 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ai-segmented button.active {
+  background: var(--card-bg);
+  color: var(--terracotta);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.ai-prompt-textarea[readonly] {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+
+.ai-model-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.ai-model-row .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-model-refresh {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+.spin-icon {
+  animation: spin 0.8s linear infinite;
+}
+
 .btn-icon-label {
   display: inline-flex;
   align-items: center;

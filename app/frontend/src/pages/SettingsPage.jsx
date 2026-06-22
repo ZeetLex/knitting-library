@@ -9,7 +9,7 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign, Palette,
+  Pencil, AtSign, Palette, Bot,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import { LANGUAGE_OPTIONS } from '../utils/translations';
@@ -18,7 +18,7 @@ import {
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
   fetch2FAStatus, adminReset2FA, setup2FA, verify2FASetup, disable2FA,
   createAnnouncement, listAnnouncements,
-  updateUserEmail, sendWelcomeMail,
+  updateUserEmail, sendWelcomeMail, fetchAISettings, saveAISettings, fetchAIModels, testAISettings,
 } from '../utils/api';
 import './SettingsPage.css';
 
@@ -35,6 +35,7 @@ export default function SettingsPage({ onBack }) {
       { id: 'users',         icon: <Users size={18} />,       label: t('userManagement'), sub: t('settingsUsersSub'), adminDivider: true },
       { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs'), sub: t('settingsLogsSub') },
       { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail'), sub: t('settingsMailSub') },
+      { id: 'ai',            icon: <Bot size={18} />,         label: t('adminAI'), sub: t('settingsAISub') },
       { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA'), sub: t('settingsTwoFASub') },
       { id: 'announcements', icon: <Megaphone size={18} />,   label: t('updateNotes'), sub: t('settingsAnnouncementsSub') },
     ] : []),
@@ -108,6 +109,7 @@ export default function SettingsPage({ onBack }) {
           {user?.is_admin && activeSection === 'users'         && <UsersSection />}
           {user?.is_admin && activeSection === 'logs'          && <LogsSection />}
           {user?.is_admin && activeSection === 'mail'          && <MailSection />}
+          {user?.is_admin && activeSection === 'ai'            && <AISection />}
           {user?.is_admin && activeSection === 'twofa'         && <TwoFASection />}
           {user?.is_admin && activeSection === 'announcements' && <AnnouncementsSection />}
         </div>
@@ -876,6 +878,193 @@ function MailSection() {
           onSave={handleTemplateSave}
         />
       )}
+    </div>
+  );
+}
+
+/* ─── AI Text Recognition Section (Admin) ─────────────────────────────────── */
+function AISection() {
+  const { t, language } = useApp();
+  const [cfg, setCfg] = useState({
+    ai_enabled: 'false',
+    ai_provider: 'openai_compatible',
+    ai_base_url: 'http://host.docker.internal:11434/v1',
+    ai_model: '',
+    ai_api_key: '',
+    ai_timeout: '600',
+    ai_max_pages: '8',
+    ai_prompt_mode: 'default',
+    ai_custom_prompt: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [models, setModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelStatus, setModelStatus] = useState('');
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetchAISettings()
+      .then(data => setCfg(prev => ({ ...prev, ...data })))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const f = (key, value) => setCfg(prev => ({ ...prev, [key]: value }));
+
+  const loadModels = useCallback(async (nextCfg) => {
+    if (!nextCfg.ai_base_url) {
+      setModels([]);
+      return;
+    }
+    setModelsLoading(true);
+    setModelStatus('');
+    try {
+      const result = await fetchAIModels(nextCfg);
+      setModels(result.models || []);
+      setModelStatus((result.models || []).length ? 'loaded' : 'empty');
+    } catch (e) {
+      setModels([]);
+      setModelStatus('error:' + e.message);
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading || !cfg.ai_base_url) return;
+    const timer = setTimeout(() => loadModels(cfg), 650);
+    return () => clearTimeout(timer);
+  }, [cfg.ai_base_url, cfg.ai_api_key, loading, loadModels]);
+
+  const handleSave = async () => {
+    setSaving(true); setStatus(null);
+    try {
+      await saveAISettings(cfg);
+      setStatus('saved');
+    } catch (e) { setStatus('error:' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleTest = async () => {
+    setTesting(true); setStatus(null);
+    try {
+      const result = await testAISettings(cfg);
+      setStatus('test_ok:' + (result.response || 'OK'));
+    } catch (e) { setStatus('error:' + e.message); }
+    finally { setTesting(false); }
+  };
+
+  if (loading) return <div className="settings-section"><p className="loading-text">Loading…</p></div>;
+
+  return (
+    <div className="settings-section">
+      <h3 className="section-heading">{t('adminAI')}</h3>
+      <p className="settings-row-sub" style={{ marginBottom: '1.5rem' }}>{t('aiDesc')}</p>
+
+      <div className="form-stack">
+        <div className="settings-row" style={{ padding: '0.5rem 0', marginBottom: '0.25rem' }}>
+          <div className="settings-row-info">
+            <p className="settings-row-label">{t('aiEnable')}</p>
+            <p className="settings-row-sub">{t('aiEnableSub')}</p>
+          </div>
+          <button className={`theme-toggle ${cfg.ai_enabled === 'true' ? 'dark' : ''}`}
+            onClick={() => f('ai_enabled', cfg.ai_enabled === 'true' ? 'false' : 'true')}>
+            <span className="theme-toggle-knob" />
+          </button>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="form-field">
+          <label className="form-label">{t('aiProvider')}</label>
+          <select className="form-input" value={cfg.ai_provider} onChange={e => f('ai_provider', e.target.value)}>
+            <option value="openai_compatible">{t('aiProviderOpenAICompatible')}</option>
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">{t('aiBaseUrl')}</label>
+          <input className="form-input" value={cfg.ai_base_url} onChange={e => f('ai_base_url', e.target.value)} placeholder="http://host.docker.internal:11434/v1" />
+          <p className="settings-row-sub ai-inline-help">{t('aiBaseUrlHint')}</p>
+        </div>
+
+        <div className="form-row-two">
+          <div className="form-field">
+            <label className="form-label">{t('aiModel')}</label>
+            <div className="ai-model-row">
+              {models.length > 0 ? (
+                <select className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)}>
+                  {!cfg.ai_model && <option value="">{t('selectModel')}</option>}
+                  {cfg.ai_model && !models.includes(cfg.ai_model) && <option value={cfg.ai_model}>{cfg.ai_model}</option>}
+                  {models.map(model => <option key={model} value={model}>{model}</option>)}
+                </select>
+              ) : (
+                <input className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)} placeholder="llava, llama3.2-vision, gpt-4o-mini" />
+              )}
+              <button className="btn-secondary ai-model-refresh" onClick={() => loadModels(cfg)} disabled={modelsLoading || !cfg.ai_base_url} title={t('refreshModels')}>
+                <RefreshCw size={15} className={modelsLoading ? 'spin-icon' : ''} />
+              </button>
+            </div>
+            {modelStatus === 'loaded' && <p className="settings-row-sub ai-inline-help">{t('modelsLoaded').replace('{COUNT}', String(models.length))}</p>}
+            {modelStatus === 'empty' && <p className="settings-row-sub ai-inline-help">{t('noModelsFound')}</p>}
+            {modelStatus?.startsWith('error:') && <p className="status-error ai-inline-help">{modelStatus.slice(6)}</p>}
+          </div>
+          <div className="form-field">
+            <label className="form-label">{t('aiApiKey')}</label>
+            <input className="form-input" type="password" value={cfg.ai_api_key} onChange={e => f('ai_api_key', e.target.value)} autoComplete="new-password" placeholder={t('optional')} />
+          </div>
+        </div>
+
+        <div className="form-row-two">
+          <div className="form-field">
+            <label className="form-label">{t('aiTimeout')}</label>
+            <input className="form-input" type="number" min="60" max="1800" value={cfg.ai_timeout} onChange={e => f('ai_timeout', e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">{t('aiMaxPages')}</label>
+            <input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="settings-divider" />
+        <h4 className="section-subheading">{t('aiPrompt')}</h4>
+        <div className="settings-row" style={{ padding: '0.5rem 0' }}>
+          <div className="settings-row-info">
+            <p className="settings-row-label">{t('aiPromptMode')}</p>
+            <p className="settings-row-sub">{t('aiPromptModeSub')}</p>
+          </div>
+          <div className="ai-segmented">
+            <button className={cfg.ai_prompt_mode !== 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'default')}>{t('default')}</button>
+            <button className={cfg.ai_prompt_mode === 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'custom')}>{t('custom')}</button>
+          </div>
+        </div>
+        <div className="form-field">
+          <label className="form-label">{cfg.ai_prompt_mode === 'custom' ? t('aiCustomPrompt') : t('aiDefaultPromptPreview')}</label>
+          <textarea
+            className="form-input form-textarea ai-prompt-textarea"
+            value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : t('defaultOcrPrompt')}
+            onChange={e => f('ai_custom_prompt', e.target.value)}
+            readOnly={cfg.ai_prompt_mode !== 'custom'}
+            rows={7}
+          />
+          <p className="settings-row-sub ai-inline-help">
+            {cfg.ai_prompt_mode === 'custom' ? t('aiCustomPromptHint') : t('aiDefaultPromptHint').replace('{LANGUAGE}', language)}
+          </p>
+        </div>
+
+        {status === 'saved' && <p className="status-success">{t('saved')}</p>}
+        {status?.startsWith('test_ok:') && <p className="status-success">{t('aiTestOk')} {status.slice(8)}</p>}
+        {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
+
+        <div className="mail-test-row">
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : t('saveSettings')}</button>
+          <button className="btn-secondary" onClick={handleTest} disabled={testing || !cfg.ai_base_url || !cfg.ai_model}>
+            <Send size={15} /> {testing ? t('testing') : t('testConnection')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

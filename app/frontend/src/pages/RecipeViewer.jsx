@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Sparkles, Save } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, generateTextVersion } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -29,7 +29,11 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [imageVersions, setImageVersions] = useState({}); // { filename: timestamp } for cache-busting after rotate
   const [deleteImageConfirm, setDeleteImageConfirm] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
+  const [viewMode, setViewMode] = useState('original');
+  const [textVersion, setTextVersion] = useState(null);
+  const [textLoading, setTextLoading] = useState(false);
   const addImagesInputRef = useRef(null);
   // Controls panel: open by default on desktop, closed on mobile
   const [controlsOpen, setControlsOpen] = useState(() =>
@@ -139,6 +143,30 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     }
   };
 
+  const handleAdjust = async (adjustments) => {
+    const filename = recipe?.images?.[imageIndex];
+    if (!filename) return;
+    const result = await adjustImage(recipeId, filename, adjustments);
+    setImageVersions(v => ({ ...v, [filename]: Date.now() }));
+    if (result.thumbnail_version !== undefined) {
+      setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
+      setThumbCacheBust(Date.now());
+    }
+    setAdjustOpen(false);
+  };
+
+  const handleRestoreOriginal = async () => {
+    const filename = recipe?.images?.[imageIndex];
+    if (!filename) return;
+    const result = await restoreOriginalImage(recipeId, filename);
+    setImageVersions(v => ({ ...v, [filename]: Date.now() }));
+    if (result.thumbnail_version !== undefined) {
+      setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
+      setThumbCacheBust(Date.now());
+    }
+    setAdjustOpen(false);
+  };
+
   const handleAddImages = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -159,6 +187,8 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
+    setViewMode('original');
+    setTextVersion(null);
     fetchRecipe(recipeId)
       .then(r => {
         setRecipe(r);
@@ -181,6 +211,15 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
       .catch(() => setError('Could not load this recipe.'))
       .finally(() => setLoading(false));
   }, [recipeId]);
+
+  useEffect(() => {
+    if (viewMode !== 'text') return;
+    setTextLoading(true);
+    fetchTextVersion(recipeId)
+      .then(setTextVersion)
+      .catch(() => setTextVersion({ exists: false, error: true }))
+      .finally(() => setTextLoading(false));
+  }, [recipeId, viewMode]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') setFullscreen(false);
@@ -256,9 +295,40 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
         </div>
       </div>
 
+      <div className="viewer-mode-tabs" role="tablist" aria-label={t('recipeViewTabs')}>
+        <button
+          className={`viewer-mode-tab ${viewMode === 'original' ? 'active' : ''}`}
+          onClick={() => setViewMode('original')}
+          role="tab"
+          aria-selected={viewMode === 'original'}
+        >
+          <LucideImage size={16} />
+          <span>{t('originalView')}</span>
+        </button>
+        <button
+          className={`viewer-mode-tab ${viewMode === 'text' ? 'active' : ''}`}
+          onClick={() => setViewMode('text')}
+          role="tab"
+          aria-selected={viewMode === 'text'}
+        >
+          <FileText size={16} />
+          <span>{t('textVersion')}</span>
+        </button>
+      </div>
+
       <div className="viewer-body">
         <div className="viewer-content">
-          {recipe.file_type === 'pdf' ? (
+          {viewMode === 'text' ? (
+            <TextVersionPanel
+              t={t}
+              recipeId={recipeId}
+              language={language}
+              textVersion={textVersion}
+              setTextVersion={setTextVersion}
+              loading={textLoading}
+              setLoading={setTextLoading}
+            />
+          ) : recipe.file_type === 'pdf' ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
               <div className="pdf-controls">
                 <button className="pdf-open-btn" onClick={() => { setFullscreen(f => !f); }}>
@@ -392,6 +462,10 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                       <button onClick={() => setCropOpen(true)} title={t('cropImage')}>
                         <Scissors size={14} />
                         <span>{t('cropImage')}</span>
+                      </button>
+                      <button onClick={() => setAdjustOpen(true)} title={t('adjustImage')}>
+                        <SlidersHorizontal size={14} />
+                        <span>{t('adjustImage')}</span>
                       </button>
                       <button
                         className={`set-cover-btn ${thumbSet === recipe.images[imageIndex] ? 'set-cover-btn--done' : ''}`}
@@ -543,6 +617,16 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           imageVersion={imageVersions[recipe.images[imageIndex]]}
           onClose={() => setCropOpen(false)}
           onCrop={handleCrop}
+        />
+      )}
+
+      {adjustOpen && recipe?.file_type === 'images' && recipe.images.length > 0 && (
+        <ImageAdjustPanel
+          t={t}
+          imageSrc={imageUrl(recipeId, recipe.images[imageIndex], imageVersions[recipe.images[imageIndex]] || recipe.thumbnail_version)}
+          onClose={() => setAdjustOpen(false)}
+          onApply={handleAdjust}
+          onRestore={handleRestoreOriginal}
         />
       )}
 
@@ -698,6 +782,9 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               <button onClick={() => { setCropOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('cropImage')} title={t('cropImage')}>
                 <Scissors size={18} />
               </button>
+              <button onClick={() => { setAdjustOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('adjustImage')} title={t('adjustImage')}>
+                <SlidersHorizontal size={18} />
+              </button>
               <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])} disabled={recipe.images.length === 0} aria-label="Set cover" title="Set cover">
                 <LucideImage size={18} />
               </button>
@@ -716,6 +803,180 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+const DEFAULT_ADJUSTMENTS = {
+  brightness: 0,
+  contrast: 0,
+  gamma: 1,
+  saturation: 0,
+  warmth: 0,
+  sharpness: 0,
+};
+
+function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
+  const [values, setValues] = useState(DEFAULT_ADJUSTMENTS);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const f = (key, value) => setValues(prev => ({ ...prev, [key]: Number(value) }));
+  const previewFilter = [
+    `brightness(${1 + values.brightness / 100})`,
+    `contrast(${1 + values.contrast / 100})`,
+    `saturate(${Math.max(0, 1 + values.saturation / 100)})`,
+  ].join(' ');
+
+  const handleApply = async () => {
+    setSaving(true); setError('');
+    try { await onApply(values); }
+    catch (e) { setError(e.message || t('adjustImageError')); setSaving(false); }
+  };
+
+  const handleRestore = async () => {
+    if (!window.confirm(t('restoreOriginalConfirm'))) return;
+    setSaving(true); setError('');
+    try { await onRestore(); }
+    catch (e) { setError(e.message || t('restoreOriginalError')); setSaving(false); }
+  };
+
+  const sliders = [
+    ['brightness', t('adjustBrightness'), -100, 100, 1],
+    ['contrast', t('adjustContrast'), -100, 100, 1],
+    ['gamma', t('adjustGamma'), 0.2, 3, 0.05],
+    ['saturation', t('adjustSaturation'), -100, 100, 1],
+    ['warmth', t('adjustWarmth'), -100, 100, 1],
+    ['sharpness', t('adjustSharpness'), -100, 100, 1],
+  ];
+
+  return (
+    <div className="adjust-panel-overlay" onClick={onClose}>
+      <div className="adjust-panel" onClick={e => e.stopPropagation()}>
+        <div className="adjust-panel-header">
+          <div>
+            <h3>{t('adjustImage')}</h3>
+            <p>{t('adjustImageHint')}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="adjust-panel-body">
+          <div className="adjust-preview">
+            <img src={imageSrc} alt="" style={{ filter: previewFilter }} />
+          </div>
+          <div className="adjust-sliders">
+            {sliders.map(([key, label, min, max, step]) => (
+              <label className="adjust-slider" key={key}>
+                <span>{label}<strong>{values[key]}</strong></span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={values[key]}
+                  onChange={e => f(key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+        {error && <p className="status-error adjust-error">{error}</p>}
+        <div className="adjust-panel-actions">
+          <button className="btn-secondary" onClick={() => setValues(DEFAULT_ADJUSTMENTS)} disabled={saving}>{t('resetSliders')}</button>
+          <button className="btn-secondary" onClick={handleRestore} disabled={saving}>{t('restoreOriginal')}</button>
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={handleApply} disabled={saving}>{saving ? t('saving') : t('apply')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraft(textVersion?.content_markdown || '');
+    setEditing(false);
+  }, [textVersion?.content_markdown]);
+
+  const generate = async () => {
+    if (textVersion?.exists && !window.confirm(t('regenerateTextConfirm'))) return;
+    setLoading(true); setError('');
+    try {
+      const result = await generateTextVersion(recipeId, language);
+      setTextVersion(result);
+    } catch (e) {
+      setError(e.message || t('textVersionGenerateError'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      const result = await saveTextVersion(recipeId, draft, language);
+      setTextVersion(result);
+      setEditing(false);
+    } catch (e) {
+      setError(e.message || t('textVersionSaveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-version-panel"><div className="spinner" /><p>{t('loading')}</p></div>;
+  }
+
+  const hasText = !!textVersion?.content_markdown;
+
+  return (
+    <div className="text-version-panel">
+      <div className="text-version-header">
+        <div>
+          <h2>{t('textVersion')}</h2>
+          <p>{hasText ? t('textVersionReadyHint') : t('textVersionEmptyHint')}</p>
+        </div>
+        <div className="text-version-actions">
+          {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
+          {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
+          <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
+            <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : t('createTextVersion')}
+          </button>
+        </div>
+      </div>
+      {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
+      {error && <p className="status-error">{error}</p>}
+      {editing || !hasText ? (
+        <textarea
+          className="text-version-editor"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          placeholder={t('textVersionEditorPlaceholder')}
+        />
+      ) : (
+        <MarkdownView content={textVersion.content_markdown} />
+      )}
+    </div>
+  );
+}
+
+function MarkdownView({ content }) {
+  const lines = content.split(/\r?\n/);
+  return (
+    <div className="markdown-view">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <br key={i} />;
+        if (line.startsWith('### ')) return <h4 key={i}>{line.slice(4)}</h4>;
+        if (line.startsWith('## ')) return <h3 key={i}>{line.slice(3)}</h3>;
+        if (line.startsWith('# ')) return <h2 key={i}>{line.slice(2)}</h2>;
+        if (/^[-*]\s+/.test(line)) return <p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>;
+        return <p key={i}>{line}</p>;
+      })}
     </div>
   );
 }
