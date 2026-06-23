@@ -488,6 +488,15 @@ def get_db() -> sqlite3.Connection:
             )
         """)
         conn.commit()
+    if "ai_stats_resets" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_stats_resets (
+                scope    TEXT PRIMARY KEY,
+                reset_at TEXT NOT NULL,
+                reset_by TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.commit()
     return conn
 
 
@@ -712,6 +721,11 @@ def init_db():
             success            INTEGER NOT NULL DEFAULT 0,
             created_at         TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS ai_stats_resets (
+            scope    TEXT PRIMARY KEY,
+            reset_at TEXT NOT NULL,
+            reset_by TEXT NOT NULL DEFAULT ''
+        );
 
         -- Indexes: speed up the most common queries as the library grows
         CREATE INDEX IF NOT EXISTS idx_recipes_created_date   ON recipes (created_date DESC);
@@ -731,6 +745,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_inventory_log_item_id  ON inventory_log (item_id);
         CREATE INDEX IF NOT EXISTS idx_ai_text_jobs_status    ON ai_text_jobs (status, dismissed, created_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events (created_at);
     """)
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -4063,8 +4078,101 @@ async def test_ai_settings(data: dict = Body(default={}), admin: dict = Depends(
 
 # ── Statistics ───────────────────────────────────────────────────────────────────
 
+AI_STATS_RANGES = {
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "all": None,
+}
+
+
+def _normalise_ai_stats_range(value: str) -> str:
+    value = (value or "all").lower()
+    if value in ("7days", "7_day", "7-day"):
+        value = "7d"
+    if value in ("30days", "30_day", "30-day"):
+        value = "30d"
+    return value if value in AI_STATS_RANGES else "all"
+
+
+def _ai_range_start(scope: str) -> str:
+    delta = AI_STATS_RANGES.get(scope)
+    return (datetime.utcnow() - delta).isoformat() if delta else ""
+
+
+def _effective_ai_stats_start(conn, scope: str) -> str:
+    starts = [_ai_range_start(scope)]
+    row = conn.execute(
+        "SELECT reset_at FROM ai_stats_resets WHERE scope=?",
+        (scope,)
+    ).fetchone()
+    if row and row["reset_at"]:
+        starts.append(row["reset_at"])
+    return max((start for start in starts if start), default="")
+
+
+def _ai_event_where(start_at: str, success_only: bool = False) -> tuple[str, tuple]:
+    clauses = []
+    params = []
+    if start_at:
+        clauses.append("created_at >= ?")
+        params.append(start_at)
+    if success_only:
+        clauses.append("success=1")
+    return (f" WHERE {' AND '.join(clauses)}" if clauses else "", tuple(params))
+
+
+def _ai_usage_stats(conn, scope: str = "all") -> dict:
+    scope = _normalise_ai_stats_range(scope)
+    start_at = _effective_ai_stats_start(conn, scope)
+
+    def scalar(sql: str, params: tuple = ()):
+        return conn.execute(sql, params).fetchone()["value"]
+
+    where, params = _ai_event_where(start_at)
+    success_where, success_params = _ai_event_where(start_at, success_only=True)
+    ai_total_jobs = scalar(f"SELECT COUNT(*) as value FROM ai_usage_events{where}", params)
+    ai_finished_jobs = scalar(f"SELECT COUNT(*) as value FROM ai_usage_events{success_where}", success_params)
+    ai_failed_jobs = scalar(f"SELECT COUNT(*) as value FROM ai_usage_events WHERE success=0{' AND created_at >= ?' if start_at else ''}", (start_at,) if start_at else ())
+    ai_prompt_tokens = scalar(f"SELECT COALESCE(SUM(prompt_tokens), 0) as value FROM ai_usage_events{where}", params)
+    ai_completion_tokens = scalar(f"SELECT COALESCE(SUM(completion_tokens), 0) as value FROM ai_usage_events{where}", params)
+    ai_total_tokens = scalar(f"SELECT COALESCE(SUM(total_tokens), 0) as value FROM ai_usage_events{where}", params)
+    ai_generated_chars = scalar(f"SELECT COALESCE(SUM(generated_chars), 0) as value FROM ai_usage_events{success_where}", success_params)
+    ai_generated_words = scalar(f"SELECT COALESCE(SUM(generated_words), 0) as value FROM ai_usage_events{success_where}", success_params)
+    ai_pages_processed = scalar(f"SELECT COALESCE(SUM(pages_sent), 0) as value FROM ai_usage_events{where}", params)
+    ai_avg_duration = scalar(f"SELECT COALESCE(AVG(duration_seconds), 0) as value FROM ai_usage_events{success_where}", success_params)
+    ai_model_row = conn.execute(f"""
+        SELECT provider, model, COUNT(*) as count
+        FROM ai_usage_events
+        {success_where}
+        {"AND" if success_where else "WHERE"} (provider!='' OR model!='')
+        GROUP BY provider, model
+        ORDER BY count DESC
+        LIMIT 1
+    """, success_params).fetchone()
+
+    return {
+        "range": scope,
+        "effective_start_at": start_at,
+        "total_jobs": ai_total_jobs,
+        "finished_jobs": ai_finished_jobs,
+        "failed_jobs": ai_failed_jobs,
+        "cancelled_jobs": 0,
+        "success_rate": round((ai_finished_jobs / ai_total_jobs) * 100) if ai_total_jobs else 0,
+        "prompt_tokens": ai_prompt_tokens,
+        "completion_tokens": ai_completion_tokens,
+        "total_tokens": ai_total_tokens,
+        "generated_chars": ai_generated_chars,
+        "generated_words": ai_generated_words,
+        "pages_processed": ai_pages_processed,
+        "avg_duration_seconds": round(float(ai_avg_duration), 1),
+        "top_provider": ai_model_row["provider"] if ai_model_row else "",
+        "top_model": ai_model_row["model"] if ai_model_row else "",
+    }
+
+
 @app.get("/api/stats")
-def get_stats(current_user: dict = Depends(get_current_user)):
+def get_stats(ai_range: str = "all", current_user: dict = Depends(get_current_user)):
     """Return high-level library statistics."""
     conn = get_db()
     def scalar(sql: str, params: tuple = ()):
@@ -4113,25 +4221,7 @@ def get_stats(current_user: dict = Depends(get_current_user)):
         GROUP BY COALESCE(NULLIF(category, ''), 'other')
     """).fetchall()
     tool_categories = {row["category"]: row["count"] for row in tool_category_rows}
-    ai_total_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs")
-    ai_finished_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='finished'")
-    ai_failed_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='failed'")
-    ai_cancelled_jobs = scalar("SELECT COUNT(*) as value FROM ai_text_jobs WHERE status='cancelled'")
-    ai_prompt_tokens = scalar("SELECT COALESCE(SUM(prompt_tokens), 0) as value FROM ai_usage_events")
-    ai_completion_tokens = scalar("SELECT COALESCE(SUM(completion_tokens), 0) as value FROM ai_usage_events")
-    ai_total_tokens = scalar("SELECT COALESCE(SUM(total_tokens), 0) as value FROM ai_usage_events")
-    ai_generated_chars = scalar("SELECT COALESCE(SUM(generated_chars), 0) as value FROM ai_usage_events WHERE success=1")
-    ai_generated_words = scalar("SELECT COALESCE(SUM(generated_words), 0) as value FROM ai_usage_events WHERE success=1")
-    ai_pages_processed = scalar("SELECT COALESCE(SUM(pages_sent), 0) as value FROM ai_usage_events")
-    ai_avg_duration = scalar("SELECT COALESCE(AVG(duration_seconds), 0) as value FROM ai_usage_events WHERE success=1")
-    ai_model_row = conn.execute("""
-        SELECT provider, model, COUNT(*) as count
-        FROM ai_usage_events
-        WHERE success=1 AND (provider!='' OR model!='')
-        GROUP BY provider, model
-        ORDER BY count DESC
-        LIMIT 1
-    """).fetchone()
+    ai = _ai_usage_stats(conn, ai_range)
     total_sessions = active + finished
     conn.close()
     return {
@@ -4163,23 +4253,24 @@ def get_stats(current_user: dict = Depends(get_current_user)):
             "notion": tool_categories.get("notion", 0),
             "other": tool_categories.get("other", 0),
         },
-        "ai": {
-            "total_jobs": ai_total_jobs,
-            "finished_jobs": ai_finished_jobs,
-            "failed_jobs": ai_failed_jobs,
-            "cancelled_jobs": ai_cancelled_jobs,
-            "success_rate": round((ai_finished_jobs / ai_total_jobs) * 100) if ai_total_jobs else 0,
-            "prompt_tokens": ai_prompt_tokens,
-            "completion_tokens": ai_completion_tokens,
-            "total_tokens": ai_total_tokens,
-            "generated_chars": ai_generated_chars,
-            "generated_words": ai_generated_words,
-            "pages_processed": ai_pages_processed,
-            "avg_duration_seconds": round(float(ai_avg_duration), 1),
-            "top_provider": ai_model_row["provider"] if ai_model_row else "",
-            "top_model": ai_model_row["model"] if ai_model_row else "",
-        },
+        "ai": ai,
     }
+
+
+@app.post("/api/stats/ai/reset")
+def reset_ai_stats(data: dict = Body(default={}), admin: dict = Depends(require_admin)):
+    scope = _normalise_ai_stats_range(data.get("range", "all"))
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO ai_stats_resets (scope, reset_at, reset_by)
+        VALUES (?, ?, ?)
+        ON CONFLICT(scope) DO UPDATE SET reset_at=excluded.reset_at, reset_by=excluded.reset_by
+    """, (scope, now, admin["username"]))
+    conn.commit()
+    ai = _ai_usage_stats(conn, scope)
+    conn.close()
+    return {"message": "AI stats reset", "range": scope, "reset_at": now, "ai": ai}
 
 
 # ── Admin: 2FA management ─────────────────────────────────────────────────────

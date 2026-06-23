@@ -16,13 +16,14 @@ import {
   FolderKanban,
   Package,
   Palette,
+  RotateCcw,
   Sparkles,
   Tags,
   Users,
   Wrench,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchStats } from '../utils/api';
+import { fetchStats, resetAIStats } from '../utils/api';
 import { getLanguageLocale } from '../utils/translations';
 import './StatisticsPage.css';
 
@@ -79,18 +80,26 @@ export default function StatisticsPage() {
   const { t, language, currencySymbol } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiRange, setAiRange] = useState('all');
+  const [aiResetting, setAiResetting] = useState(false);
   const locale = getLanguageLocale(language);
+  const aiRanges = useMemo(() => ([
+    { key: '24h', label: t('statsRange24h') || '24h' },
+    { key: '7d', label: t('statsRange7d') || '7 days' },
+    { key: '30d', label: t('statsRange30d') || '30 days' },
+    { key: 'all', label: t('statsRangeAll') || 'All time' },
+  ]), [t]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setStats(await fetchStats());
+      setStats(await fetchStats(aiRange));
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [aiRange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -128,6 +137,21 @@ export default function StatisticsPage() {
     if (total < 60) return `${total}s`;
     return `${Math.floor(total / 60)}m ${total % 60}s`;
   }, []);
+  const handleResetAIStats = useCallback(async () => {
+    const label = aiRanges.find(item => item.key === aiRange)?.label || aiRange;
+    const message = (t('statsResetAIConfirm') || 'Reset AI/OCR stats for {RANGE}?').replace('{RANGE}', label);
+    if (!window.confirm(message)) return;
+    setAiResetting(true);
+    try {
+      await resetAIStats(aiRange);
+      await load();
+    } catch (e) {
+      console.error('Failed to reset AI stats:', e);
+      window.alert(e.message || t('statsResetAIError') || 'Failed to reset AI stats');
+    } finally {
+      setAiResetting(false);
+    }
+  }, [aiRange, aiRanges, load, t]);
 
   return (
     <div className="stats-page">
@@ -236,7 +260,33 @@ export default function StatisticsPage() {
                   <span className="stats-panel-kicker">{t('statsAI')}</span>
                   <h2>{t('statsAITextGenerated')}</h2>
                 </div>
-                <Bot size={23} />
+                <div className="stats-ai-actions">
+                  <button
+                    className="stats-icon-btn"
+                    type="button"
+                    onClick={handleResetAIStats}
+                    disabled={aiResetting}
+                    title={t('statsResetAI')}
+                    aria-label={t('statsResetAI')}
+                  >
+                    <RotateCcw size={17} />
+                  </button>
+                  <Bot size={23} />
+                </div>
+              </div>
+              <div className="stats-range-tabs" role="tablist" aria-label={t('statsAIRange')}>
+                {aiRanges.map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={aiRange === item.key}
+                    className={aiRange === item.key ? 'active' : ''}
+                    onClick={() => setAiRange(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
               {(ai.total_jobs || 0) > 0 ? (
                 <>

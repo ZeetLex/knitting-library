@@ -9,6 +9,9 @@
   background-position: var(--app-background-position, center);
   background-repeat: var(--app-background-repeat, no-repeat);
   background-attachment: fixed;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
 }
 
 .app-shell--home {
@@ -28,6 +31,7 @@
     position: relative;
     isolation: isolate;
     background: transparent;
+    min-height: 100svh;
   }
 
   .app-shell::before {
@@ -47,6 +51,8 @@
 .app-content {
   min-height: 100dvh;
   padding-bottom: calc(var(--mobile-nav-gap) + 14px);
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
 }
 
 .app-shell--home .app-content {

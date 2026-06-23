@@ -801,10 +801,24 @@ export async function verify2FAChallenge(challengeToken, code) {
 }
 
 // ── Statistics ───────────────────────────────────────────────────────
-export async function fetchStats() {
-  const res = await fetch(`${API_BASE}/stats`, { headers: authHeaders() });
+export async function fetchStats(aiRange = 'all') {
+  const params = new URLSearchParams();
+  if (aiRange) params.set('ai_range', aiRange);
+  const query = params.toString();
+  const res = await fetch(`${API_BASE}/stats${query ? `?${query}` : ''}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load stats');
   return res.json();
+}
+
+export async function resetAIStats(range = 'all') {
+  const res = await fetch(`${API_BASE}/stats/ai/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ range }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reset AI stats');
+  return data;
 }
 
 // ── Bulk recipe actions ───────────────────────────────────────────────
