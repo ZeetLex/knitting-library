@@ -1673,6 +1673,11 @@ a.viewer-action-btn { text-decoration: none; }
     will-change: transform;
   }
 
+  .mobile-panel--info {
+    height: calc(100dvh - var(--app-mobile-nav-space, 0px) - max(8px, env(safe-area-inset-top, 0px)));
+    max-height: calc(100dvh - var(--app-mobile-nav-space, 0px) - max(8px, env(safe-area-inset-top, 0px)));
+  }
+
   .mobile-panel--open {
     transform: translateY(var(--panel-drag-y, 0px));
     opacity: 1;
@@ -1719,6 +1724,7 @@ a.viewer-action-btn { text-decoration: none; }
   /* ── Panel scrollable body ── */
   .mobile-panel-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0 16px 24px;
@@ -1834,10 +1840,23 @@ a.viewer-action-btn { text-decoration: none; }
 
   /* ── Info panel content spacing ── */
   .mobile-panel--info .mobile-panel-body {
-    padding: 8px 16px 28px;
+    padding: 8px 16px calc(28px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .mobile-panel--info .viewer-title {
+    margin-top: 0;
+  }
+
+  .mobile-panel--info .project-status {
+    flex: 0 0 auto;
+  }
+
+  .mobile-panel--info .ps-history {
+    max-height: none;
+    overflow: visible;
   }
 
   .mobile-quick-strip {

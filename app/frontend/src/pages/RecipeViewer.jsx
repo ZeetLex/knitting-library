@@ -658,6 +658,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               thumbCacheBust={thumbCacheBust}
               thumbSet={thumbSet}
               onUpdated={setRecipe}
+              showCover={false}
             />
           )}
         </div>
@@ -983,19 +984,21 @@ function MarkdownView({ content }) {
 }
 
 /* ─── Sidebar info content — shared between desktop sidebar and mobile Info panel ── */
-function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated }) {
+function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated, showCover = true }) {
   const { t, language } = useApp();
   return (
     <>
-      <div className="viewer-cover-wrap">
-        <img
-          key={thumbCacheBust || recipe.thumbnail_version || 'initial'}
-          className="viewer-cover-thumb"
-          src={thumbnailUrl(recipeId, thumbCacheBust || recipe.thumbnail_version)}
-          alt="Cover"
-        />
-        {thumbSet && <div className="viewer-cover-badge">✓ Cover updated!</div>}
-      </div>
+      {showCover && (
+        <div className="viewer-cover-wrap">
+          <img
+            key={thumbCacheBust || recipe.thumbnail_version || 'initial'}
+            className="viewer-cover-thumb"
+            src={thumbnailUrl(recipeId, thumbCacheBust || recipe.thumbnail_version)}
+            alt="Cover"
+          />
+          {thumbSet && <div className="viewer-cover-badge">✓ Cover updated!</div>}
+        </div>
+      )}
 
       <h1 className="viewer-title">{recipe.title}</h1>
       {recipe.description && <p className="viewer-description">{recipe.description}</p>}
