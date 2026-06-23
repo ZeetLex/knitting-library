@@ -114,6 +114,7 @@ AI_SETTING_KEYS = {
     "ai_custom_prompt",
     "ai_recognition_mode",
     "ocr_enabled",
+    "ocr_engine",
     "ocr_languages",
     "ocr_cleanup_enabled",
     "ocr_diagram_enabled",
@@ -454,6 +455,33 @@ def get_db() -> sqlite3.Connection:
             )
         """)
         conn.commit()
+    if "recipe_text_generation_audits" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_text_generation_audits (
+                recipe_id                 TEXT PRIMARY KEY,
+                job_id                    TEXT NOT NULL DEFAULT '',
+                workflow                  TEXT NOT NULL DEFAULT '',
+                engine                    TEXT NOT NULL DEFAULT '',
+                provider                  TEXT NOT NULL DEFAULT '',
+                model                     TEXT NOT NULL DEFAULT '',
+                steps_json                TEXT NOT NULL DEFAULT '[]',
+                warnings_json             TEXT NOT NULL DEFAULT '[]',
+                pages_processed           INTEGER NOT NULL DEFAULT 0,
+                ocr_chars                 INTEGER NOT NULL DEFAULT 0,
+                ocr_words                 INTEGER NOT NULL DEFAULT 0,
+                output_chars              INTEGER NOT NULL DEFAULT 0,
+                output_words              INTEGER NOT NULL DEFAULT 0,
+                provider_prompt_tokens    INTEGER,
+                provider_completion_tokens INTEGER,
+                provider_total_tokens     INTEGER,
+                estimated_input_tokens    INTEGER,
+                estimated_image_tokens    INTEGER,
+                duration_seconds          REAL,
+                token_report_note         TEXT NOT NULL DEFAULT '',
+                created_at                TEXT NOT NULL
+            )
+        """)
+        conn.commit()
     if "ai_text_jobs" not in tables:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_text_jobs (
@@ -693,6 +721,29 @@ def init_db():
             created_at         TEXT NOT NULL,
             updated_at         TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS recipe_text_generation_audits (
+            recipe_id                 TEXT PRIMARY KEY,
+            job_id                    TEXT NOT NULL DEFAULT '',
+            workflow                  TEXT NOT NULL DEFAULT '',
+            engine                    TEXT NOT NULL DEFAULT '',
+            provider                  TEXT NOT NULL DEFAULT '',
+            model                     TEXT NOT NULL DEFAULT '',
+            steps_json                TEXT NOT NULL DEFAULT '[]',
+            warnings_json             TEXT NOT NULL DEFAULT '[]',
+            pages_processed           INTEGER NOT NULL DEFAULT 0,
+            ocr_chars                 INTEGER NOT NULL DEFAULT 0,
+            ocr_words                 INTEGER NOT NULL DEFAULT 0,
+            output_chars              INTEGER NOT NULL DEFAULT 0,
+            output_words              INTEGER NOT NULL DEFAULT 0,
+            provider_prompt_tokens    INTEGER,
+            provider_completion_tokens INTEGER,
+            provider_total_tokens     INTEGER,
+            estimated_input_tokens    INTEGER,
+            estimated_image_tokens    INTEGER,
+            duration_seconds          REAL,
+            token_report_note         TEXT NOT NULL DEFAULT '',
+            created_at                TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS ai_text_jobs (
             id                    TEXT PRIMARY KEY,
             recipe_id             TEXT NOT NULL,
@@ -753,6 +804,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ai_text_jobs_status    ON ai_text_jobs (status, dismissed, created_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events (created_at);
+        CREATE INDEX IF NOT EXISTS idx_recipe_text_generation_audits_created ON recipe_text_generation_audits (created_at);
     """)
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -1410,15 +1462,39 @@ def _text_version_dict(row: Optional[sqlite3.Row], current_fingerprint: str = ""
             "content_markdown": "",
             "status": "empty",
             "is_outdated": False,
+            "generation_audit": None,
         }
     data = dict(row)
     data["exists"] = bool(data.get("content_markdown"))
     data["is_outdated"] = bool(current_fingerprint and data.get("source_fingerprint") and data.get("source_fingerprint") != current_fingerprint)
+    data["generation_audit"] = None
+    return data
+
+
+def _audit_dict(row: Optional[sqlite3.Row]) -> Optional[dict]:
+    if not row:
+        return None
+    data = dict(row)
+    for key in ("steps_json", "warnings_json"):
+        try:
+            data[key.replace("_json", "")] = json.loads(data.get(key) or "[]")
+        except json.JSONDecodeError:
+            data[key.replace("_json", "")] = []
+        data.pop(key, None)
+    for key in (
+        "pages_processed", "ocr_chars", "ocr_words", "output_chars", "output_words",
+        "provider_prompt_tokens", "provider_completion_tokens", "provider_total_tokens",
+        "estimated_input_tokens", "estimated_image_tokens",
+    ):
+        if data.get(key) is not None:
+            data[key] = int(data[key] or 0)
+    if data.get("duration_seconds") is not None:
+        data["duration_seconds"] = round(float(data["duration_seconds"]), 1)
     return data
 
 
 def _ai_settings(conn, reveal_secret: bool = False) -> dict:
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%' OR key LIKE 'ocr_%'").fetchall()
     cfg = {r["key"]: r["value"] for r in rows}
     defaults = {
         "ai_enabled": "false",
@@ -1432,6 +1508,7 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_custom_prompt": "",
         "ai_recognition_mode": "ocr_first",
         "ocr_enabled": "true",
+        "ocr_engine": "tesseract",
         "ocr_languages": "",
         "ocr_cleanup_enabled": "true",
         "ocr_diagram_enabled": "true",
@@ -1521,6 +1598,11 @@ def _ocr_languages_for(language: str, cfg: dict) -> str:
     return "nor+eng" if (language or "").lower().startswith("no") else "eng+nor"
 
 
+def _ocr_engine_for(cfg: dict) -> str:
+    engine = (cfg.get("ocr_engine") or "tesseract").strip().lower()
+    return engine if engine in {"tesseract", "paddleocr"} else "tesseract"
+
+
 def _is_truthy(value: str, default: bool = False) -> bool:
     if value is None or value == "":
         return default
@@ -1539,6 +1621,20 @@ def _ocr_preprocess_image(path: Path):
     img = img.filter(ImageFilter.SHARPEN)
     threshold = 185
     img = img.point(lambda p: 255 if p > threshold else 0, mode="1").convert("L")
+    return ImageOps.expand(img, border=24, fill=255)
+
+
+def _ocr_preprocess_grayscale(path: Path):
+    from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img).convert("L")
+    img = ImageOps.autocontrast(img)
+    img = ImageEnhance.Contrast(img).enhance(1.35)
+    if img.width < 1400:
+        scale = min(3, max(2, int(1600 / max(1, img.width))))
+        img = img.resize((img.width * scale, img.height * scale), Image.Resampling.LANCZOS)
+    img = img.filter(ImageFilter.SHARPEN)
     return ImageOps.expand(img, border=24, fill=255)
 
 
@@ -1708,7 +1804,7 @@ def _extract_chart_markdown(path: Path, languages: str) -> str:
         if columns < 2 or rows < 2:
             continue
         title = _ocr_chart_title(path, chart, languages) or f"Diagram {index}"
-        lines = [f"## {title}", "", f"Chart: {columns} columns x {rows} rows"]
+        lines = [f"## {title}", "", "```text", f"Chart: {columns} columns x {rows} rows"]
         detected_any = False
         for visual_row in range(rows):
             y_top, y_bottom = ys[visual_row], ys[visual_row + 1]
@@ -1736,6 +1832,7 @@ def _extract_chart_markdown(path: Path, languages: str) -> str:
                 lines.append(f"Row {row_number}: symbol at column {', '.join(hits)}")
         if not detected_any:
             lines.append("Symbols: none detected confidently")
+        lines.append("```")
         lines.append("")
         lines.append("_Diagram symbols are detected from the grid image and should be reviewed against the original._")
         blocks.append("\n".join(lines))
@@ -1748,27 +1845,69 @@ def _ocr_page_to_markdown(path: Path, languages: str, diagram_enabled: bool) -> 
         diagram_md = _extract_chart_markdown(path, languages)
         if diagram_md:
             parts.append(diagram_md)
-    img = _ocr_preprocess_image(path)
-    text = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=6))
-    if len(text) < 30:
-        sparse = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=11))
-        if len(sparse) > len(text):
-            text = sparse
+    candidates = []
+    for img in (_ocr_preprocess_grayscale(path), _ocr_preprocess_image(path)):
+        for psm in (6, 11):
+            try:
+                candidates.append(_cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=psm)))
+            except Exception:
+                continue
+    text = max(candidates, key=len, default="")
     if text:
         parts.append(text)
     return "\n\n".join(parts).strip()
 
 
-def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, int, str]:
+def _paddle_lang_for(language: str) -> str:
+    return "en"
+
+
+def _run_paddleocr_image(path: Path, language: str) -> str:
+    try:
+        from paddleocr import PaddleOCR  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"PaddleOCR is not installed: {e}")
+
+    try:
+        engine = PaddleOCR(use_angle_cls=True, lang=_paddle_lang_for(language), show_log=False)
+    except TypeError:
+        engine = PaddleOCR(use_angle_cls=True, lang=_paddle_lang_for(language))
+    result = engine.ocr(str(path), cls=True)
+    lines = []
+    for page in result or []:
+        for item in page or []:
+            try:
+                text = item[1][0]
+                confidence = float(item[1][1])
+            except Exception:
+                continue
+            if text and confidence >= 0.35:
+                lines.append(str(text).strip())
+    return _cleanup_ocr_markdown("\n".join(lines))
+
+
+def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, int, str, str]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
     languages = _ocr_languages_for(language, cfg)
     diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
+    engine = _ocr_engine_for(cfg)
     pages = []
     for idx, path in enumerate(paths, start=1):
-        page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+        page_text = ""
+        if engine == "paddleocr":
+            diagram_md = _extract_chart_markdown(path, languages) if diagram_enabled else ""
+            try:
+                ocr_text = _run_paddleocr_image(path, language)
+            except Exception:
+                engine = "tesseract"
+                page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+            else:
+                page_text = "\n\n".join(part for part in (diagram_md, ocr_text) if part).strip()
+        else:
+            page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
         if page_text:
             pages.append(f"<!-- Page {idx}: {path.name} -->\n\n{page_text}")
-    return "\n\n---\n\n".join(pages).strip(), len(paths), languages
+    return "\n\n---\n\n".join(pages).strip(), len(paths), languages, engine
 
 
 def _ocr_cleanup_prompt(language: str = "en") -> str:
@@ -1848,11 +1987,20 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
     mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
     ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
     prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
+    steps = ["load pages"]
+    warnings = []
+    image_paths: list[Path] = []
+    try:
+        image_paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+    except Exception:
+        image_paths = []
 
     if mode == "ai_vision_only":
         if not ai_ready:
             raise HTTPException(status_code=400, detail="AI base URL and model are required")
         content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        estimated_image_tokens = _estimate_image_tokens(image_paths)
+        warnings.append("Provider token totals may exclude or approximate image tokens.")
         return {
             "content": content,
             "usage": usage,
@@ -1860,6 +2008,14 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
             "provider": cfg.get("ai_provider", "openai_compatible"),
             "model": cfg.get("ai_model", "").strip(),
             "prompt": prompt,
+            "workflow": "AI vision only",
+            "engine": "ai_vision",
+            "steps": [*steps, "AI vision transcription"],
+            "warnings": warnings,
+            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
+            "estimated_image_tokens": estimated_image_tokens,
+            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
+            "ocr_text": "",
         }
 
     if not _is_truthy(cfg.get("ocr_enabled"), True):
@@ -1868,6 +2024,9 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
         if not ai_ready:
             raise HTTPException(status_code=400, detail="Local OCR is disabled and AI base URL/model are not configured")
         content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        estimated_image_tokens = _estimate_image_tokens(image_paths)
+        warnings.append("Local OCR was disabled; AI vision fallback used.")
+        warnings.append("Provider token totals may exclude or approximate image tokens.")
         return {
             "content": content,
             "usage": usage,
@@ -1875,13 +2034,30 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
             "provider": cfg.get("ai_provider", "openai_compatible"),
             "model": cfg.get("ai_model", "").strip(),
             "prompt": prompt,
+            "workflow": "AI vision fallback",
+            "engine": "ai_vision",
+            "steps": [*steps, "AI vision fallback"],
+            "warnings": warnings,
+            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
+            "estimated_image_tokens": estimated_image_tokens,
+            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
+            "ocr_text": "",
         }
 
     try:
-        content, pages_sent, ocr_languages = _collect_ocr_markdown(recipe_id, conn, max_pages, language, cfg)
-    except Exception:
+        requested_ocr_engine = _ocr_engine_for(cfg)
+        content, pages_sent, ocr_languages, ocr_engine = _collect_ocr_markdown(recipe_id, conn, max_pages, language, cfg)
+        if requested_ocr_engine == "paddleocr" and ocr_engine != "paddleocr":
+            warnings.append("PaddleOCR was requested but unavailable or failed; Tesseract fallback was used.")
+        steps.extend(["preprocess images", f"{ocr_engine} OCR"])
+        if _is_truthy(cfg.get("ocr_diagram_enabled"), True):
+            steps.append("diagram extraction")
+    except Exception as e:
         if mode == "ocr_first" and ai_ready:
             content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+            estimated_image_tokens = _estimate_image_tokens(image_paths)
+            warnings.append(f"Local OCR failed; AI vision fallback used: {e}")
+            warnings.append("Provider token totals may exclude or approximate image tokens.")
             return {
                 "content": content,
                 "usage": usage,
@@ -1889,11 +2065,22 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
                 "provider": cfg.get("ai_provider", "openai_compatible"),
                 "model": cfg.get("ai_model", "").strip(),
                 "prompt": prompt,
+                "workflow": "OCR first -> AI vision fallback",
+                "engine": "ai_vision",
+                "steps": [*steps, "OCR failed", "AI vision fallback"],
+                "warnings": warnings,
+                "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
+                "estimated_image_tokens": estimated_image_tokens,
+                "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
+                "ocr_text": "",
             }
         raise
 
     if not content and mode == "ocr_first" and ai_ready:
         content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        estimated_image_tokens = _estimate_image_tokens(image_paths)
+        warnings.append("Local OCR found no useful text; AI vision fallback used.")
+        warnings.append("Provider token totals may exclude or approximate image tokens.")
         return {
             "content": content,
             "usage": usage,
@@ -1901,23 +2088,38 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
             "provider": cfg.get("ai_provider", "openai_compatible"),
             "model": cfg.get("ai_model", "").strip(),
             "prompt": prompt,
+            "workflow": "OCR first -> AI vision fallback",
+            "engine": "ai_vision",
+            "steps": [*steps, "OCR empty", "AI vision fallback"],
+            "warnings": warnings,
+            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
+            "estimated_image_tokens": estimated_image_tokens,
+            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
+            "ocr_text": "",
         }
     if not content:
         content = "_No text was detected by local OCR. Review the original recipe images._"
+        warnings.append("Local OCR did not detect useful text.")
 
     usage = {}
     provider = "local_ocr"
-    model = f"tesseract:{ocr_languages}"
+    model = f"{ocr_engine}:{ocr_languages}"
+    ocr_text = content
+    estimated_input_tokens = _estimate_text_tokens(content)
+    token_report_note = "No AI provider tokens were used."
     if mode != "ocr_only" and _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
         try:
             cleaned, usage = await _call_ai_text_cleanup(cfg, content, language, timeout)
             if cleaned.strip():
                 content = cleaned
                 provider = "local_ocr+ai_cleanup"
-                model = f"tesseract:{ocr_languages}+{cfg.get('ai_model', '').strip()}"
-        except Exception:
+                model = f"{ocr_engine}:{ocr_languages}+{cfg.get('ai_model', '').strip()}"
+                steps.append("AI cleanup")
+                estimated_input_tokens = _estimate_text_tokens(ocr_text) + _estimate_text_tokens(_ocr_cleanup_prompt(language))
+                token_report_note = "Provider-reported token totals are from text cleanup only."
+        except Exception as e:
             # OCR output is still useful and far cheaper than failing the job.
-            pass
+            warnings.append(f"AI cleanup failed; raw OCR text was saved: {e}")
 
     return {
         "content": content,
@@ -1926,10 +2128,19 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
         "provider": provider,
         "model": model,
         "prompt": "ocr_first" if mode == "ocr_first" else "ocr_only",
+        "workflow": f"{ocr_engine} OCR" + (" -> AI cleanup" if provider.endswith("ai_cleanup") else ""),
+        "engine": ocr_engine,
+        "steps": steps,
+        "warnings": warnings,
+        "estimated_input_tokens": estimated_input_tokens,
+        "estimated_image_tokens": 0,
+        "token_report_note": token_report_note,
+        "ocr_text": ocr_text,
     }
 
 
 async def _generate_text_version(recipe_id: str, language: str, current_user: dict) -> dict:
+    start_ts = time.time()
     conn = get_db()
     cfg = _ai_settings(conn, reveal_secret=True)
     if cfg.get("ai_enabled", "false").lower() != "true":
@@ -1958,6 +2169,7 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
         if conn:
             conn.close()
     content = result["content"]
+    result["duration_seconds"] = time.time() - start_ts
 
     now = datetime.utcnow().isoformat()
     conn2 = get_db()
@@ -1968,9 +2180,13 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
         (recipe_id, content, "ready", language, result["prompt"], result["provider"], result["model"], fingerprint, current_user["username"], now, now)
     )
     conn2.commit()
+    _record_generation_audit(recipe_id, result)
     row = conn2.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
+    audit = conn2.execute("SELECT * FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,)).fetchone()
     conn2.close()
-    return _text_version_dict(row, fingerprint)
+    data = _text_version_dict(row, fingerprint)
+    data["generation_audit"] = _audit_dict(audit)
+    return data
 
 
 def _job_dict(row: sqlite3.Row) -> dict:
@@ -2044,6 +2260,94 @@ def _record_ai_usage(
     conn.close()
 
 
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\S+", text or ""))
+
+
+def _estimate_text_tokens(text: str) -> int:
+    return max(0, int((len(text or "") + 3) / 4))
+
+
+def _estimate_image_tokens(paths: list[Path]) -> int:
+    from PIL import Image
+
+    total = 0
+    for path in paths:
+        try:
+            with Image.open(path) as img:
+                width, height = img.size
+            tiles = max(1, ((width + 511) // 512) * ((height + 511) // 512))
+            total += 85 + tiles * 170
+        except Exception:
+            total += 765
+    return total
+
+
+def _record_generation_audit(recipe_id: str, audit: dict, job_id: str = "") -> None:
+    now = datetime.utcnow().isoformat()
+    usage = audit.get("usage") or {}
+    content = audit.get("content") or ""
+    ocr_text = audit.get("ocr_text") or ""
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO recipe_text_generation_audits (
+            recipe_id, job_id, workflow, engine, provider, model, steps_json, warnings_json,
+            pages_processed, ocr_chars, ocr_words, output_chars, output_words,
+            provider_prompt_tokens, provider_completion_tokens, provider_total_tokens,
+            estimated_input_tokens, estimated_image_tokens, duration_seconds, token_report_note, created_at
+        )
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(recipe_id) DO UPDATE SET
+            job_id=excluded.job_id,
+            workflow=excluded.workflow,
+            engine=excluded.engine,
+            provider=excluded.provider,
+            model=excluded.model,
+            steps_json=excluded.steps_json,
+            warnings_json=excluded.warnings_json,
+            pages_processed=excluded.pages_processed,
+            ocr_chars=excluded.ocr_chars,
+            ocr_words=excluded.ocr_words,
+            output_chars=excluded.output_chars,
+            output_words=excluded.output_words,
+            provider_prompt_tokens=excluded.provider_prompt_tokens,
+            provider_completion_tokens=excluded.provider_completion_tokens,
+            provider_total_tokens=excluded.provider_total_tokens,
+            estimated_input_tokens=excluded.estimated_input_tokens,
+            estimated_image_tokens=excluded.estimated_image_tokens,
+            duration_seconds=excluded.duration_seconds,
+            token_report_note=excluded.token_report_note,
+            created_at=excluded.created_at
+        """,
+        (
+            recipe_id,
+            job_id,
+            audit.get("workflow", ""),
+            audit.get("engine", ""),
+            audit.get("provider", ""),
+            audit.get("model", ""),
+            json.dumps(audit.get("steps") or [], ensure_ascii=False),
+            json.dumps(audit.get("warnings") or [], ensure_ascii=False),
+            int(audit.get("pages_sent") or audit.get("pages_processed") or 0),
+            len(ocr_text),
+            _word_count(ocr_text),
+            len(content),
+            _word_count(content),
+            usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+            usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            usage.get("total_tokens") if isinstance(usage, dict) else None,
+            audit.get("estimated_input_tokens"),
+            audit.get("estimated_image_tokens"),
+            audit.get("duration_seconds"),
+            audit.get("token_report_note", ""),
+            now,
+        )
+    )
+    conn.commit()
+    conn.close()
+
+
 async def _run_ai_text_job(job_id: str) -> None:
     conn = get_db()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
@@ -2089,6 +2393,7 @@ async def _run_ai_text_job(job_id: str) -> None:
         prompt = result["prompt"]
         _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="generating")
         duration = time.time() - start_ts
+        result["duration_seconds"] = duration
         _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
 
         if _ai_job_cancelled(job_id):
@@ -2106,6 +2411,7 @@ async def _run_ai_text_job(job_id: str) -> None:
         )
         conn2.commit()
         conn2.close()
+        _record_generation_audit(recipe_id, result, job_id=job_id)
         _update_ai_job(
             job_id,
             status="finished",
@@ -2515,6 +2821,7 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
     conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM annotations       WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipes           WHERE id=?",        (recipe_id,))
     _prune_orphan_categories(conn)
     conn.commit()
@@ -3028,8 +3335,11 @@ def get_recipe_text_version(recipe_id: str, current_user: dict = Depends(get_cur
         raise HTTPException(status_code=404, detail="Recipe not found")
     fingerprint = _source_fingerprint(recipe_id, conn)
     row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
+    audit = conn.execute("SELECT * FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,)).fetchone()
     conn.close()
-    return _text_version_dict(row, fingerprint)
+    data = _text_version_dict(row, fingerprint)
+    data["generation_audit"] = _audit_dict(audit)
+    return data
 
 
 @app.put("/api/recipes/{recipe_id}/text-version")
@@ -3048,6 +3358,7 @@ def save_recipe_text_version(recipe_id: str, data: dict = Body(...), current_use
         "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
         (recipe_id, content, "ready", language, "", "manual", "", fingerprint, current_user["username"], now, now)
     )
+    conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
     conn.commit()
     row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
     conn.close()

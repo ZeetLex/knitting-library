@@ -963,22 +963,78 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
       ) : (
         <MarkdownView content={textVersion.content_markdown} />
       )}
+      {hasText && !editing && <GenerationAuditBar audit={textVersion?.generation_audit} t={t} />}
     </div>
   );
 }
 
 function MarkdownView({ content }) {
   const lines = content.split(/\r?\n/);
+  const elements = [];
+  let code = null;
+  lines.forEach((line, i) => {
+    if (/^```/.test(line.trim())) {
+      if (code) {
+        elements.push(<pre key={`code-${i}`} className="markdown-code"><code>{code.lines.join('\n')}</code></pre>);
+        code = null;
+      } else {
+        code = { lines: [] };
+      }
+      return;
+    }
+    if (code) {
+      code.lines.push(line);
+      return;
+    }
+    if (/^<!--.*-->$/.test(line.trim())) return;
+    if (line.trim() === '---') { elements.push(<hr key={i} />); return; }
+    if (!line.trim()) { elements.push(<br key={i} />); return; }
+    if (line.startsWith('### ')) { elements.push(<h4 key={i}>{line.slice(4)}</h4>); return; }
+    if (line.startsWith('## ')) { elements.push(<h3 key={i}>{line.slice(3)}</h3>); return; }
+    if (line.startsWith('# ')) { elements.push(<h2 key={i}>{line.slice(2)}</h2>); return; }
+    if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>); return; }
+    if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{line.trim().slice(1, -1)}</p>); return; }
+    elements.push(<p key={i}>{line}</p>);
+  });
+  if (code) {
+    elements.push(<pre key="code-final" className="markdown-code"><code>{code.lines.join('\n')}</code></pre>);
+  }
   return (
     <div className="markdown-view">
-      {lines.map((line, i) => {
-        if (!line.trim()) return <br key={i} />;
-        if (line.startsWith('### ')) return <h4 key={i}>{line.slice(4)}</h4>;
-        if (line.startsWith('## ')) return <h3 key={i}>{line.slice(3)}</h3>;
-        if (line.startsWith('# ')) return <h2 key={i}>{line.slice(2)}</h2>;
-        if (/^[-*]\s+/.test(line)) return <p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>;
-        return <p key={i}>{line}</p>;
-      })}
+      {elements}
+    </div>
+  );
+}
+
+function formatAuditNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toLocaleString() : '0';
+}
+
+function formatAuditDuration(value) {
+  const seconds = Math.max(0, Math.round(Number(value) || 0));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function GenerationAuditBar({ audit, t }) {
+  if (!audit) return null;
+  const providerTokens = audit.provider_total_tokens ?? 0;
+  const estimated = audit.estimated_input_tokens ?? 0;
+  const warnings = audit.warnings || [];
+  return (
+    <div className="text-generation-audit">
+      <div className="tga-main">
+        <span><strong>{t('generationWorkflow') || 'Workflow'}:</strong> {audit.workflow || audit.model || 'Text generation'}</span>
+        <span>{t('aiPagesShort') || 'Pages'}: {formatAuditNumber(audit.pages_processed)}</span>
+        <span>{t('generationTime') || 'Time'}: {formatAuditDuration(audit.duration_seconds)}</span>
+        <span>{t('generationProviderTokens') || 'Provider tokens'}: {formatAuditNumber(providerTokens)}</span>
+        <span>{t('generationEstimatedInput') || 'Estimated input'}: {formatAuditNumber(estimated)}</span>
+        <span>{t('generationOutputWords') || 'Output words'}: {formatAuditNumber(audit.output_words)}</span>
+      </div>
+      {(audit.token_report_note || warnings.length > 0) && (
+        <p>{audit.token_report_note || warnings[0]}</p>
+      )}
     </div>
   );
 }

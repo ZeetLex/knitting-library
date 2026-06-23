@@ -1083,6 +1083,30 @@ a.viewer-action-btn { text-decoration: none; }
   color: var(--text-primary);
 }
 
+.markdown-view hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+
+.markdown-code {
+  margin: 10px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  overflow-x: auto;
+  color: var(--text-primary);
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+
+.markdown-note {
+  color: var(--text-secondary) !important;
+  font-size: 13px;
+  font-style: italic;
+}
+
 .markdown-bullet {
   position: relative;
   padding-left: 18px;
@@ -1099,12 +1123,45 @@ a.viewer-action-btn { text-decoration: none; }
   background: var(--terracotta);
 }
 
+.text-generation-audit {
+  position: sticky;
+  bottom: 0;
+  max-width: 860px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--card-bg) 94%, var(--bg-secondary));
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  z-index: 2;
+}
+
+.tga-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.tga-main strong {
+  color: var(--text-primary);
+}
+
+.text-generation-audit p {
+  margin: 6px 0 0;
+  color: var(--terracotta);
+  line-height: 1.35;
+}
+
 @media (max-width: 640px) {
   .text-version-panel { padding: 14px 12px 90px; }
   .text-version-header { flex-direction: column; }
   .text-version-actions { width: 100%; justify-content: stretch; }
   .text-version-actions > button { flex: 1 1 auto; }
   .markdown-view { padding: 14px; }
+  .text-generation-audit { margin-bottom: 4px; }
 }
 
 .form-pills {
