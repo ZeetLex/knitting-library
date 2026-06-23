@@ -97,14 +97,16 @@ Image recipes include editing tools for crop, rotate, reorder, cover selection, 
 
 Recipe pages can have a shared editable text version generated from scanned recipe images. Open a recipe, switch from **Original** to **Text version**, then create, edit, save, or regenerate the Markdown transcription.
 
-AI text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The app uses OpenAI-compatible chat completion endpoints, so it can work with:
+Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. By default the app runs local Tesseract OCR first with English and Norwegian language data, which avoids sending full page images to an AI model. For knitting diagrams, the app tries to extract reviewable grid text with chart dimensions and symbol coordinates; it does not guarantee full written knitting instructions from diagrams.
+
+AI is optional in the OCR-first flow. It can clean up OCR text, or you can switch to the legacy AI vision mode when local OCR is not good enough. The app uses OpenAI-compatible chat completion endpoints, so it can work with:
 
 - OpenAI GPT vision-capable models, for example `https://api.openai.com/v1` plus an API key
 - Ollama, for example `http://host.docker.internal:11434/v1`
 - LM Studio, for example `http://host.docker.internal:1234/v1`
 - Other OpenAI-compatible local or hosted providers
 
-Generated text is persistent for the whole server, not private per user. AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, and unclear page photos.
+Generated text is persistent for the whole server, not private per user. OCR and AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, unclear page photos, and diagram symbols.
 
 ### Annotations
 

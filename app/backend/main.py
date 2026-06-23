@@ -12,6 +12,8 @@ import re
 import shutil
 import smtplib
 import string
+import subprocess
+import tempfile
 import uuid
 import zipfile
 import hashlib
@@ -110,6 +112,11 @@ AI_SETTING_KEYS = {
     "ai_max_pages",
     "ai_prompt_mode",
     "ai_custom_prompt",
+    "ai_recognition_mode",
+    "ocr_enabled",
+    "ocr_languages",
+    "ocr_cleanup_enabled",
+    "ocr_diagram_enabled",
 }
 
 SESSION_COOKIE = "knitting_session"
@@ -1423,6 +1430,11 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_max_pages": "8",
         "ai_prompt_mode": "default",
         "ai_custom_prompt": "",
+        "ai_recognition_mode": "ocr_first",
+        "ocr_enabled": "true",
+        "ocr_languages": "",
+        "ocr_cleanup_enabled": "true",
+        "ocr_diagram_enabled": "true",
     }
     defaults.update(cfg)
     if defaults.get("ai_api_key") and not reveal_secret:
@@ -1464,7 +1476,7 @@ def _clean_ai_transcription(content: str) -> str:
     return content
 
 
-def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list[dict]:
+def _collect_recipe_image_paths(recipe_id: str, conn, max_pages: int) -> list[Path]:
     recipe = _get_recipe_full(recipe_id, conn)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -1480,6 +1492,11 @@ def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list
     paths = [p for p in paths if p.exists() and p.suffix.lower() in IMAGE_EXTS][:max(1, max_pages)]
     if not paths:
         raise HTTPException(status_code=400, detail="No recipe images available for text generation")
+    return paths
+
+
+def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list[dict]:
+    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
     payloads = []
     for path in paths:
         with open(path, "rb") as f:
@@ -1492,25 +1509,314 @@ def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list
     return payloads
 
 
-async def _generate_text_version(recipe_id: str, language: str, current_user: dict) -> dict:
-    conn = get_db()
-    cfg = _ai_settings(conn, reveal_secret=True)
-    if cfg.get("ai_enabled", "false").lower() != "true":
-        conn.close()
-        raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+def _normalise_recognition_mode(value: str) -> str:
+    value = (value or "ocr_first").strip().lower()
+    return value if value in {"ocr_first", "ocr_only", "ai_vision_only"} else "ocr_first"
+
+
+def _ocr_languages_for(language: str, cfg: dict) -> str:
+    configured = (cfg.get("ocr_languages") or "").strip()
+    if configured:
+        return re.sub(r"[^A-Za-z0-9_+.-]", "", configured) or "eng"
+    return "nor+eng" if (language or "").lower().startswith("no") else "eng+nor"
+
+
+def _is_truthy(value: str, default: bool = False) -> bool:
+    if value is None or value == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _ocr_preprocess_image(path: Path):
+    from PIL import Image, ImageOps, ImageFilter
+
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img).convert("L")
+    img = ImageOps.autocontrast(img)
+    if img.width < 1400:
+        scale = min(3, max(2, int(1600 / max(1, img.width))))
+        img = img.resize((img.width * scale, img.height * scale), Image.Resampling.LANCZOS)
+    img = img.filter(ImageFilter.SHARPEN)
+    threshold = 185
+    img = img.point(lambda p: 255 if p > threshold else 0, mode="1").convert("L")
+    return ImageOps.expand(img, border=24, fill=255)
+
+
+def _run_tesseract_image(img, languages: str, psm: int = 6, timeout: int = 120) -> str:
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        img.save(tmp_path)
+        cmd = ["tesseract", tmp_path, "stdout", "-l", languages, "--oem", "1", "--psm", str(psm)]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        if res.returncode != 0:
+            detail = (res.stderr or res.stdout or "tesseract failed").strip()
+            raise RuntimeError(detail[:500])
+        return res.stdout or ""
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
+    lines = []
+    for raw in (text or "").splitlines():
+        line = re.sub(r"[ \t]+", " ", raw).strip()
+        if not line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        # Keep OCR conservative: only strip repeated decoration, never rewrite knitting tokens.
+        line = re.sub(r"^[|:;,.·•\-\s]+$", "", line).strip()
+        if line:
+            lines.append(line)
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
+def _line_groups(active_indexes: list[int], max_gap: int = 2) -> list[tuple[int, int]]:
+    if not active_indexes:
+        return []
+    groups = []
+    start = prev = active_indexes[0]
+    for idx in active_indexes[1:]:
+        if idx - prev <= max_gap:
+            prev = idx
+            continue
+        groups.append((start, prev))
+        start = prev = idx
+    groups.append((start, prev))
+    return groups
+
+
+def _group_centres(groups: list[tuple[int, int]]) -> list[int]:
+    return [int(round((a + b) / 2)) for a, b in groups]
+
+
+def _detect_chart_regions(path: Path) -> list[dict]:
+    from PIL import Image, ImageOps
+
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img).convert("L")
+    small = img
+    max_dim = 1800
+    scale = 1.0
+    if max(img.size) > max_dim:
+        scale = max_dim / max(img.size)
+        small = img.resize((int(img.width * scale), int(img.height * scale)), Image.Resampling.BILINEAR)
+    bw = ImageOps.autocontrast(small).point(lambda p: 0 if p < 155 else 255, mode="L")
+    width, height = bw.size
+    pixels = bw.load()
+
+    full_col_counts = []
+    for x in range(width):
+        full_col_counts.append(sum(1 for y in range(height) if pixels[x, y] == 0))
+    active_full_cols = [i for i, count in enumerate(full_col_counts) if count >= max(60, int(height * 0.20))]
+    full_col_groups = _line_groups(active_full_cols, max_gap=3)
+    full_cols = _group_centres(full_col_groups)
+    if len(full_cols) < 4:
+        return []
+    x_scan1 = max(0, min(full_cols) - 8)
+    x_scan2 = min(width - 1, max(full_cols) + 8)
+
+    row_counts = []
+    for y in range(height):
+        row_counts.append(sum(1 for x in range(x_scan1, x_scan2 + 1) if pixels[x, y] == 0))
+    scan_width = max(1, x_scan2 - x_scan1 + 1)
+    active_rows = [i for i, count in enumerate(row_counts) if count >= max(24, int(scan_width * 0.32))]
+    row_groups = _line_groups(active_rows, max_gap=2)
+    row_centres = _group_centres(row_groups)
+
+    clusters: list[list[int]] = []
+    for y in row_centres:
+        if not clusters or y - clusters[-1][-1] > 45:
+            clusters.append([y])
+        else:
+            clusters[-1].append(y)
+
+    charts = []
+    for rows in clusters:
+        if len(rows) < 4:
+            continue
+        y1 = max(0, rows[0] - 6)
+        y2 = min(height - 1, rows[-1] + 6)
+        col_counts = []
+        for x in range(width):
+            col_counts.append(sum(1 for y in range(y1, y2 + 1) if pixels[x, y] == 0))
+        active_cols = [i for i, count in enumerate(col_counts) if count >= max(18, int((y2 - y1) * 0.42))]
+        col_groups = _line_groups(active_cols, max_gap=2)
+        cols = _group_centres(col_groups)
+        if len(cols) < 4:
+            continue
+        # Keep the densest ruled segment if labels/noise created extra vertical groups.
+        col_clusters: list[list[int]] = []
+        for x in cols:
+            if not col_clusters or x - col_clusters[-1][-1] > 55:
+                col_clusters.append([x])
+            else:
+                col_clusters[-1].append(x)
+        cols = max(col_clusters, key=len)
+        if len(cols) < 4:
+            continue
+        charts.append({
+            "x_lines": [int(round(x / scale)) for x in cols],
+            "y_lines": [int(round(y / scale)) for y in rows],
+        })
+    return charts
+
+
+def _ocr_chart_title(path: Path, chart: dict, languages: str) -> str:
+    from PIL import Image, ImageOps
+
+    try:
+        img = Image.open(path)
+        img = ImageOps.exif_transpose(img).convert("L")
+        x1 = max(0, min(chart["x_lines"]) - 15)
+        x2 = min(img.width, max(chart["x_lines"]) + 140)
+        y1 = max(0, min(chart["y_lines"]) - 95)
+        y2 = max(1, min(chart["y_lines"]) - 8)
+        if y2 <= y1:
+            return ""
+        crop = ImageOps.autocontrast(img.crop((x1, y1, x2, y2)))
+        crop = ImageOps.expand(crop, border=12, fill=255)
+        title = _run_tesseract_image(crop, languages, psm=7, timeout=45)
+        title = re.sub(r"\s+", " ", title).strip(" -:\n\t")
+        return title[:80]
+    except Exception:
+        return ""
+
+
+def _extract_chart_markdown(path: Path, languages: str) -> str:
+    from PIL import Image, ImageOps
+
+    charts = _detect_chart_regions(path)
+    if not charts:
+        return ""
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img).convert("L")
+    bw = ImageOps.autocontrast(img).point(lambda p: 0 if p < 150 else 255, mode="L")
+    pixels = bw.load()
+    blocks = []
+    for index, chart in enumerate(charts, start=1):
+        xs = chart["x_lines"]
+        ys = chart["y_lines"]
+        columns = max(0, len(xs) - 1)
+        rows = max(0, len(ys) - 1)
+        if columns < 2 or rows < 2:
+            continue
+        title = _ocr_chart_title(path, chart, languages) or f"Diagram {index}"
+        lines = [f"## {title}", "", f"Chart: {columns} columns x {rows} rows"]
+        detected_any = False
+        for visual_row in range(rows):
+            y_top, y_bottom = ys[visual_row], ys[visual_row + 1]
+            row_number = rows - visual_row
+            hits = []
+            for col in range(columns):
+                x_left, x_right = xs[col], xs[col + 1]
+                pad_x = max(2, int((x_right - x_left) * 0.22))
+                pad_y = max(2, int((y_bottom - y_top) * 0.22))
+                xa, xb = x_left + pad_x, x_right - pad_x
+                ya, yb = y_top + pad_y, y_bottom - pad_y
+                if xb <= xa or yb <= ya:
+                    continue
+                dark = 0
+                total = 0
+                for y in range(max(0, ya), min(img.height, yb)):
+                    for x in range(max(0, xa), min(img.width, xb)):
+                        total += 1
+                        if pixels[x, y] == 0:
+                            dark += 1
+                if total and dark / total > 0.055 and dark >= 3:
+                    hits.append(str(col + 1))
+            if hits:
+                detected_any = True
+                lines.append(f"Row {row_number}: symbol at column {', '.join(hits)}")
+        if not detected_any:
+            lines.append("Symbols: none detected confidently")
+        lines.append("")
+        lines.append("_Diagram symbols are detected from the grid image and should be reviewed against the original._")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks).strip()
+
+
+def _ocr_page_to_markdown(path: Path, languages: str, diagram_enabled: bool) -> str:
+    parts = []
+    if diagram_enabled:
+        diagram_md = _extract_chart_markdown(path, languages)
+        if diagram_md:
+            parts.append(diagram_md)
+    img = _ocr_preprocess_image(path)
+    text = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=6))
+    if len(text) < 30:
+        sparse = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=11))
+        if len(sparse) > len(text):
+            text = sparse
+    if text:
+        parts.append(text)
+    return "\n\n".join(parts).strip()
+
+
+def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, int, str]:
+    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+    languages = _ocr_languages_for(language, cfg)
+    diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
+    pages = []
+    for idx, path in enumerate(paths, start=1):
+        page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+        if page_text:
+            pages.append(f"<!-- Page {idx}: {path.name} -->\n\n{page_text}")
+    return "\n\n---\n\n".join(pages).strip(), len(paths), languages
+
+
+def _ocr_cleanup_prompt(language: str = "en") -> str:
+    if (language or "").lower().startswith("no"):
+        return (
+            "Rydd OCR-tekst fra en strikkeoppskrift til Markdown. Behold originalspråk, tall, forkortelser, "
+            "masker, pinner, parenteser og rad-/omgangstekst nøyaktig. Ikke finn på manglende tekst. "
+            "Behold diagramblokker og symbolkoordinater som fakta. Returner kun ferdig Markdown."
+        )
+    return (
+        "Clean OCR text from a knitting pattern into Markdown. Preserve the original language, numbers, "
+        "abbreviations, stitch counts, needles, parentheses, and row/round wording exactly. Do not invent "
+        "missing text. Preserve diagram blocks and symbol coordinates as factual extracted data. Return only Markdown."
+    )
+
+
+async def _call_ai_text_cleanup(cfg: dict, content: str, language: str, timeout: int) -> tuple[str, dict]:
     base_url = cfg.get("ai_base_url", "").rstrip("/")
     model = cfg.get("ai_model", "").strip()
     if not base_url or not model:
-        conn.close()
         raise HTTPException(status_code=400, detail="AI base URL and model are required")
-    timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
-    timeout = max(300, timeout)
-    max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+    messages = [{
+        "role": "user",
+        "content": f"{_ocr_cleanup_prompt(language)}\n\nOCR input:\n\n{content}",
+    }]
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.05,
+                "stream": False,
+                "max_tokens": 4096,
+            },
+        )
+        res.raise_for_status()
+        data = res.json()
+    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}
+
+
+async def _call_ai_vision_transcription(recipe_id: str, language: str, cfg: dict, conn, max_pages: int, timeout: int) -> tuple[str, dict, int, str]:
     prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
     image_payloads = _collect_recipe_image_payloads(recipe_id, conn, max_pages)
-    fingerprint = _source_fingerprint(recipe_id, conn)
-    conn.close()
-
     messages = [{
         "role": "user",
         "content": [
@@ -1521,30 +1827,137 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
     headers = {"Content-Type": "application/json"}
     if cfg.get("ai_api_key"):
         headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            f"{cfg.get('ai_base_url', '').rstrip('/')}/chat/completions",
+            headers=headers,
+            json={
+                "model": cfg.get("ai_model", "").strip(),
+                "messages": messages,
+                "temperature": 0.1,
+                "stream": False,
+                "max_tokens": 4096,
+            },
+        )
+        res.raise_for_status()
+        data = res.json()
+    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, len(image_payloads), prompt
+
+
+async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn, timeout: int, max_pages: int) -> dict:
+    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
+    ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
+    prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
+
+    if mode == "ai_vision_only":
+        if not ai_ready:
+            raise HTTPException(status_code=400, detail="AI base URL and model are required")
+        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        return {
+            "content": content,
+            "usage": usage,
+            "pages_sent": pages_sent,
+            "provider": cfg.get("ai_provider", "openai_compatible"),
+            "model": cfg.get("ai_model", "").strip(),
+            "prompt": prompt,
+        }
+
+    if not _is_truthy(cfg.get("ocr_enabled"), True):
+        if mode == "ocr_only":
+            raise HTTPException(status_code=400, detail="Local OCR is not enabled")
+        if not ai_ready:
+            raise HTTPException(status_code=400, detail="Local OCR is disabled and AI base URL/model are not configured")
+        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        return {
+            "content": content,
+            "usage": usage,
+            "pages_sent": pages_sent,
+            "provider": cfg.get("ai_provider", "openai_compatible"),
+            "model": cfg.get("ai_model", "").strip(),
+            "prompt": prompt,
+        }
+
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            res = await client.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,
-                    "stream": False,
-                    "max_tokens": 4096,
-                },
-            )
-            res.raise_for_status()
-            data = res.json()
+        content, pages_sent, ocr_languages = _collect_ocr_markdown(recipe_id, conn, max_pages, language, cfg)
+    except Exception:
+        if mode == "ocr_first" and ai_ready:
+            content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+            return {
+                "content": content,
+                "usage": usage,
+                "pages_sent": pages_sent,
+                "provider": cfg.get("ai_provider", "openai_compatible"),
+                "model": cfg.get("ai_model", "").strip(),
+                "prompt": prompt,
+            }
+        raise
+
+    if not content and mode == "ocr_first" and ai_ready:
+        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
+        return {
+            "content": content,
+            "usage": usage,
+            "pages_sent": pages_sent,
+            "provider": cfg.get("ai_provider", "openai_compatible"),
+            "model": cfg.get("ai_model", "").strip(),
+            "prompt": prompt,
+        }
+    if not content:
+        content = "_No text was detected by local OCR. Review the original recipe images._"
+
+    usage = {}
+    provider = "local_ocr"
+    model = f"tesseract:{ocr_languages}"
+    if mode != "ocr_only" and _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
+        try:
+            cleaned, usage = await _call_ai_text_cleanup(cfg, content, language, timeout)
+            if cleaned.strip():
+                content = cleaned
+                provider = "local_ocr+ai_cleanup"
+                model = f"tesseract:{ocr_languages}+{cfg.get('ai_model', '').strip()}"
+        except Exception:
+            # OCR output is still useful and far cheaper than failing the job.
+            pass
+
+    return {
+        "content": content,
+        "usage": usage,
+        "pages_sent": pages_sent,
+        "provider": provider,
+        "model": model,
+        "prompt": "ocr_first" if mode == "ocr_first" else "ocr_only",
+    }
+
+
+async def _generate_text_version(recipe_id: str, language: str, current_user: dict) -> dict:
+    conn = get_db()
+    cfg = _ai_settings(conn, reveal_secret=True)
+    if cfg.get("ai_enabled", "false").lower() != "true":
+        conn.close()
+        raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    model = cfg.get("ai_model", "").strip()
+    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
+    if mode == "ai_vision_only" and (not base_url or not model):
+        conn.close()
+        raise HTTPException(status_code=400, detail="AI base URL and model are required")
+    timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
+    timeout = max(300, timeout)
+    max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    try:
+        result = await _generate_text_content(recipe_id, language, cfg, conn, timeout, max_pages)
     except httpx.ReadTimeout:
+        conn.close()
         raise HTTPException(status_code=504, detail=f"AI request timed out after {timeout} seconds. Increase the timeout or use fewer pages/a faster model.")
     except httpx.HTTPError as e:
+        conn.close()
         detail = str(e) or e.__class__.__name__
         raise HTTPException(status_code=502, detail=f"AI request failed: {detail}")
-    try:
-        content = _clean_ai_transcription(data["choices"][0]["message"]["content"])
-    except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="AI response did not contain text")
+    finally:
+        if conn:
+            conn.close()
+    content = result["content"]
 
     now = datetime.utcnow().isoformat()
     conn2 = get_db()
@@ -1552,7 +1965,7 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
         "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
-        (recipe_id, content, "ready", language, prompt, cfg.get("ai_provider", "openai_compatible"), model, fingerprint, current_user["username"], now, now)
+        (recipe_id, content, "ready", language, result["prompt"], result["provider"], result["model"], fingerprint, current_user["username"], now, now)
     )
     conn2.commit()
     row = conn2.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
@@ -1652,48 +2065,29 @@ async def _run_ai_text_job(job_id: str) -> None:
         cfg = _ai_settings(conn, reveal_secret=True)
         if cfg.get("ai_enabled", "false").lower() != "true":
             raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+        mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
         base_url = cfg.get("ai_base_url", "").rstrip("/")
         model = cfg.get("ai_model", "").strip()
-        provider = cfg.get("ai_provider", "openai_compatible")
-        _update_ai_job(job_id, provider=provider, model=model)
-        if not base_url or not model:
+        provider = "local_ocr" if mode != "ai_vision_only" else cfg.get("ai_provider", "openai_compatible")
+        display_model = "tesseract" if mode != "ai_vision_only" else model
+        _update_ai_job(job_id, provider=provider, model=display_model)
+        if mode == "ai_vision_only" and (not base_url or not model):
             raise HTTPException(status_code=400, detail="AI base URL and model are required")
         timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
         timeout = max(300, timeout)
         max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
-        prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
-        image_payloads = _collect_recipe_image_payloads(recipe_id, conn, max_pages)
-        pages_sent = len(image_payloads)
         fingerprint = _source_fingerprint(recipe_id, conn)
-        conn.close()
-        _update_ai_job(job_id, pages_sent=pages_sent, progress_stage="generating")
-
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": f"{prompt}\n\nImportant: output only the finished Markdown transcription. Do not output reasoning, thoughts, or channel markers. If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"},
-                *image_payloads,
-            ],
-        }]
-        headers = {"Content-Type": "application/json"}
-        if cfg.get("ai_api_key"):
-            headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            res = await client.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,
-                    "stream": False,
-                    "max_tokens": 4096,
-                },
-            )
-            res.raise_for_status()
-            data = res.json()
-        content = _clean_ai_transcription(data["choices"][0]["message"]["content"])
-        usage = data.get("usage") or {}
+        try:
+            result = await _generate_text_content(recipe_id, language, cfg, conn, timeout, max_pages)
+        finally:
+            conn.close()
+        content = result["content"]
+        usage = result["usage"]
+        pages_sent = result["pages_sent"]
+        provider = result["provider"]
+        model = result["model"]
+        prompt = result["prompt"]
+        _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="generating")
         duration = time.time() - start_ts
         _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
 
@@ -2688,6 +3082,7 @@ async def create_recipe_text_job(
     job_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     cfg = _ai_settings(conn, reveal_secret=False)
+    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
     conn.execute(
         "INSERT INTO ai_text_jobs (id,recipe_id,recipe_title,status,progress_stage,language,provider,model,generated_by,created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -2698,8 +3093,8 @@ async def create_recipe_text_job(
             "queued",
             "queued",
             language,
-            cfg.get("ai_provider", "openai_compatible"),
-            cfg.get("ai_model", ""),
+            "local_ocr" if mode != "ai_vision_only" else cfg.get("ai_provider", "openai_compatible"),
+            "tesseract" if mode != "ai_vision_only" else cfg.get("ai_model", ""),
             current_user["username"],
             now,
         )

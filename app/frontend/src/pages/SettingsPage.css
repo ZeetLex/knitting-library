@@ -1571,6 +1571,29 @@
   gap: 12px;
 }
 
+.ai-checkbox-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.ai-checkbox-stack label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ai-checkbox-stack input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--terracotta);
+  flex-shrink: 0;
+}
+
 .ai-segmented {
   display: inline-flex;
   padding: 3px;

@@ -918,6 +918,11 @@ function AISection() {
     ai_max_pages: '8',
     ai_prompt_mode: 'default',
     ai_custom_prompt: '',
+    ai_recognition_mode: 'ocr_first',
+    ocr_enabled: 'true',
+    ocr_languages: '',
+    ocr_cleanup_enabled: 'true',
+    ocr_diagram_enabled: 'true',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1007,6 +1012,47 @@ function AISection() {
             onClick={() => f('ai_enabled', cfg.ai_enabled === 'true' ? 'false' : 'true')}>
             <span className="theme-toggle-knob" />
           </button>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('recognitionMode')}</h4>
+              <p>{t('recognitionModeSub')}</p>
+            </div>
+          </div>
+          <div className="ai-provider-grid">
+            {[
+              { id: 'ocr_first', title: t('recognitionOCRFirst'), description: t('recognitionOCRFirstSub') },
+              { id: 'ocr_only', title: t('recognitionOCROnly'), description: t('recognitionOCROnlySub') },
+              { id: 'ai_vision_only', title: t('recognitionAIVision'), description: t('recognitionAIVisionSub') },
+            ].map(mode => (
+              <button
+                key={mode.id}
+                type="button"
+                className={`ai-provider-card ${cfg.ai_recognition_mode === mode.id ? 'active' : ''}`}
+                onClick={() => f('ai_recognition_mode', mode.id)}
+              >
+                <span>{mode.title}</span>
+                <small>{mode.description}</small>
+              </button>
+            ))}
+          </div>
+          <div className="ai-number-grid">
+            <div className="form-field">
+              <label className="form-label">{t('ocrLanguages')}</label>
+              <input className="form-input" value={cfg.ocr_languages} onChange={e => f('ocr_languages', e.target.value)} placeholder={language === 'no' ? 'nor+eng' : 'eng+nor'} />
+              <p className="settings-row-sub ai-inline-help">{t('ocrLanguagesHint')}</p>
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('ocrOptions')}</label>
+              <div className="ai-checkbox-stack">
+                <label><input type="checkbox" checked={cfg.ocr_enabled === 'true'} onChange={e => f('ocr_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrEnableLocal')}</label>
+                <label><input type="checkbox" checked={cfg.ocr_cleanup_enabled === 'true'} onChange={e => f('ocr_cleanup_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrCleanup')}</label>
+                <label><input type="checkbox" checked={cfg.ocr_diagram_enabled === 'true'} onChange={e => f('ocr_diagram_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrDiagrams')}</label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="ai-settings-card">
