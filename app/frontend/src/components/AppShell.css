@@ -11,7 +11,7 @@
   background-attachment: fixed;
   overflow-x: hidden;
   overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
 
 .app-shell--home {

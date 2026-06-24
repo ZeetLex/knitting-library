@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
@@ -337,6 +337,30 @@ export default function AppShell({
   });
   const isHome = activeView === 'home';
 
+  const handleContentWheel = useCallback((event) => {
+    if (window.matchMedia('(max-width: 899px)').matches) return;
+    if (event.defaultPrevented || event.ctrlKey) return;
+
+    const direction = Math.sign(event.deltaY);
+    let node = event.target instanceof HTMLElement ? event.target : event.target?.parentElement;
+    while (node && node !== event.currentTarget) {
+      const style = window.getComputedStyle(node);
+      const canScrollY = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1;
+      if (canScrollY) {
+        const atTop = node.scrollTop <= 0;
+        const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+        if ((direction < 0 && !atTop) || (direction > 0 && !atBottom)) return;
+      }
+      node = node.parentElement;
+    }
+
+    const maxScroll = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight;
+    if (maxScroll <= 0) return;
+    const before = window.scrollY;
+    window.scrollBy({ top: event.deltaY, left: event.deltaX, behavior: 'auto' });
+    if (window.scrollY !== before) event.preventDefault();
+  }, []);
+
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
     window.addEventListener('knitting-open-app-menu', openMenu);
@@ -382,7 +406,7 @@ export default function AppShell({
         onCancelAI={onCancelAI}
         onDismissAI={onDismissAI}
       />
-      <main className="app-content">
+      <main className="app-content" onWheel={handleContentWheel}>
         {children}
       </main>
       <MobileNav

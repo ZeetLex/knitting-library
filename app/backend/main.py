@@ -1638,12 +1638,14 @@ def _ocr_preprocess_grayscale(path: Path):
     return ImageOps.expand(img, border=24, fill=255)
 
 
-def _run_tesseract_image(img, languages: str, psm: int = 6, timeout: int = 120) -> str:
+def _run_tesseract_image(img, languages: str, psm: int = 6, timeout: int = 120, config: Optional[list[str]] = None) -> str:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = tmp.name
     try:
         img.save(tmp_path)
         cmd = ["tesseract", tmp_path, "stdout", "-l", languages, "--oem", "1", "--psm", str(psm)]
+        if config:
+            cmd.extend(config)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         if res.returncode != 0:
             detail = (res.stderr or res.stdout or "tesseract failed").strip()
@@ -1656,6 +1658,98 @@ def _run_tesseract_image(img, languages: str, psm: int = 6, timeout: int = 120) 
             pass
 
 
+_OCR_KNITTING_TERMS = {
+    "arbeid", "arbeidet", "begynn", "diagram", "fell", "felling", "garn", "garnforbruk",
+    "garnforslag", "gjenta", "glattstrikk", "icord", "kant", "kantmaske", "kast", "legg",
+    "maske", "masker", "mkrets", "mnd", "nakken", "nyfødt", "omg", "omgang",
+    "omkrets", "oppleggskanten", "pinne", "pinnen", "plukk",
+    "prematur", "rett", "rettsiden", "rundt", "sammen", "sett", "size", "sizes",
+    "skein", "stitch", "stitches", "strikk", "strikkefasthet", "struktur", "størrelser",
+    "teknikker", "tråd", "veiledende", "vrang", "vrangsiden", "yarn",
+}
+
+
+_OCR_KNITTING_STEMS = (
+    "arbeid", "blokk", "bryt", "diagram", "fell", "fest", "forkort", "garn", "gjenta",
+    "glattstrikk", "icord", "kant", "legg", "mask", "mål", "mnd", "nakke", "nyfødt",
+    "omg", "omkrets", "opplegg", "pinn", "plukk", "prematur", "rett", "sammen",
+    "sett", "size", "skein", "snurp", "stitch", "strikk", "struktur", "størrelse",
+    "teknikk", "tråd", "vask", "veiled", "vrang", "yarn",
+)
+
+
+def _ocr_line_has_recipe_signal(line: str) -> bool:
+    text = (line or "").strip()
+    if not text:
+        return False
+    lower = text.lower()
+    words = re.findall(r"[A-Za-zÆØÅæøå]{1,}", lower)
+    if any(word in _OCR_KNITTING_TERMS for word in words):
+        return True
+    if any(any(word.startswith(stem) for stem in _OCR_KNITTING_STEMS) for word in words):
+        return True
+    if re.search(r"\d+\s*(?:cm|g|mnd|mm)\b", lower):
+        return True
+    if re.search(r"\b(?:r|vr|km|ssk|smn)\b", lower) and re.search(r"\d", lower):
+        return True
+    if re.search(r"\d+\s*(?:\([^)]+\)\s*){2,}\d+", lower):
+        return True
+    return False
+
+
+def _ocr_line_quality(line: str) -> float:
+    text = (line or "").strip()
+    if not text:
+        return 0.0
+    chars = [ch for ch in text if not ch.isspace()]
+    if not chars:
+        return 0.0
+    alpha = sum(1 for ch in chars if ch.isalpha())
+    digits = sum(1 for ch in chars if ch.isdigit())
+    symbols = sum(1 for ch in chars if not ch.isalnum() and ch not in ".,;:()/-+%")
+    words = re.findall(r"[A-Za-zÆØÅæøå]{2,}", text)
+    lower_words = {w.lower() for w in words}
+    term_hits = len(lower_words & _OCR_KNITTING_TERMS)
+    number_patterns = len(re.findall(r"\d+\s*(?:\([^)]+\)\s*)*\d*|\d+\s*(?:cm|g|mnd|mm)", text, re.I))
+    useful_punctuation = len(re.findall(r"[*(),.:/-]", text))
+    symbol_ratio = symbols / max(1, len(chars))
+    alpha_ratio = alpha / max(1, len(chars))
+    long_letter_runs = len(re.findall(r"[A-ZÆØÅ]{5,}", text))
+
+    short_words = sum(1 for word in words if len(word) <= 2)
+    short_word_ratio = short_words / max(1, len(words))
+    score = alpha * 0.14 + digits * 0.35 + len(words) * 1.1
+    score += term_hits * 10.0 + number_patterns * 4.0 + min(useful_punctuation, 8) * 0.5
+    if len(text) <= 2 and not digits:
+        score -= 8.0
+    if not _ocr_line_has_recipe_signal(text):
+        score -= 10.0
+    if symbol_ratio > 0.28 and term_hits == 0:
+        score -= 18.0 * symbol_ratio
+    if alpha_ratio < 0.35 and not _ocr_line_has_recipe_signal(text):
+        score -= 7.0
+    if long_letter_runs >= 2 and term_hits == 0:
+        score -= 6.0 * long_letter_runs
+    if short_word_ratio > 0.42 and term_hits == 0:
+        score -= 9.0
+    if len(words) >= 2 and term_hits == 0:
+        vowel_words = sum(1 for word in words if re.search(r"[aeiouyæøåAEIOUYÆØÅ]", word))
+        if vowel_words / max(1, len(words)) < 0.45:
+            score -= 10.0
+    return score
+
+
+def _ocr_candidate_score(text: str) -> float:
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return 0.0
+    line_scores = [_ocr_line_quality(line) for line in lines]
+    useful_lines = sum(1 for score in line_scores if score >= 4.0)
+    weak_lines = sum(1 for score in line_scores if score < 1.0)
+    words = re.findall(r"\S+", text)
+    return sum(line_scores) + useful_lines * 5.0 + len(words) * 0.35 - weak_lines * 2.5
+
+
 def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
     lines = []
     for raw in (text or "").splitlines():
@@ -1666,6 +1760,24 @@ def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
             continue
         # Keep OCR conservative: only strip repeated decoration, never rewrite knitting tokens.
         line = re.sub(r"^[|:;,.·•\-\s]+$", "", line).strip()
+        if line:
+            chars = [ch for ch in line if not ch.isspace()]
+            alnum = sum(1 for ch in chars if ch.isalnum())
+            symbols = sum(1 for ch in chars if not ch.isalnum() and ch not in ".,;:()/-+%*")
+            symbol_ratio = symbols / max(1, len(chars))
+            quality = _ocr_line_quality(line)
+            if len(line) <= 2 and not any(ch.isdigit() for ch in line):
+                continue
+            if symbol_ratio > 0.38 and quality < 5.0:
+                continue
+            if alnum <= 2 and quality < 4.0:
+                continue
+            if not _ocr_line_has_recipe_signal(line):
+                continue
+            if quality < 4.0:
+                continue
+            if quality < -4.0:
+                continue
         if line:
             lines.append(line)
     while lines and lines[-1] == "":
@@ -1846,16 +1958,58 @@ def _ocr_page_to_markdown(path: Path, languages: str, diagram_enabled: bool) -> 
         if diagram_md:
             parts.append(diagram_md)
     candidates = []
+    configs = [
+        ["-c", "preserve_interword_spaces=1"],
+        ["-c", "preserve_interword_spaces=1", "-c", "textord_heavy_nr=1"],
+    ]
     for img in (_ocr_preprocess_grayscale(path), _ocr_preprocess_image(path)):
-        for psm in (6, 11):
-            try:
-                candidates.append(_cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=psm)))
-            except Exception:
-                continue
-    text = max(candidates, key=len, default="")
-    if text:
+        for psm in (6, 4, 11):
+            for config in configs:
+                try:
+                    cleaned = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=psm, config=config))
+                except Exception:
+                    continue
+                if cleaned:
+                    candidates.append(cleaned)
+    text = max(candidates, key=_ocr_candidate_score, default="")
+    if text and _ocr_candidate_score(text) >= 6:
         parts.append(text)
     return "\n\n".join(parts).strip()
+
+
+def _collect_ocr_markdown_from_paths(
+    paths: list[Path],
+    language: str,
+    cfg: dict,
+    progress_job_id: str = "",
+) -> tuple[str, int, str, str]:
+    languages = _ocr_languages_for(language, cfg)
+    diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
+    engine = _ocr_engine_for(cfg)
+    pages = []
+    for idx, path in enumerate(paths, start=1):
+        if progress_job_id:
+            _update_ai_job(progress_job_id, pages_sent=idx - 1, progress_stage=f"ocr_page_{idx}")
+            if _ai_job_cancelled(progress_job_id):
+                break
+        page_text = ""
+        if engine == "paddleocr":
+            diagram_md = _extract_chart_markdown(path, languages) if diagram_enabled else ""
+            try:
+                ocr_text = _run_paddleocr_image(path, language)
+            except Exception:
+                engine = "tesseract"
+                page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+            else:
+                ocr_text = _cleanup_ocr_markdown(ocr_text)
+                page_text = "\n\n".join(part for part in (diagram_md, ocr_text) if part).strip()
+        else:
+            page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+        if page_text:
+            pages.append(f"<!-- Page {idx}: {path.name} -->\n\n{page_text}")
+        if progress_job_id:
+            _update_ai_job(progress_job_id, pages_sent=idx, progress_stage=f"ocr_page_{idx}")
+    return "\n\n---\n\n".join(pages).strip(), len(paths), languages, engine
 
 
 def _paddle_lang_for(language: str) -> str:
@@ -1888,26 +2042,7 @@ def _run_paddleocr_image(path: Path, language: str) -> str:
 
 def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, int, str, str]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-    languages = _ocr_languages_for(language, cfg)
-    diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
-    engine = _ocr_engine_for(cfg)
-    pages = []
-    for idx, path in enumerate(paths, start=1):
-        page_text = ""
-        if engine == "paddleocr":
-            diagram_md = _extract_chart_markdown(path, languages) if diagram_enabled else ""
-            try:
-                ocr_text = _run_paddleocr_image(path, language)
-            except Exception:
-                engine = "tesseract"
-                page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
-            else:
-                page_text = "\n\n".join(part for part in (diagram_md, ocr_text) if part).strip()
-        else:
-            page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
-        if page_text:
-            pages.append(f"<!-- Page {idx}: {path.name} -->\n\n{page_text}")
-    return "\n\n---\n\n".join(pages).strip(), len(paths), languages, engine
+    return _collect_ocr_markdown_from_paths(paths, language, cfg)
 
 
 def _ocr_cleanup_prompt(language: str = "en") -> str:
@@ -1983,7 +2118,7 @@ async def _call_ai_vision_transcription(recipe_id: str, language: str, cfg: dict
     return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, len(image_payloads), prompt
 
 
-async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn, timeout: int, max_pages: int) -> dict:
+async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn, timeout: int, max_pages: int, job_id: str = "") -> dict:
     mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
     ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
     prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
@@ -2046,7 +2181,17 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
 
     try:
         requested_ocr_engine = _ocr_engine_for(cfg)
-        content, pages_sent, ocr_languages, ocr_engine = _collect_ocr_markdown(recipe_id, conn, max_pages, language, cfg)
+        if not image_paths:
+            image_paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+        if job_id:
+            _update_ai_job(job_id, progress_stage="preprocess", pages_sent=0)
+        content, pages_sent, ocr_languages, ocr_engine = await asyncio.to_thread(
+            _collect_ocr_markdown_from_paths,
+            image_paths,
+            language,
+            cfg,
+            job_id,
+        )
         if requested_ocr_engine == "paddleocr" and ocr_engine != "paddleocr":
             warnings.append("PaddleOCR was requested but unavailable or failed; Tesseract fallback was used.")
         steps.extend(["preprocess images", f"{ocr_engine} OCR"])
@@ -2382,7 +2527,7 @@ async def _run_ai_text_job(job_id: str) -> None:
         max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
         fingerprint = _source_fingerprint(recipe_id, conn)
         try:
-            result = await _generate_text_content(recipe_id, language, cfg, conn, timeout, max_pages)
+            result = await _generate_text_content(recipe_id, language, cfg, conn, timeout, max_pages, job_id=job_id)
         finally:
             conn.close()
         content = result["content"]
