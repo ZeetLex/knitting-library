@@ -19,6 +19,7 @@ import zipfile
 import hashlib
 import secrets
 import base64
+from difflib import SequenceMatcher
 from email.mime.text import MIMEText
 import ipaddress
 import socket
@@ -1658,6 +1659,18 @@ def _run_tesseract_image(img, languages: str, psm: int = 6, timeout: int = 120, 
             pass
 
 
+def _run_tesseract_tsv_image(img, languages: str, psm: int = 6, timeout: int = 120, config: Optional[list[str]] = None) -> list[dict]:
+    text = _run_tesseract_image(img, languages, psm=psm, timeout=timeout, config=[*(config or []), "tsv"])
+    fields = ["level", "page_num", "block_num", "par_num", "line_num", "word_num", "left", "top", "width", "height", "conf", "text"]
+    rows = []
+    for raw in (text or "").splitlines()[1:]:
+        parts = raw.split("\t", 11)
+        if len(parts) != len(fields):
+            continue
+        rows.append(dict(zip(fields, parts)))
+    return rows
+
+
 _OCR_KNITTING_TERMS = {
     "arbeid", "arbeidet", "begynn", "diagram", "fell", "felling", "garn", "garnforbruk",
     "garnforslag", "gjenta", "glattstrikk", "icord", "kant", "kantmaske", "kast", "legg",
@@ -1748,6 +1761,183 @@ def _ocr_candidate_score(text: str) -> float:
     weak_lines = sum(1 for score in line_scores if score < 1.0)
     words = re.findall(r"\S+", text)
     return sum(line_scores) + useful_lines * 5.0 + len(words) * 0.35 - weak_lines * 2.5
+
+
+def _ocr_int(value, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def _ocr_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _ocr_words_to_lines(rows: list[dict], source: str, image_size: tuple[int, int]) -> list[dict]:
+    grouped: dict[tuple[int, int, int, int], list[dict]] = defaultdict(list)
+    for row in rows:
+        text = re.sub(r"\s+", " ", str(row.get("text") or "")).strip()
+        conf = _ocr_float(row.get("conf"), -1.0)
+        if not text or conf < 0:
+            continue
+        key = (
+            _ocr_int(row.get("page_num"), 1),
+            _ocr_int(row.get("block_num"), 0),
+            _ocr_int(row.get("par_num"), 0),
+            _ocr_int(row.get("line_num"), 0),
+        )
+        grouped[key].append({
+            "text": text,
+            "conf": conf,
+            "left": _ocr_int(row.get("left")),
+            "top": _ocr_int(row.get("top")),
+            "width": _ocr_int(row.get("width")),
+            "height": _ocr_int(row.get("height")),
+            "word_num": _ocr_int(row.get("word_num")),
+        })
+
+    lines = []
+    image_width, image_height = image_size
+    for key, words in grouped.items():
+        words.sort(key=lambda item: (item["word_num"], item["left"]))
+        text = " ".join(word["text"] for word in words).strip()
+        if not text:
+            continue
+        left = min(word["left"] for word in words)
+        top = min(word["top"] for word in words)
+        right = max(word["left"] + word["width"] for word in words)
+        bottom = max(word["top"] + word["height"] for word in words)
+        weighted = sum(word["conf"] * max(1, len(word["text"])) for word in words)
+        weight = sum(max(1, len(word["text"])) for word in words)
+        conf = weighted / max(1, weight)
+        quality = _ocr_line_quality(text)
+        width_ratio = (right - left) / max(1, image_width)
+        height_ratio = (bottom - top) / max(1, image_height)
+        lines.append({
+            "key": key,
+            "source": source,
+            "text": text,
+            "conf": conf,
+            "quality": quality,
+            "score": quality + max(0.0, conf - 45.0) * 0.35,
+            "bbox": (left, top, right, bottom),
+            "width_ratio": width_ratio,
+            "height_ratio": height_ratio,
+        })
+    lines.sort(key=lambda item: (item["bbox"][1], item["bbox"][0], item["key"]))
+    return lines
+
+
+def _ocr_text_fingerprint(text: str) -> str:
+    return re.sub(r"[^0-9a-zæøå]+", "", (text or "").lower())
+
+
+def _ocr_lines_similar(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    shorter, longer = sorted((a, b), key=len)
+    if len(shorter) < 12:
+        return a == b
+    if shorter in longer and len(shorter) / max(1, len(longer)) >= 0.58:
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= 0.82
+
+
+def _dedupe_ocr_lines(lines: list[dict]) -> list[dict]:
+    best: dict[str, dict] = {}
+    order = []
+    for line in lines:
+        key = _ocr_text_fingerprint(line.get("text", ""))
+        if len(key) < 4:
+            continue
+        matched_key = next((existing for existing in order if _ocr_lines_similar(key, existing)), None)
+        if matched_key is None:
+            order.append(key)
+            best[key] = line
+            continue
+        if line.get("score", 0) > best[matched_key].get("score", 0):
+            best[matched_key] = line
+    return [best[key] for key in order]
+
+
+def _ocr_line_bucket(line: dict, page_height: int) -> str:
+    text = line.get("text", "")
+    conf = float(line.get("conf", 0.0))
+    quality = float(line.get("quality", 0.0))
+    top = line.get("bbox", (0, 0, 0, 0))[1]
+    lower = text.lower()
+    has_signal = _ocr_line_has_recipe_signal(text)
+    words = re.findall(r"[A-Za-zÆØÅæøå]{2,}", text)
+    chars = [ch for ch in text if not ch.isspace()]
+    symbols = sum(1 for ch in chars if not ch.isalnum() and ch not in ".,;:()/-+%*")
+    symbol_ratio = symbols / max(1, len(chars))
+
+    if re.search(r"\bdiagram\b", lower):
+        return "diagram"
+    if conf < 35 or quality < 3:
+        return "uncertain" if has_signal else "rejected"
+    if symbol_ratio > 0.34 and not has_signal:
+        return "rejected"
+    if not has_signal and conf < 70:
+        return "uncertain" if len(words) >= 3 else "rejected"
+    if top < page_height * 0.14 and (conf >= 55 or has_signal):
+        return "header"
+    if re.search(r"\d+\s*(?:\([^)]+\)\s*){1,}\d+|\d+\s*(?:cm|g|mnd|mm)\b", lower):
+        return "counts"
+    return "body" if has_signal or conf >= 74 else "uncertain"
+
+
+def _format_ocr_evidence_page(page_no: int, path: Path, buckets: dict[str, list[dict]], metrics: dict, diagram_md: str = "") -> str:
+    sections = [
+        f"## OCR evidence page {page_no}: {path.name}",
+        f"Quality: avg_conf={metrics.get('avg_conf', 0):.1f}, accepted_lines={metrics.get('accepted_lines', 0)}, uncertain_lines={metrics.get('uncertain_lines', 0)}, rejected_lines={metrics.get('rejected_lines', 0)}",
+    ]
+    if diagram_md:
+        sections.extend(["", "### Diagram evidence", diagram_md])
+    labels = [
+        ("header", "Header/title candidates"),
+        ("counts", "Sizes/counts/material lines"),
+        ("body", "Instruction/body lines"),
+        ("diagram", "Diagram/legend text"),
+        ("uncertain", "Low-confidence but possibly useful lines"),
+    ]
+    for key, title in labels:
+        lines = buckets.get(key) or []
+        if not lines:
+            continue
+        sections.extend(["", f"### {title}"])
+        for line in lines[:80]:
+            bbox = line.get("bbox", (0, 0, 0, 0))
+            sections.append(f"- conf {line.get('conf', 0):.0f}, y {bbox[1]}: {line.get('text', '')}")
+    rejected = buckets.get("rejected") or []
+    if rejected:
+        samples = "; ".join(line.get("text", "")[:70] for line in rejected[:8])
+        sections.extend(["", f"Rejected noise summary: {len(rejected)} lines hidden. Samples: {samples}"])
+    return "\n".join(sections).strip()
+
+
+def _format_ocr_final_text(page_no: int, path: Path, buckets: dict[str, list[dict]], diagram_md: str = "") -> str:
+    lines = [f"<!-- Page {page_no}: {path.name} -->"]
+    ordered = []
+    for key in ("header", "counts", "body", "diagram"):
+        ordered.extend(buckets.get(key) or [])
+    ordered.sort(key=lambda item: (item["bbox"][1], item["bbox"][0]))
+    last_y = None
+    for line in ordered:
+        y = line["bbox"][1]
+        if last_y is not None and y - last_y > 52 and lines[-1] != "":
+            lines.append("")
+        lines.append(line["text"])
+        last_y = y
+    if diagram_md:
+        if lines[-1] != "":
+            lines.append("")
+        lines.append(diagram_md)
+    return "\n".join(lines).strip()
 
 
 def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
@@ -1951,30 +2141,81 @@ def _extract_chart_markdown(path: Path, languages: str) -> str:
     return "\n\n".join(blocks).strip()
 
 
-def _ocr_page_to_markdown(path: Path, languages: str, diagram_enabled: bool) -> str:
-    parts = []
+def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_no: int) -> dict:
     if diagram_enabled:
         diagram_md = _extract_chart_markdown(path, languages)
-        if diagram_md:
-            parts.append(diagram_md)
-    candidates = []
+    else:
+        diagram_md = ""
+    line_candidates = []
     configs = [
         ["-c", "preserve_interword_spaces=1"],
         ["-c", "preserve_interword_spaces=1", "-c", "textord_heavy_nr=1"],
     ]
-    for img in (_ocr_preprocess_grayscale(path), _ocr_preprocess_image(path)):
+    images = [
+        ("gray", _ocr_preprocess_grayscale(path)),
+        ("binary", _ocr_preprocess_image(path)),
+    ]
+    for image_label, img in images:
         for psm in (6, 4, 11):
             for config in configs:
                 try:
-                    cleaned = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=psm, config=config))
+                    rows = _run_tesseract_tsv_image(img, languages, psm=psm, config=config)
+                    lines = _ocr_words_to_lines(rows, f"{image_label}/psm{psm}", img.size)
+                    if lines:
+                        line_candidates.extend(lines)
+                except Exception:
+                    continue
+
+    deduped = _dedupe_ocr_lines(line_candidates)
+    if not deduped:
+        text_candidates = []
+        for _, img in images[:1]:
+            for psm in (6, 4):
+                try:
+                    cleaned = _cleanup_ocr_markdown(_run_tesseract_image(img, languages, psm=psm, config=configs[0]))
                 except Exception:
                     continue
                 if cleaned:
-                    candidates.append(cleaned)
-    text = max(candidates, key=_ocr_candidate_score, default="")
-    if text and _ocr_candidate_score(text) >= 6:
-        parts.append(text)
-    return "\n\n".join(parts).strip()
+                    text_candidates.append(cleaned)
+        text = max(text_candidates, key=_ocr_candidate_score, default="")
+        text = text if _ocr_candidate_score(text) >= 6 else ""
+        return {
+            "text": "\n\n".join(part for part in (f"<!-- Page {page_no}: {path.name} -->\n\n{text}" if text else "", diagram_md) if part).strip(),
+            "evidence": f"## OCR evidence page {page_no}: {path.name}\n\n{text or '[no usable OCR lines]'}".strip(),
+            "warnings": [f"Page {page_no}: Tesseract returned no structured TSV lines."],
+            "metrics": {"avg_conf": 0.0, "accepted_lines": 0, "uncertain_lines": 0, "rejected_lines": 0},
+        }
+
+    page_height = max(img.height for _, img in images)
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for line in deduped:
+        buckets[_ocr_line_bucket(line, page_height)].append(line)
+    for key in list(buckets.keys()):
+        buckets[key].sort(key=lambda item: (item["bbox"][1], item["bbox"][0], -item.get("score", 0)))
+
+    accepted = [line for key in ("header", "counts", "body", "diagram") for line in buckets.get(key, [])]
+    avg_conf = sum(float(line.get("conf", 0.0)) for line in accepted) / max(1, len(accepted))
+    metrics = {
+        "avg_conf": avg_conf,
+        "accepted_lines": len(accepted),
+        "uncertain_lines": len(buckets.get("uncertain") or []),
+        "rejected_lines": len(buckets.get("rejected") or []),
+    }
+    warnings = []
+    if accepted and avg_conf < 55:
+        warnings.append(f"Page {page_no}: OCR confidence is low; review against the original image.")
+    if len(buckets.get("rejected") or []) > max(8, len(accepted)):
+        warnings.append(f"Page {page_no}: decorative or diagram noise was heavily filtered.")
+    if not accepted and buckets.get("uncertain"):
+        warnings.append(f"Page {page_no}: only low-confidence OCR lines were found.")
+
+    text = _format_ocr_final_text(page_no, path, buckets, diagram_md=diagram_md)
+    evidence = _format_ocr_evidence_page(page_no, path, buckets, metrics, diagram_md=diagram_md)
+    return {"text": text, "evidence": evidence, "warnings": warnings, "metrics": metrics}
+
+
+def _ocr_page_to_markdown(path: Path, languages: str, diagram_enabled: bool) -> str:
+    return _ocr_page_to_result(path, languages, diagram_enabled, 1).get("text", "")
 
 
 def _collect_ocr_markdown_from_paths(
@@ -1982,11 +2223,13 @@ def _collect_ocr_markdown_from_paths(
     language: str,
     cfg: dict,
     progress_job_id: str = "",
-) -> tuple[str, int, str, str]:
+) -> tuple[str, str, int, str, str, list[str]]:
     languages = _ocr_languages_for(language, cfg)
     diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
     engine = _ocr_engine_for(cfg)
     pages = []
+    evidence_pages = []
+    warnings = []
     for idx, path in enumerate(paths, start=1):
         if progress_job_id:
             _update_ai_job(progress_job_id, pages_sent=idx - 1, progress_stage=f"ocr_page_{idx}")
@@ -1999,17 +2242,24 @@ def _collect_ocr_markdown_from_paths(
                 ocr_text = _run_paddleocr_image(path, language)
             except Exception:
                 engine = "tesseract"
-                page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+                page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx)
+                page_text = page_result.get("text", "")
+                evidence_pages.append(page_result.get("evidence", ""))
+                warnings.extend(page_result.get("warnings", []))
             else:
                 ocr_text = _cleanup_ocr_markdown(ocr_text)
-                page_text = "\n\n".join(part for part in (diagram_md, ocr_text) if part).strip()
+                page_text = "\n\n".join(part for part in (f"<!-- Page {idx}: {path.name} -->", diagram_md, ocr_text) if part).strip()
+                evidence_pages.append(f"## OCR evidence page {idx}: {path.name}\n\nEngine: PaddleOCR\n\n{page_text}".strip())
         else:
-            page_text = _ocr_page_to_markdown(path, languages, diagram_enabled)
+            page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx)
+            page_text = page_result.get("text", "")
+            evidence_pages.append(page_result.get("evidence", ""))
+            warnings.extend(page_result.get("warnings", []))
         if page_text:
-            pages.append(f"<!-- Page {idx}: {path.name} -->\n\n{page_text}")
+            pages.append(page_text)
         if progress_job_id:
             _update_ai_job(progress_job_id, pages_sent=idx, progress_stage=f"ocr_page_{idx}")
-    return "\n\n---\n\n".join(pages).strip(), len(paths), languages, engine
+    return "\n\n---\n\n".join(pages).strip(), "\n\n---\n\n".join(part for part in evidence_pages if part).strip(), len(paths), languages, engine, warnings
 
 
 def _paddle_lang_for(language: str) -> str:
@@ -2040,7 +2290,7 @@ def _run_paddleocr_image(path: Path, language: str) -> str:
     return _cleanup_ocr_markdown("\n".join(lines))
 
 
-def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, int, str, str]:
+def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, str, int, str, str, list[str]]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
     return _collect_ocr_markdown_from_paths(paths, language, cfg)
 
@@ -2048,14 +2298,19 @@ def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, c
 def _ocr_cleanup_prompt(language: str = "en") -> str:
     if (language or "").lower().startswith("no"):
         return (
-            "Rydd OCR-tekst fra en strikkeoppskrift til Markdown. Behold originalspråk, tall, forkortelser, "
-            "masker, pinner, parenteser og rad-/omgangstekst nøyaktig. Ikke finn på manglende tekst. "
-            "Behold diagramblokker og symbolkoordinater som fakta. Returner kun ferdig Markdown."
+            "Du får strukturert OCR-bevis fra en strikkeoppskrift. Lag ferdig Markdown-oppskrift fra beviset. "
+            "Bruk hovedsakelig linjer under Header/title, Sizes/counts/material og Instruction/body. "
+            "Lav-konfidenslinjer kan brukes bare når de tydelig passer med konteksten. Ignorer rejected/noise. "
+            "Behold originalspråk, tall, forkortelser, masker, pinner, parenteser og rad-/omgangstekst nøyaktig. "
+            "Ikke finn på manglende tekst; skriv [uklart] for uleselige små deler. Behold diagramblokker som faktadata. "
+            "Returner kun ferdig Markdown. /no_think"
         )
     return (
-        "Clean OCR text from a knitting pattern into Markdown. Preserve the original language, numbers, "
-        "abbreviations, stitch counts, needles, parentheses, and row/round wording exactly. Do not invent "
-        "missing text. Preserve diagram blocks and symbol coordinates as factual extracted data. Return only Markdown."
+        "You receive structured OCR evidence from a knitting pattern. Reconstruct the finished Markdown pattern from it. "
+        "Prefer lines under Header/title, Sizes/counts/material, and Instruction/body. Use low-confidence lines only when "
+        "they clearly fit the surrounding context. Ignore rejected/noise summaries. Preserve the original language, numbers, "
+        "abbreviations, stitch counts, needles, parentheses, and row/round wording exactly. Do not invent missing text; use "
+        "[unclear] for small unreadable fragments. Preserve diagram blocks as factual extracted data. Return only Markdown. /no_think"
     )
 
 
@@ -2185,16 +2440,17 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
             image_paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
         if job_id:
             _update_ai_job(job_id, progress_stage="preprocess", pages_sent=0)
-        content, pages_sent, ocr_languages, ocr_engine = await asyncio.to_thread(
+        content, ocr_evidence, pages_sent, ocr_languages, ocr_engine, ocr_warnings = await asyncio.to_thread(
             _collect_ocr_markdown_from_paths,
             image_paths,
             language,
             cfg,
             job_id,
         )
+        warnings.extend(ocr_warnings)
         if requested_ocr_engine == "paddleocr" and ocr_engine != "paddleocr":
             warnings.append("PaddleOCR was requested but unavailable or failed; Tesseract fallback was used.")
-        steps.extend(["preprocess images", f"{ocr_engine} OCR"])
+        steps.extend(["preprocess images", f"{ocr_engine} OCR", "structured OCR evidence"])
         if _is_truthy(cfg.get("ocr_diagram_enabled"), True):
             steps.append("diagram extraction")
     except Exception as e:
@@ -2250,17 +2506,18 @@ async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn,
     provider = "local_ocr"
     model = f"{ocr_engine}:{ocr_languages}"
     ocr_text = content
+    cleanup_input = ocr_evidence or content
     estimated_input_tokens = _estimate_text_tokens(content)
     token_report_note = "No AI provider tokens were used."
     if mode != "ocr_only" and _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
         try:
-            cleaned, usage = await _call_ai_text_cleanup(cfg, content, language, timeout)
+            cleaned, usage = await _call_ai_text_cleanup(cfg, cleanup_input, language, timeout)
             if cleaned.strip():
                 content = cleaned
                 provider = "local_ocr+ai_cleanup"
                 model = f"{ocr_engine}:{ocr_languages}+{cfg.get('ai_model', '').strip()}"
                 steps.append("AI cleanup")
-                estimated_input_tokens = _estimate_text_tokens(ocr_text) + _estimate_text_tokens(_ocr_cleanup_prompt(language))
+                estimated_input_tokens = _estimate_text_tokens(cleanup_input) + _estimate_text_tokens(_ocr_cleanup_prompt(language))
                 token_report_note = "Provider-reported token totals are from text cleanup only."
         except Exception as e:
             # OCR output is still useful and far cheaper than failing the job.
