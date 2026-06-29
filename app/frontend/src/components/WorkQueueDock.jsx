@@ -4,6 +4,7 @@ import { useApp } from '../utils/AppContext';
 import './WorkQueueDock.css';
 
 function statusIcon(status) {
+  if (status === 'ready_to_review') return <CheckCircle2 size={16} />;
   if (status === 'finished') return <CheckCircle2 size={16} />;
   if (status === 'failed') return <XCircle size={16} />;
   if (status === 'cancelled') return <PauseCircle size={16} />;
@@ -37,10 +38,13 @@ function formatElapsed(job) {
 }
 
 function statusLabel(t, job) {
+  if (job.status === 'ready_to_review') return t('aiJob_ready_to_review');
   if (job.status === 'queued') {
     return job.queue_position === 2 ? (t('aiJob_next') || 'Next up') : (t('aiJob_waiting') || 'Waiting');
   }
-  return t(`aiJob_${job.status}`) || job.status;
+  const key = `aiJob_${job.status}`;
+  const label = t(key);
+  return label === key ? job.status : label;
 }
 
 export default function WorkQueueDock({
@@ -78,15 +82,16 @@ export default function WorkQueueDock({
       )}
 
       {jobs.map(job => {
-        const complete = ['finished', 'failed', 'cancelled'].includes(job.status);
+        const complete = ['finished', 'failed', 'cancelled', 'ready_to_review'].includes(job.status);
+        const initialView = job.status === 'ready_to_review' ? 'review' : 'text';
         return (
           <div
             key={job.id}
             className={`wq-card wq-card--ai wq-card--${job.status}`}
             role="button"
             tabIndex={0}
-            onClick={() => onOpenRecipe?.(job.recipe_id)}
-            onKeyDown={e => { if (e.key === 'Enter') onOpenRecipe?.(job.recipe_id); }}
+            onClick={() => onOpenRecipe?.(job.recipe_id, initialView)}
+            onKeyDown={e => { if (e.key === 'Enter') onOpenRecipe?.(job.recipe_id, initialView); }}
           >
             <span className="wq-icon wq-icon--numbered">
               <Bot size={16} />

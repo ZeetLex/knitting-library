@@ -9,11 +9,13 @@ app/frontend/dist/
 data/
 data-test/
 data-codex-test/
+data-codex-ocr-charts/
 
 # Logs
 logs/
 logs-test/
 logs-codex-test/
+logs-codex-ocr-charts/
 *.log
 
 # Environment files

@@ -97,7 +97,9 @@ Image recipes include editing tools for crop, rotate, reorder, cover selection, 
 
 Recipe pages can have a shared editable text version generated from scanned recipe images. Open a recipe, switch from **Original** to **Text version**, then create, edit, save, or regenerate the Markdown transcription.
 
-Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. By default the app runs local Tesseract OCR first with English and Norwegian language data, which avoids sending full page images to an AI model. For knitting diagrams, the app tries to extract reviewable grid text with chart dimensions and symbol coordinates; it does not guarantee full written knitting instructions from diagrams.
+> **Early beta:** the OCR review and diagram tools are new, experimental, and expected to change a lot. The current UI for this feature is **not final**, especially the diagram editor and mobile layout. Treat OCR/AI output as a draft only.
+
+Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. By default the app runs local Tesseract OCR first with English and Norwegian language data, which avoids sending full page images to an AI model. For knitting diagrams and legends, the current beta workflow is manual/user-guided: crop the diagram or legend from the original page and review it visually.
 
 AI is optional in the OCR-first flow. It can clean up OCR text, or you can switch to the legacy AI vision mode when local OCR is not good enough. The app uses OpenAI-compatible chat completion endpoints, so it can work with:
 
@@ -106,7 +108,16 @@ AI is optional in the OCR-first flow. It can clean up OCR text, or you can switc
 - LM Studio, for example `http://host.docker.internal:1234/v1`
 - Other OpenAI-compatible local or hosted providers
 
-Generated text is persistent for the whole server, not private per user. OCR and AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, unclear page photos, and diagram symbols.
+The current beta workflow is user-guided instead of fully automatic:
+
+- OCR creates a per-page draft and marks the job as ready for review.
+- The Review view shows the original page beside the editable draft text.
+- You can accept pages, pause and resume later, cancel the draft, insert a diagram crop, or crop a legend image.
+- Completing review publishes one shared Markdown text version with reviewed text and any saved diagram/legend image inserts.
+
+The diagram editor is an early beta crop overlay. It can move, resize, rotate, and size a grid over a diagram, but it does not yet parse knitting symbols into a final machine-readable chart. Legend crops are saved as images, not interpreted text.
+
+Generated text is persistent for the whole server, not private per user. OCR and AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, unclear page photos, and diagram symbols. Do not rely on generated instructions until a human has checked them against the original recipe.
 
 ### Annotations
 

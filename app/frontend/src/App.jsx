@@ -185,7 +185,7 @@ function AppInner() {
         onAddTool={handleAddTool}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
-        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
@@ -212,7 +212,7 @@ function AppInner() {
         onAddTool={handleAddTool}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
-        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
@@ -233,7 +233,7 @@ function AppInner() {
         onAddTool={handleAddTool}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
-        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
@@ -256,7 +256,7 @@ function AppInner() {
         onRecipeBack={() => setViewingRecipeId(null)}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
-        onOpenRecipe={(id) => openRecipe(id, 'text')}
+        onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
       >
@@ -271,7 +271,7 @@ function AppInner() {
                 queue={workQueue}
                 variant="mobile"
                 onOpenImport={() => setImportOpen(true)}
-                onOpenRecipe={(id) => openRecipe(id, 'text')}
+                onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
                 onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
                 onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
               />

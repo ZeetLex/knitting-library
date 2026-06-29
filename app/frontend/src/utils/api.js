@@ -261,6 +261,70 @@ export async function createTextVersionJob(recipeId, language) {
   return data;
 }
 
+export async function fetchReviewSession(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/review-session`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load review session');
+  return res.json();
+}
+
+export async function saveReviewPage(sessionId, pageId, reviewedText, status = 'draft') {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ reviewed_text: reviewedText, status }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save review page');
+  return data;
+}
+
+export async function pauseReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pause`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to pause review');
+  return data;
+}
+
+export async function cancelReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/cancel`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to cancel review');
+  return data;
+}
+
+export async function completeReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/complete`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to complete review');
+  return data;
+}
+
+export async function createReviewDiagram(sessionId, pageId, payload) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}/diagrams`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to create diagram');
+  return data;
+}
+
+export async function createReviewLegend(sessionId, pageId, payload) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}/legends`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to create legend');
+  return data;
+}
+
+export function reviewAssetUrl(recipeId, assetPath) {
+  return `${API_BASE}/recipes/${recipeId}/review-assets/${assetPath}`;
+}
+
 export async function fetchWorkQueue() {
   const res = await fetch(`${API_BASE}/work-queue`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load work queue');

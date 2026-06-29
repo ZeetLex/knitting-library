@@ -119,6 +119,8 @@ AI_SETTING_KEYS = {
     "ocr_languages",
     "ocr_cleanup_enabled",
     "ocr_diagram_enabled",
+    "ocr_max_variants",
+    "ocr_page_workers",
 }
 
 SESSION_COOKIE = "knitting_session"
@@ -524,6 +526,94 @@ def get_db() -> sqlite3.Connection:
             )
         """)
         conn.commit()
+    if "recipe_charts" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_charts (
+                id                 TEXT PRIMARY KEY,
+                recipe_id          TEXT NOT NULL,
+                page_key           TEXT NOT NULL DEFAULT '',
+                title              TEXT NOT NULL DEFAULT '',
+                source_bbox_json   TEXT NOT NULL DEFAULT '[]',
+                rows               INTEGER NOT NULL DEFAULT 0,
+                columns            INTEGER NOT NULL DEFAULT 0,
+                palette_json       TEXT NOT NULL DEFAULT '[]',
+                cells_json         TEXT NOT NULL DEFAULT '[]',
+                chart_code         TEXT NOT NULL DEFAULT '',
+                repeat_count       INTEGER,
+                confidence         REAL NOT NULL DEFAULT 0,
+                generated_by       TEXT NOT NULL DEFAULT 'detector',
+                source_fingerprint TEXT NOT NULL DEFAULT '',
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_recipe_charts_recipe ON recipe_charts (recipe_id, page_key)")
+        conn.commit()
+    if "recipe_review_sessions" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS recipe_review_sessions (
+                id                 TEXT PRIMARY KEY,
+                recipe_id          TEXT NOT NULL,
+                job_id             TEXT NOT NULL DEFAULT '',
+                status             TEXT NOT NULL DEFAULT 'ready_to_review',
+                language           TEXT NOT NULL DEFAULT '',
+                source_fingerprint TEXT NOT NULL DEFAULT '',
+                current_page_order INTEGER NOT NULL DEFAULT 1,
+                created_by         TEXT NOT NULL DEFAULT '',
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                completed_at       TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+            );
+            CREATE TABLE IF NOT EXISTS recipe_review_pages (
+                id            TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL,
+                recipe_id     TEXT NOT NULL,
+                page_key      TEXT NOT NULL,
+                page_order    INTEGER NOT NULL,
+                status        TEXT NOT NULL DEFAULT 'draft',
+                ocr_text      TEXT NOT NULL DEFAULT '',
+                reviewed_text TEXT NOT NULL DEFAULT '',
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+            );
+            CREATE TABLE IF NOT EXISTS recipe_review_diagrams (
+                id            TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL,
+                page_id       TEXT NOT NULL,
+                recipe_id     TEXT NOT NULL,
+                page_key      TEXT NOT NULL,
+                title         TEXT NOT NULL DEFAULT '',
+                image_path    TEXT NOT NULL DEFAULT '',
+                crop_json     TEXT NOT NULL DEFAULT '{}',
+                grid_columns  INTEGER NOT NULL DEFAULT 0,
+                grid_rows     INTEGER NOT NULL DEFAULT 0,
+                rotation      REAL NOT NULL DEFAULT 0,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+            );
+            CREATE TABLE IF NOT EXISTS recipe_review_legends (
+                id            TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL,
+                page_id       TEXT NOT NULL,
+                recipe_id     TEXT NOT NULL,
+                page_key      TEXT NOT NULL,
+                title         TEXT NOT NULL DEFAULT '',
+                image_path    TEXT NOT NULL DEFAULT '',
+                crop_json     TEXT NOT NULL DEFAULT '{}',
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_review_sessions_recipe ON recipe_review_sessions (recipe_id, status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_review_pages_session ON recipe_review_pages (session_id, page_order);
+            CREATE INDEX IF NOT EXISTS idx_review_diagrams_session ON recipe_review_diagrams (session_id, page_id);
+            CREATE INDEX IF NOT EXISTS idx_review_legends_session ON recipe_review_legends (session_id, page_id);
+        """)
+        conn.commit()
     if "ai_stats_resets" not in tables:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_stats_resets (
@@ -745,6 +835,81 @@ def init_db():
             token_report_note         TEXT NOT NULL DEFAULT '',
             created_at                TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS recipe_charts (
+            id                 TEXT PRIMARY KEY,
+            recipe_id          TEXT NOT NULL,
+            page_key           TEXT NOT NULL DEFAULT '',
+            title              TEXT NOT NULL DEFAULT '',
+            source_bbox_json   TEXT NOT NULL DEFAULT '[]',
+            rows               INTEGER NOT NULL DEFAULT 0,
+            columns            INTEGER NOT NULL DEFAULT 0,
+            palette_json       TEXT NOT NULL DEFAULT '[]',
+            cells_json         TEXT NOT NULL DEFAULT '[]',
+            chart_code         TEXT NOT NULL DEFAULT '',
+            repeat_count       INTEGER,
+            confidence         REAL NOT NULL DEFAULT 0,
+            generated_by       TEXT NOT NULL DEFAULT 'detector',
+            source_fingerprint TEXT NOT NULL DEFAULT '',
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_review_sessions (
+            id                 TEXT PRIMARY KEY,
+            recipe_id          TEXT NOT NULL,
+            job_id             TEXT NOT NULL DEFAULT '',
+            status             TEXT NOT NULL DEFAULT 'ready_to_review',
+            language           TEXT NOT NULL DEFAULT '',
+            source_fingerprint TEXT NOT NULL DEFAULT '',
+            current_page_order INTEGER NOT NULL DEFAULT 1,
+            created_by         TEXT NOT NULL DEFAULT '',
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL,
+            completed_at       TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_review_pages (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            recipe_id     TEXT NOT NULL,
+            page_key      TEXT NOT NULL,
+            page_order    INTEGER NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'draft',
+            ocr_text      TEXT NOT NULL DEFAULT '',
+            reviewed_text TEXT NOT NULL DEFAULT '',
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_review_diagrams (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            page_id       TEXT NOT NULL,
+            recipe_id     TEXT NOT NULL,
+            page_key      TEXT NOT NULL,
+            title         TEXT NOT NULL DEFAULT '',
+            image_path    TEXT NOT NULL DEFAULT '',
+            crop_json     TEXT NOT NULL DEFAULT '{}',
+            grid_columns  INTEGER NOT NULL DEFAULT 0,
+            grid_rows     INTEGER NOT NULL DEFAULT 0,
+            rotation      REAL NOT NULL DEFAULT 0,
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_review_legends (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            page_id       TEXT NOT NULL,
+            recipe_id     TEXT NOT NULL,
+            page_key      TEXT NOT NULL,
+            title         TEXT NOT NULL DEFAULT '',
+            image_path    TEXT NOT NULL DEFAULT '',
+            crop_json     TEXT NOT NULL DEFAULT '{}',
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES recipe_review_sessions(id)
+        );
         CREATE TABLE IF NOT EXISTS ai_text_jobs (
             id                    TEXT PRIMARY KEY,
             recipe_id             TEXT NOT NULL,
@@ -806,6 +971,11 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events (created_at);
         CREATE INDEX IF NOT EXISTS idx_recipe_text_generation_audits_created ON recipe_text_generation_audits (created_at);
+        CREATE INDEX IF NOT EXISTS idx_recipe_charts_recipe ON recipe_charts (recipe_id, page_key);
+        CREATE INDEX IF NOT EXISTS idx_review_sessions_recipe ON recipe_review_sessions (recipe_id, status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_review_pages_session ON recipe_review_pages (session_id, page_order);
+        CREATE INDEX IF NOT EXISTS idx_review_diagrams_session ON recipe_review_diagrams (session_id, page_id);
+        CREATE INDEX IF NOT EXISTS idx_review_legends_session ON recipe_review_legends (session_id, page_id);
     """)
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -1513,6 +1683,8 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ocr_languages": "",
         "ocr_cleanup_enabled": "true",
         "ocr_diagram_enabled": "true",
+        "ocr_max_variants": os.environ.get("OCR_MAX_VARIANTS", "4"),
+        "ocr_page_workers": os.environ.get("OCR_PAGE_WORKERS", "2"),
     }
     defaults.update(cfg)
     if defaults.get("ai_api_key") and not reveal_secret:
@@ -1548,9 +1720,12 @@ def _default_ocr_prompt(language: str = "en") -> str:
 
 
 def _clean_ai_transcription(content: str) -> str:
-    content = content.strip()
+    content = (content or "").strip()
     content = re.sub(r"(?is)<\|channel\>.*?(?=<\|channel\>|$)", "", content).strip()
     content = re.sub(r"(?is)<think>.*?</think>", "", content).strip()
+    content = re.sub(r"(?is)^```(?:markdown|md|text)?\s*", "", content).strip()
+    content = re.sub(r"(?is)\s*```$", "", content).strip()
+    content = re.sub(r"(?is)^(?:final answer|transcription|markdown)\s*:\s*", "", content).strip()
     return content
 
 
@@ -1923,7 +2098,7 @@ def _format_ocr_evidence_page(page_no: int, path: Path, buckets: dict[str, list[
 def _format_ocr_final_text(page_no: int, path: Path, buckets: dict[str, list[dict]], diagram_md: str = "") -> str:
     lines = [f"<!-- Page {page_no}: {path.name} -->"]
     ordered = []
-    for key in ("header", "counts", "body", "diagram"):
+    for key in ("header", "counts", "body", "diagram", "uncertain"):
         ordered.extend(buckets.get(key) or [])
     ordered.sort(key=lambda item: (item["bbox"][1], item["bbox"][0]))
     last_y = None
@@ -1938,6 +2113,29 @@ def _format_ocr_final_text(page_no: int, path: Path, buckets: dict[str, list[dic
             lines.append("")
         lines.append(diagram_md)
     return "\n".join(lines).strip()
+
+
+def _strip_page_marker(text: str) -> str:
+    return re.sub(r"(?m)^\s*<!--\s*Page\s+\d+:\s*.*?-->\s*$\n?", "", text or "").strip()
+
+
+def _normalise_for_loss_check(text: str) -> set[str]:
+    words = re.findall(r"[0-9A-Za-zÆØÅæøå]{2,}", (text or "").lower())
+    return {word for word in words if len(word) > 2 or any(ch.isdigit() for ch in word)}
+
+
+def _ai_cleanup_looks_lossy(source: str, cleaned: str) -> bool:
+    source_words = re.findall(r"\S+", _strip_page_marker(source))
+    cleaned_words = re.findall(r"\S+", _strip_page_marker(cleaned))
+    if len(source_words) >= 35 and len(cleaned_words) < max(18, int(len(source_words) * 0.62)):
+        return True
+    source_terms = _normalise_for_loss_check(source)
+    cleaned_terms = _normalise_for_loss_check(cleaned)
+    if len(source_terms) >= 24:
+        retained = len(source_terms & cleaned_terms) / max(1, len(source_terms))
+        if retained < 0.50:
+            return True
+    return False
 
 
 def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
@@ -1994,6 +2192,133 @@ def _group_centres(groups: list[tuple[int, int]]) -> list[int]:
     return [int(round((a + b) / 2)) for a, b in groups]
 
 
+def _regular_line_sequence(centres: list[int], min_lines: int) -> list[int]:
+    centres = sorted({int(c) for c in centres})
+    if len(centres) < min_lines:
+        return []
+    best: list[int] = []
+    for i, start in enumerate(centres):
+        for j in range(i + 1, min(len(centres), i + 8)):
+            spacing = centres[j] - start
+            if spacing < 20 or spacing > 130:
+                continue
+            seq = [start, centres[j]]
+            expected = centres[j] + spacing
+            tolerance = max(4, int(spacing * 0.32))
+            while True:
+                match = min((c for c in centres if c > seq[-1]), key=lambda c: abs(c - expected), default=None)
+                if match is None or abs(match - expected) > tolerance:
+                    break
+                seq.append(match)
+                expected = match + spacing
+            if len(seq) > len(best):
+                best = seq
+    return best if len(best) >= min_lines else []
+
+
+def _edge_line_centres(pixels, x1: int, y1: int, x2: int, y2: int, axis: str) -> list[int]:
+    if axis == "x":
+        span = max(1, y2 - y1)
+        threshold = max(8, int(span * 0.15))
+        active = [x for x in range(x1, x2) if sum(1 for y in range(y1, y2) if pixels[x, y] == 0) >= threshold]
+        margin = max(8, int((x2 - x1) * 0.015))
+        centres = _group_centres(_line_groups(active, max_gap=3))
+        return [x for x in centres if x1 + margin <= x <= x2 - margin]
+    else:
+        span = max(1, x2 - x1)
+        threshold = max(8, int(span * 0.15))
+        active = [y for y in range(y1, y2) if sum(1 for x in range(x1, x2) if pixels[x, y] == 0) >= threshold]
+        margin = max(8, int((y2 - y1) * 0.015))
+        centres = _group_centres(_line_groups(active, max_gap=3))
+        return [y for y in centres if y1 + margin <= y <= y2 - margin]
+
+
+def _detect_light_chart_regions(path: Path, existing: list[dict]) -> list[dict]:
+    from PIL import Image, ImageOps, ImageFilter
+
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img).convert("L")
+    small = img
+    max_dim = 900
+    scale = 1.0
+    if max(img.size) > max_dim:
+        scale = max_dim / max(img.size)
+        small = img.resize((int(img.width * scale), int(img.height * scale)), Image.Resampling.BILINEAR)
+    edge = ImageOps.autocontrast(small.filter(ImageFilter.FIND_EDGES))
+    width, height = edge.size
+    candidates: list[dict] = []
+    existing_boxes = [chart.get("bbox") or [] for chart in existing]
+
+    def overlaps_existing(box: list[int]) -> bool:
+        x1, y1, x2, y2 = box
+        for raw in existing_boxes:
+            if len(raw) != 4:
+                continue
+            ex1, ey1, ex2, ey2 = [int(v * scale) for v in raw]
+            ix = max(0, min(x2, ex2) - max(x1, ex1))
+            iy = max(0, min(y2, ey2) - max(y1, ey1))
+            if ix * iy > 0.35 * min(max(1, (x2 - x1) * (y2 - y1)), max(1, (ex2 - ex1) * (ey2 - ey1))):
+                return True
+        return False
+
+    for threshold in (32, 46):
+        bw = edge.point(lambda p: 0 if p > threshold else 255, mode="L")
+        pixels = bw.load()
+        for band_h in (180, 260, 380, 520):
+            if band_h > height + 80:
+                continue
+            step_y = max(55, band_h // 4)
+            for y1 in range(0, max(1, height - band_h + 1), step_y):
+                y2 = min(height, y1 + band_h)
+                x_centres = _regular_line_sequence(_edge_line_centres(pixels, 0, y1, width, y2, "x"), 5)
+                if len(x_centres) < 5:
+                    continue
+                spacing_x = int(round((max(x_centres) - min(x_centres)) / max(1, len(x_centres) - 1)))
+                x1 = max(0, min(x_centres) - max(8, spacing_x // 2))
+                x2 = min(width, max(x_centres) + max(8, spacing_x // 2))
+                y_centres = _regular_line_sequence(_edge_line_centres(pixels, x1, y1, x2, y2, "y"), 4)
+                if len(y_centres) < 4:
+                    continue
+                box = [min(x_centres), min(y_centres), max(x_centres), max(y_centres)]
+                grid_w = box[2] - box[0]
+                grid_h = box[3] - box[1]
+                if grid_w < 90 or grid_h < 80:
+                    continue
+                if overlaps_existing(box):
+                    continue
+                score = len(x_centres) * len(y_centres) + min(grid_w, grid_h) * 0.02
+                candidates.append({
+                    "score": score,
+                    "x_lines": x_centres,
+                    "y_lines": y_centres,
+                    "bbox": box,
+                })
+
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    accepted: list[dict] = []
+    for candidate in candidates:
+        x1, y1, x2, y2 = candidate["bbox"]
+        duplicate = False
+        for other in accepted:
+            ox1, oy1, ox2, oy2 = other["bbox"]
+            ix = max(0, min(x2, ox2) - max(x1, ox1))
+            iy = max(0, min(y2, oy2) - max(y1, oy1))
+            if ix * iy > 0.45 * min((x2 - x1) * (y2 - y1), (ox2 - ox1) * (oy2 - oy1)):
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        accepted.append(candidate)
+        if len(accepted) >= 2:
+            break
+    return [{
+        "x_lines": [int(round(x / scale)) for x in item["x_lines"]],
+        "y_lines": [int(round(y / scale)) for y in item["y_lines"]],
+        "bbox": [int(round(v / scale)) for v in item["bbox"]],
+        "light_grid": True,
+    } for item in accepted]
+
+
 def _detect_chart_regions(path: Path) -> list[dict]:
     from PIL import Image, ImageOps
 
@@ -2016,7 +2341,7 @@ def _detect_chart_regions(path: Path) -> list[dict]:
     full_col_groups = _line_groups(active_full_cols, max_gap=3)
     full_cols = _group_centres(full_col_groups)
     if len(full_cols) < 4:
-        return []
+        return _detect_light_chart_regions(path, [])
     x_scan1 = max(0, min(full_cols) - 8)
     x_scan2 = min(width - 1, max(full_cols) + 8)
 
@@ -2059,10 +2384,14 @@ def _detect_chart_regions(path: Path) -> list[dict]:
         cols = max(col_clusters, key=len)
         if len(cols) < 4:
             continue
+        x_lines = [int(round(x / scale)) for x in cols]
+        y_lines = [int(round(y / scale)) for y in rows]
         charts.append({
-            "x_lines": [int(round(x / scale)) for x in cols],
-            "y_lines": [int(round(y / scale)) for y in rows],
+            "x_lines": x_lines,
+            "y_lines": y_lines,
+            "bbox": [min(x_lines), min(y_lines), max(x_lines), max(y_lines)],
         })
+    charts.extend(_detect_light_chart_regions(path, charts))
     return charts
 
 
@@ -2088,16 +2417,89 @@ def _ocr_chart_title(path: Path, chart: dict, languages: str) -> str:
 
 
 def _extract_chart_markdown(path: Path, languages: str) -> str:
+    specs = _extract_chart_specs(path, languages)
+    blocks = []
+    for spec in specs:
+        blocks.append(
+            "\n".join([
+                f"## {spec['title']}",
+                "",
+                "```klchart-v1",
+                spec["chart_code"],
+                "```",
+                "",
+                "_Diagram symbols are detected from the grid image and should be reviewed against the original._",
+            ])
+        )
+    return "\n\n".join(blocks).strip()
+
+
+def _chart_palette_for_cells(cells: list[list[str]]) -> list[dict]:
+    symbols = sorted({cell for row in cells for cell in row if cell and cell != "."})
+    defaults = [
+        ("A", "#159bd7", "main colour"),
+        ("B", "#222222", "dark symbol"),
+        ("C", "#d94f45", "accent"),
+        ("D", "#5aa86a", "accent 2"),
+    ]
+    palette = [{"symbol": ".", "label": "empty", "color": "#ffffff"}]
+    for symbol in symbols:
+        match = next((item for item in defaults if item[0] == symbol), None)
+        palette.append({
+            "symbol": symbol,
+            "label": match[2] if match else f"symbol {symbol}",
+            "color": match[1] if match else "#777777",
+        })
+    return palette
+
+
+def _chart_code(title: str, columns: int, rows: int, cells: list[list[str]], repeat_count: Optional[int] = None) -> str:
+    lines = [
+        f'title "{title}"',
+        f"size {columns}x{rows}",
+    ]
+    if repeat_count:
+        lines.append(f"repeat {repeat_count}")
+    lines.append("legend . empty")
+    for entry in _chart_palette_for_cells(cells):
+        if entry["symbol"] != ".":
+            lines.append(f"legend {entry['symbol']} {entry['label']}")
+    # Store row 1 as the bottom knitted row. This is friendlier for knitting charts
+    # and keeps visual reconstruction deterministic.
+    for row_number, visual_row in enumerate(reversed(cells), start=1):
+        lines.append(f"row {row_number}: {''.join(visual_row)}")
+    return "\n".join(lines)
+
+
+def _detect_repeat_count_near_chart(path: Path, chart: dict, languages: str) -> Optional[int]:
+    from PIL import Image, ImageOps
+
+    try:
+        img = Image.open(path)
+        img = ImageOps.exif_transpose(img).convert("L")
+        x1 = max(0, min(chart["x_lines"]) - 40)
+        x2 = min(img.width, max(chart["x_lines"]) + 40)
+        y1 = min(img.height - 1, max(chart["y_lines"]) + 4)
+        y2 = min(img.height, max(chart["y_lines"]) + 130)
+        if y2 <= y1:
+            return None
+        crop = ImageOps.expand(ImageOps.autocontrast(img.crop((x1, y1, x2, y2))), border=10, fill=255)
+        text = _run_tesseract_image(crop, languages, psm=7, timeout=30)
+        match = re.search(r"(?:repeat|gjenta)\s+(\d+)", text, re.I)
+        return int(match.group(1)) if match else None
+    except Exception:
+        return None
+
+
+def _extract_chart_specs(path: Path, languages: str) -> list[dict]:
     from PIL import Image, ImageOps
 
     charts = _detect_chart_regions(path)
     if not charts:
-        return ""
+        return []
     img = Image.open(path)
-    img = ImageOps.exif_transpose(img).convert("L")
-    bw = ImageOps.autocontrast(img).point(lambda p: 0 if p < 150 else 255, mode="L")
-    pixels = bw.load()
-    blocks = []
+    rgb = ImageOps.exif_transpose(img).convert("RGB")
+    specs = []
     for index, chart in enumerate(charts, start=1):
         xs = chart["x_lines"]
         ys = chart["y_lines"]
@@ -2105,43 +2507,69 @@ def _extract_chart_markdown(path: Path, languages: str) -> str:
         rows = max(0, len(ys) - 1)
         if columns < 2 or rows < 2:
             continue
-        title = _ocr_chart_title(path, chart, languages) or f"Diagram {index}"
-        lines = [f"## {title}", "", "```text", f"Chart: {columns} columns x {rows} rows"]
-        detected_any = False
+        cells: list[list[str]] = []
+        filled = 0
+        confidence_hits = []
         for visual_row in range(rows):
+            row = []
             y_top, y_bottom = ys[visual_row], ys[visual_row + 1]
-            row_number = rows - visual_row
-            hits = []
             for col in range(columns):
                 x_left, x_right = xs[col], xs[col + 1]
-                pad_x = max(2, int((x_right - x_left) * 0.22))
-                pad_y = max(2, int((y_bottom - y_top) * 0.22))
-                xa, xb = x_left + pad_x, x_right - pad_x
-                ya, yb = y_top + pad_y, y_bottom - pad_y
+                pad_x = max(2, int((x_right - x_left) * 0.20))
+                pad_y = max(2, int((y_bottom - y_top) * 0.20))
+                xa, xb = max(0, x_left + pad_x), min(rgb.width, x_right - pad_x)
+                ya, yb = max(0, y_top + pad_y), min(rgb.height, y_bottom - pad_y)
                 if xb <= xa or yb <= ya:
+                    row.append(".")
                     continue
-                dark = 0
                 total = 0
-                for y in range(max(0, ya), min(img.height, yb)):
-                    for x in range(max(0, xa), min(img.width, xb)):
+                blueish = 0
+                dark = 0
+                saturated = 0
+                for y in range(ya, yb):
+                    for x in range(xa, xb):
+                        r, g, b = rgb.getpixel((x, y))
                         total += 1
-                        if pixels[x, y] == 0:
+                        if b > 115 and b > r + 25 and b > g - 10:
+                            blueish += 1
+                        if r < 85 and g < 85 and b < 85:
                             dark += 1
-                if total and dark / total > 0.055 and dark >= 3:
-                    hits.append(str(col + 1))
-            if hits:
-                detected_any = True
-                lines.append(f"Row {row_number}: symbol at column {', '.join(hits)}")
-        if not detected_any:
-            lines.append("Symbols: none detected confidently")
-        lines.append("```")
-        lines.append("")
-        lines.append("_Diagram symbols are detected from the grid image and should be reviewed against the original._")
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks).strip()
+                        if max(r, g, b) - min(r, g, b) > 55 and max(r, g, b) < 245:
+                            saturated += 1
+                ratio = max(blueish, dark, saturated) / max(1, total)
+                dark_ratio = dark / max(1, total)
+                if ratio > 0.22 and blueish >= dark:
+                    row.append("A")
+                    filled += 1
+                    confidence_hits.append(min(1.0, ratio * 2.8))
+                elif ratio > 0.18 or (dark_ratio > 0.025 and dark >= 8):
+                    row.append("B")
+                    filled += 1
+                    confidence_hits.append(min(1.0, max(ratio, dark_ratio) * 2.5))
+                else:
+                    row.append(".")
+            cells.append(row)
+        title = "" if chart.get("light_grid") else _ocr_chart_title(path, chart, languages)
+        title = title or f"Chart {index}"
+        repeat_count = None if chart.get("light_grid") else _detect_repeat_count_near_chart(path, chart, languages)
+        confidence = sum(confidence_hits) / max(1, len(confidence_hits)) if filled else 0.0
+        if confidence < 0.2:
+            continue
+        specs.append({
+            "title": title,
+            "rows": rows,
+            "columns": columns,
+            "source_bbox": chart.get("bbox") or [min(xs), min(ys), max(xs), max(ys)],
+            "palette": _chart_palette_for_cells(cells),
+            "cells": cells,
+            "chart_code": _chart_code(title, columns, rows, cells, repeat_count),
+            "repeat_count": repeat_count,
+            "confidence": round(confidence, 3),
+        })
+    return specs
 
 
-def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_no: int) -> dict:
+def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_no: int, max_variants: int = 4) -> dict:
     if diagram_enabled:
         diagram_md = _extract_chart_markdown(path, languages)
     else:
@@ -2155,9 +2583,13 @@ def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_
         ("gray", _ocr_preprocess_grayscale(path)),
         ("binary", _ocr_preprocess_image(path)),
     ]
+    variants_run = 0
     for image_label, img in images:
         for psm in (6, 4, 11):
             for config in configs:
+                if variants_run >= max(1, max_variants):
+                    break
+                variants_run += 1
                 try:
                     rows = _run_tesseract_tsv_image(img, languages, psm=psm, config=config)
                     lines = _ocr_words_to_lines(rows, f"{image_label}/psm{psm}", img.size)
@@ -2165,6 +2597,10 @@ def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_
                         line_candidates.extend(lines)
                 except Exception:
                     continue
+            if variants_run >= max(1, max_variants):
+                break
+        if variants_run >= max(1, max_variants):
+            break
 
     deduped = _dedupe_ocr_lines(line_candidates)
     if not deduped:
@@ -2183,7 +2619,7 @@ def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_
             "text": "\n\n".join(part for part in (f"<!-- Page {page_no}: {path.name} -->\n\n{text}" if text else "", diagram_md) if part).strip(),
             "evidence": f"## OCR evidence page {page_no}: {path.name}\n\n{text or '[no usable OCR lines]'}".strip(),
             "warnings": [f"Page {page_no}: Tesseract returned no structured TSV lines."],
-            "metrics": {"avg_conf": 0.0, "accepted_lines": 0, "uncertain_lines": 0, "rejected_lines": 0},
+            "metrics": {"avg_conf": 0.0, "accepted_lines": 0, "uncertain_lines": 0, "rejected_lines": 0, "variants_run": variants_run},
         }
 
     page_height = max(img.height for _, img in images)
@@ -2200,6 +2636,7 @@ def _ocr_page_to_result(path: Path, languages: str, diagram_enabled: bool, page_
         "accepted_lines": len(accepted),
         "uncertain_lines": len(buckets.get("uncertain") or []),
         "rejected_lines": len(buckets.get("rejected") or []),
+        "variants_run": variants_run,
     }
     warnings = []
     if accepted and avg_conf < 55:
@@ -2227,39 +2664,82 @@ def _collect_ocr_markdown_from_paths(
     languages = _ocr_languages_for(language, cfg)
     diagram_enabled = _is_truthy(cfg.get("ocr_diagram_enabled"), True)
     engine = _ocr_engine_for(cfg)
-    pages = []
-    evidence_pages = []
+    max_variants = int(_clamped_float(cfg.get("ocr_max_variants"), 4, 1, 12))
+    page_workers = int(_clamped_float(cfg.get("ocr_page_workers"), 2, 1, 4))
+    pages_by_index: dict[int, str] = {}
+    evidence_by_index: dict[int, str] = {}
     warnings = []
-    for idx, path in enumerate(paths, start=1):
-        if progress_job_id:
-            _update_ai_job(progress_job_id, pages_sent=idx - 1, progress_stage=f"ocr_page_{idx}")
-            if _ai_job_cancelled(progress_job_id):
-                break
+    def run_one(idx: int, path: Path) -> tuple[int, str, str, list[str], str]:
         page_text = ""
-        if engine == "paddleocr":
+        page_warnings: list[str] = []
+        used_engine = engine
+        if used_engine == "paddleocr":
             diagram_md = _extract_chart_markdown(path, languages) if diagram_enabled else ""
             try:
                 ocr_text = _run_paddleocr_image(path, language)
             except Exception:
-                engine = "tesseract"
-                page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx)
+                used_engine = "tesseract"
+                page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx, max_variants=max_variants)
                 page_text = page_result.get("text", "")
-                evidence_pages.append(page_result.get("evidence", ""))
-                warnings.extend(page_result.get("warnings", []))
+                evidence = page_result.get("evidence", "")
+                page_warnings.extend(page_result.get("warnings", []))
             else:
                 ocr_text = _cleanup_ocr_markdown(ocr_text)
                 page_text = "\n\n".join(part for part in (f"<!-- Page {idx}: {path.name} -->", diagram_md, ocr_text) if part).strip()
-                evidence_pages.append(f"## OCR evidence page {idx}: {path.name}\n\nEngine: PaddleOCR\n\n{page_text}".strip())
+                evidence = f"## OCR evidence page {idx}: {path.name}\n\nEngine: PaddleOCR\n\n{page_text}".strip()
         else:
-            page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx)
+            page_result = _ocr_page_to_result(path, languages, diagram_enabled, idx, max_variants=max_variants)
             page_text = page_result.get("text", "")
-            evidence_pages.append(page_result.get("evidence", ""))
-            warnings.extend(page_result.get("warnings", []))
-        if page_text:
-            pages.append(page_text)
+            evidence = page_result.get("evidence", "")
+            page_warnings.extend(page_result.get("warnings", []))
+        return idx, page_text, evidence, page_warnings, used_engine
+
+    if page_workers > 1 and len(paths) > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         if progress_job_id:
-            _update_ai_job(progress_job_id, pages_sent=idx, progress_stage=f"ocr_page_{idx}")
-    return "\n\n---\n\n".join(pages).strip(), "\n\n---\n\n".join(part for part in evidence_pages if part).strip(), len(paths), languages, engine, warnings
+            _update_ai_job(progress_job_id, pages_sent=0, progress_stage="ocr_pages")
+        with ThreadPoolExecutor(max_workers=min(page_workers, len(paths))) as pool:
+            futures = {pool.submit(run_one, idx, path): idx for idx, path in enumerate(paths, start=1)}
+            completed = 0
+            for future in as_completed(futures):
+                if progress_job_id and _ai_job_cancelled(progress_job_id):
+                    break
+                idx, page_text, evidence, page_warnings, used_engine = future.result()
+                if used_engine != "paddleocr":
+                    engine = used_engine
+                if page_text:
+                    pages_by_index[idx] = page_text
+                if evidence:
+                    evidence_by_index[idx] = evidence
+                warnings.extend(page_warnings)
+                completed += 1
+                if progress_job_id:
+                    _update_ai_job(progress_job_id, pages_sent=completed, progress_stage=f"ocr_page_{completed}")
+    else:
+        for idx, path in enumerate(paths, start=1):
+            if progress_job_id:
+                _update_ai_job(progress_job_id, pages_sent=idx - 1, progress_stage=f"ocr_page_{idx}")
+                if _ai_job_cancelled(progress_job_id):
+                    break
+            idx, page_text, evidence, page_warnings, used_engine = run_one(idx, path)
+            if used_engine != "paddleocr":
+                engine = used_engine
+            if page_text:
+                pages_by_index[idx] = page_text
+            if evidence:
+                evidence_by_index[idx] = evidence
+            warnings.extend(page_warnings)
+            if progress_job_id:
+                _update_ai_job(progress_job_id, pages_sent=idx, progress_stage=f"ocr_page_{idx}")
+    return (
+        "\n\n---\n\n".join(pages_by_index[idx] for idx in sorted(pages_by_index)).strip(),
+        "\n\n---\n\n".join(evidence_by_index[idx] for idx in sorted(evidence_by_index)).strip(),
+        len(paths),
+        languages,
+        engine,
+        warnings,
+    )
 
 
 def _paddle_lang_for(language: str) -> str:
@@ -2314,6 +2794,25 @@ def _ocr_cleanup_prompt(language: str = "en") -> str:
     )
 
 
+def _ocr_review_page_cleanup_prompt(language: str = "en") -> str:
+    if (language or "").lower().startswith("no"):
+        return (
+            "Du rydder OCR fra nøyaktig én side i en strikkeoppskrift. Returner kun Markdown for denne ene siden. "
+            "Behold all synlig tekst fra OCR så langt det er mulig: overskrifter, forkortelser, tabeller, størrelser, garn, "
+            "pinneinfo, rad-/omgangstekst og korte linjer. Ikke oppsummer, ikke forkort, ikke flytt tekst til andre sider, "
+            "og ikke legg til tekst som ikke finnes i OCR. Rydd bare åpenbare OCR-feil og linjebrudd. "
+            "Behold tall, parenteser, norske strikkeforkortelser og rekkefølge. Marker usikre små deler som [uklart]. "
+            "Ikke bruk kodeblokker eller ```markdown. /no_think"
+        )
+    return (
+        "Clean OCR from exactly one page of a knitting pattern. Return only Markdown for this page. Preserve all visible "
+        "OCR text as far as possible: headings, abbreviations, tables, sizes, yarn, needle details, row/round instructions, "
+        "and short lines. Do not summarize, shorten, merge with other pages, or add text that is not in the OCR. Only fix "
+        "obvious OCR errors and line breaks. Preserve numbers, parentheses, knitting abbreviations, and order. Mark small "
+        "uncertain fragments as [unclear]. Do not use code fences or ```markdown. /no_think"
+    )
+
+
 async def _call_ai_text_cleanup(cfg: dict, content: str, language: str, timeout: int) -> tuple[str, dict]:
     base_url = cfg.get("ai_base_url", "").rstrip("/")
     model = cfg.get("ai_model", "").strip()
@@ -2334,6 +2833,35 @@ async def _call_ai_text_cleanup(cfg: dict, content: str, language: str, timeout:
                 "model": model,
                 "messages": messages,
                 "temperature": 0.05,
+                "stream": False,
+                "max_tokens": 4096,
+            },
+        )
+        res.raise_for_status()
+        data = res.json()
+    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}
+
+
+async def _call_ai_review_page_cleanup(cfg: dict, content: str, language: str, timeout: int) -> tuple[str, dict]:
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    model = cfg.get("ai_model", "").strip()
+    if not base_url or not model:
+        raise HTTPException(status_code=400, detail="AI base URL and model are required")
+    messages = [{
+        "role": "user",
+        "content": f"{_ocr_review_page_cleanup_prompt(language)}\n\nPage OCR:\n\n{content}",
+    }]
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.02,
                 "stream": False,
                 "max_tokens": 4096,
             },
@@ -2750,6 +3278,328 @@ def _record_generation_audit(recipe_id: str, audit: dict, job_id: str = "") -> N
     conn.close()
 
 
+def _chart_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    for key in ("source_bbox_json", "palette_json", "cells_json"):
+        out_key = key.replace("_json", "")
+        try:
+            data[out_key] = json.loads(data.get(key) or "[]")
+        except Exception:
+            data[out_key] = []
+        data.pop(key, None)
+    data["rows"] = int(data.get("rows") or 0)
+    data["columns"] = int(data.get("columns") or 0)
+    data["confidence"] = float(data.get("confidence") or 0)
+    if data.get("repeat_count") is not None:
+        data["repeat_count"] = int(data["repeat_count"])
+    return data
+
+
+def _chart_source_for_recipe(recipe_id: str, page_key: str, conn) -> Path:
+    recipe = _get_recipe_full(recipe_id, conn)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe_dir = DATA_DIR / recipe_id
+    if recipe["file_type"] == "pdf":
+        path = recipe_dir / page_key
+        if not path.exists():
+            _convert_pdf_to_pages(recipe_dir)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="PDF page image not found")
+        return path
+    safe_name = Path(page_key).name
+    path = recipe_dir / safe_name
+    if not path.exists() or safe_name not in set(recipe.get("images") or []):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return path
+
+
+def _collect_recipe_chart_sources(recipe_id: str, conn, max_pages: int) -> list[tuple[str, Path]]:
+    recipe = _get_recipe_full(recipe_id, conn)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+    if recipe["file_type"] == "images":
+        return [(path.name, path) for path in paths]
+    return [(path.name, path) for path in paths]
+
+
+def _refresh_recipe_charts(recipe_id: str, language: str, cfg: dict, current_user: dict, max_pages: Optional[int] = None) -> list[dict]:
+    conn = get_db()
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    limit = max_pages if max_pages is not None else int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+    languages = _ocr_languages_for(language, cfg)
+    sources = _collect_recipe_chart_sources(recipe_id, conn, limit)
+    now = datetime.utcnow().isoformat()
+    conn.execute("DELETE FROM recipe_charts WHERE recipe_id=? AND generated_by='detector'", (recipe_id,))
+    for page_key, path in sources:
+        for spec in _extract_chart_specs(path, languages):
+            conn.execute(
+                """
+                INSERT INTO recipe_charts (
+                    id, recipe_id, page_key, title, source_bbox_json, rows, columns,
+                    palette_json, cells_json, chart_code, repeat_count, confidence,
+                    generated_by, source_fingerprint, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    recipe_id,
+                    page_key,
+                    spec["title"],
+                    json.dumps(spec["source_bbox"], ensure_ascii=False),
+                    spec["rows"],
+                    spec["columns"],
+                    json.dumps(spec["palette"], ensure_ascii=False),
+                    json.dumps(spec["cells"], ensure_ascii=False),
+                    spec["chart_code"],
+                    spec.get("repeat_count"),
+                    spec.get("confidence", 0),
+                    "detector",
+                    fingerprint,
+                    now,
+                    now,
+                )
+            )
+    conn.commit()
+    rows = conn.execute("SELECT * FROM recipe_charts WHERE recipe_id=? ORDER BY page_key, created_at", (recipe_id,)).fetchall()
+    conn.close()
+    return [_chart_dict(row) for row in rows]
+
+
+def _review_asset_dir(recipe_id: str, session_id: str) -> Path:
+    path = DATA_DIR / recipe_id / "review_assets" / session_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _review_crop_box(crop: dict, image_size: tuple[int, int]) -> tuple[int, int, int, int]:
+    width, height = image_size
+    x = int(_clamped_float(crop.get("x"), 0, 0, width - 1))
+    y = int(_clamped_float(crop.get("y"), 0, 0, height - 1))
+    w = int(_clamped_float(crop.get("width"), width - x, 1, width - x))
+    h = int(_clamped_float(crop.get("height"), height - y, 1, height - y))
+    return x, y, min(width, x + w), min(height, y + h)
+
+
+def _make_review_asset(
+    recipe_id: str,
+    session_id: str,
+    page_path: Path,
+    crop: dict,
+    title: str = "",
+    grid_columns: int = 0,
+    grid_rows: int = 0,
+    rotation: float = 0.0,
+    kind: str = "diagram",
+) -> str:
+    from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageDraw, ImageFont
+
+    img = ImageOps.exif_transpose(Image.open(page_path)).convert("RGB")
+    box = _review_crop_box(crop, img.size)
+    crop_img = img.crop(box)
+    if rotation:
+        crop_img = crop_img.rotate(float(rotation), expand=True, fillcolor=(246, 246, 242), resample=Image.Resampling.BICUBIC)
+    crop_img = ImageOps.autocontrast(crop_img)
+    crop_img = ImageEnhance.Contrast(crop_img).enhance(1.18)
+    crop_img = ImageEnhance.Sharpness(crop_img).enhance(1.25)
+    crop_img = crop_img.filter(ImageFilter.SHARPEN)
+
+    title = (title or ("Diagram" if kind == "diagram" else "Legend")).strip()
+    if kind == "diagram":
+        title_h = 44 if title else 0
+        out = Image.new("RGB", (crop_img.width, crop_img.height + title_h), (255, 255, 255))
+        draw = ImageDraw.Draw(out)
+        if title_h:
+            draw.rectangle((0, 0, out.width, title_h), fill=(248, 246, 241))
+            try:
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
+            except Exception:
+                font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), title, font=font)
+            draw.text(((out.width - (bbox[2] - bbox[0])) / 2, 12), title, fill=(30, 30, 30), font=font)
+        out.paste(crop_img, (0, title_h))
+        if grid_columns > 0 and grid_rows > 0:
+            grid_top = title_h
+            line_color = (45, 45, 45)
+            for col in range(grid_columns + 1):
+                x = round(col * crop_img.width / grid_columns)
+                draw.line((x, grid_top, x, grid_top + crop_img.height), fill=line_color, width=1)
+            for row in range(grid_rows + 1):
+                y = grid_top + round(row * crop_img.height / grid_rows)
+                draw.line((0, y, crop_img.width, y), fill=line_color, width=1)
+    else:
+        out = crop_img
+
+    asset_name = f"{kind}-{uuid.uuid4().hex[:12]}.jpg"
+    rel = f"review_assets/{session_id}/{asset_name}"
+    path = _review_asset_dir(recipe_id, session_id) / asset_name
+    out.save(path, "JPEG", quality=92)
+    return rel
+
+
+def _review_image_path(recipe_id: str, rel_path: str) -> Path:
+    safe = Path(rel_path)
+    if safe.is_absolute() or ".." in safe.parts:
+        raise HTTPException(status_code=400, detail="Invalid review asset path")
+    path = DATA_DIR / recipe_id / safe
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Review asset not found")
+    return path
+
+
+def _review_page_source(recipe_id: str, page_key: str, conn) -> Path:
+    return _chart_source_for_recipe(recipe_id, page_key, conn)
+
+
+def _review_page_dict(row: sqlite3.Row, diagrams: list[sqlite3.Row], legends: list[sqlite3.Row]) -> dict:
+    page = dict(row)
+    page["diagrams"] = [_review_diagram_dict(item) for item in diagrams if item["page_id"] == row["id"]]
+    page["legends"] = [_review_legend_dict(item) for item in legends if item["page_id"] == row["id"]]
+    return page
+
+
+def _review_diagram_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    try:
+        data["crop"] = json.loads(data.pop("crop_json") or "{}")
+    except Exception:
+        data["crop"] = {}
+    data["grid_columns"] = int(data.get("grid_columns") or 0)
+    data["grid_rows"] = int(data.get("grid_rows") or 0)
+    data["rotation"] = float(data.get("rotation") or 0)
+    return data
+
+
+def _review_legend_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    try:
+        data["crop"] = json.loads(data.pop("crop_json") or "{}")
+    except Exception:
+        data["crop"] = {}
+    return data
+
+
+def _review_session_dict(conn, session_row: sqlite3.Row) -> dict:
+    pages = conn.execute("SELECT * FROM recipe_review_pages WHERE session_id=? ORDER BY page_order", (session_row["id"],)).fetchall()
+    diagrams = conn.execute("SELECT * FROM recipe_review_diagrams WHERE session_id=? ORDER BY created_at", (session_row["id"],)).fetchall()
+    legends = conn.execute("SELECT * FROM recipe_review_legends WHERE session_id=? ORDER BY created_at", (session_row["id"],)).fetchall()
+    data = dict(session_row)
+    data["pages"] = [_review_page_dict(page, diagrams, legends) for page in pages]
+    data["page_count"] = len(pages)
+    data["accepted_count"] = sum(1 for page in pages if page["status"] == "accepted")
+    return data
+
+
+async def _create_review_session_from_ocr(
+    recipe_id: str,
+    language: str,
+    cfg: dict,
+    username: str,
+    job_id: str = "",
+) -> dict:
+    conn = get_db()
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
+    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+    languages = _ocr_languages_for(language, cfg)
+    max_variants = int(_clamped_float(cfg.get("ocr_max_variants"), 4, 1, 12))
+    ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
+    timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
+    timeout = max(300, timeout)
+    conn.close()
+
+    page_results = []
+    for idx, path in enumerate(paths, start=1):
+        result = await asyncio.to_thread(_ocr_page_to_result, path, languages, False, idx, max_variants)
+        ocr_text = result.get("text", "").strip() or "_No text was detected on this page._"
+        reviewed_text = _clean_ai_transcription(ocr_text)
+        if _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
+            try:
+                cleaned, _usage = await _call_ai_review_page_cleanup(cfg, ocr_text, language, timeout)
+                cleaned = cleaned.strip()
+                if cleaned and not _ai_cleanup_looks_lossy(ocr_text, cleaned):
+                    reviewed_text = cleaned
+            except Exception:
+                pass
+        page_results.append((idx, path.name, ocr_text, reviewed_text))
+
+    now = datetime.utcnow().isoformat()
+    session_id = str(uuid.uuid4())
+    conn = get_db()
+    conn.execute(
+        "UPDATE recipe_review_sessions SET status='cancelled', updated_at=? WHERE recipe_id=? AND status IN ('ready_to_review','in_review','paused')",
+        (now, recipe_id)
+    )
+    conn.execute(
+        "INSERT INTO recipe_review_sessions (id,recipe_id,job_id,status,language,source_fingerprint,current_page_order,created_by,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (session_id, recipe_id, job_id, "ready_to_review", language, fingerprint, 1, username, now, now)
+    )
+    for idx, page_key, ocr_text, reviewed_text in page_results:
+        conn.execute(
+            "INSERT INTO recipe_review_pages (id,session_id,recipe_id,page_key,page_order,status,ocr_text,reviewed_text,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), session_id, recipe_id, page_key, idx, "draft", ocr_text, reviewed_text, now, now)
+        )
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    data = _review_session_dict(conn, row)
+    conn.close()
+    return data
+
+
+def _delete_review_session_assets(recipe_id: str, session_id: str) -> None:
+    asset_dir = DATA_DIR / recipe_id / "review_assets" / session_id
+    if asset_dir.exists():
+        shutil.rmtree(asset_dir, ignore_errors=True)
+
+
+def _complete_review_session(session_id: str, username: str) -> dict:
+    conn = get_db()
+    session = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    if not session:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review session not found")
+    recipe_id = session["recipe_id"]
+    pages = conn.execute("SELECT * FROM recipe_review_pages WHERE session_id=? ORDER BY page_order", (session_id,)).fetchall()
+    diagrams = conn.execute("SELECT * FROM recipe_review_diagrams WHERE session_id=? ORDER BY page_key, created_at", (session_id,)).fetchall()
+    legends = conn.execute("SELECT * FROM recipe_review_legends WHERE session_id=? ORDER BY page_key, created_at", (session_id,)).fetchall()
+    if not pages:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Review session has no pages")
+    now = datetime.utcnow().isoformat()
+    parts = []
+    for page in pages:
+        text = (page["reviewed_text"] or page["ocr_text"] or "").strip()
+        if text:
+            parts.append(text)
+    if diagrams:
+        parts.extend(["", "---", "", "## Diagrams"])
+        for diagram in diagrams:
+            title = diagram["title"] or "Diagram"
+            parts.extend(["", f"### {title}", "", f"![{title}](/api/recipes/{recipe_id}/review-assets/{diagram['image_path']})"])
+    if legends:
+        parts.extend(["", "---", "", "## Legends"])
+        for legend in legends:
+            title = legend["title"] or "Legend"
+            parts.extend(["", f"### {title}", "", f"![{title}](/api/recipes/{recipe_id}/review-assets/{legend['image_path']})"])
+    content = "\n".join(parts).strip()
+    fingerprint = _source_fingerprint(recipe_id, conn)
+    conn.execute(
+        "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
+        (recipe_id, content, "ready", session["language"], "review_session", "reviewed_ocr", "", fingerprint, username, now, now)
+    )
+    conn.execute("UPDATE recipe_review_sessions SET status='completed', completed_at=?, updated_at=? WHERE id=?", (now, now, session_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    data = _review_session_dict(conn, row)
+    conn.close()
+    return data
+
+
 async def _run_ai_text_job(job_id: str) -> None:
     conn = get_db()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
@@ -2782,42 +3632,27 @@ async def _run_ai_text_job(job_id: str) -> None:
         timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
         timeout = max(300, timeout)
         max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
-        fingerprint = _source_fingerprint(recipe_id, conn)
         try:
-            result = await _generate_text_content(recipe_id, language, cfg, conn, timeout, max_pages, job_id=job_id)
+            result = await _create_review_session_from_ocr(recipe_id, language, cfg, row["generated_by"], job_id=job_id)
         finally:
             conn.close()
-        content = result["content"]
-        usage = result["usage"]
-        pages_sent = result["pages_sent"]
-        provider = result["provider"]
-        model = result["model"]
-        prompt = result["prompt"]
-        _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="generating")
+        content = "\n\n".join((page.get("reviewed_text") or page.get("ocr_text") or "") for page in result.get("pages", []))
+        usage = {}
+        pages_sent = result.get("page_count") or len(result.get("pages", []))
+        provider = "local_ocr_review"
+        model = "tesseract"
+        _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="ready_to_review")
         duration = time.time() - start_ts
-        result["duration_seconds"] = duration
         _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
 
         if _ai_job_cancelled(job_id):
             _update_ai_job(job_id, progress_stage="cancelled", finished_at=datetime.utcnow().isoformat(), duration_seconds=duration)
             return
 
-        now = datetime.utcnow().isoformat()
-        _update_ai_job(job_id, progress_stage="saving")
-        conn2 = get_db()
-        conn2.execute(
-            "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
-            "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
-            (recipe_id, content, "ready", language, prompt, provider, model, fingerprint, row["generated_by"], now, now)
-        )
-        conn2.commit()
-        conn2.close()
-        _record_generation_audit(recipe_id, result, job_id=job_id)
         _update_ai_job(
             job_id,
-            status="finished",
-            progress_stage="finished",
+            status="ready_to_review",
+            progress_stage="ready_to_review",
             result_text_chars=len(content),
             duration_seconds=duration,
             finished_at=datetime.utcnow().isoformat(),
@@ -3224,6 +4059,11 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
     conn.execute("DELETE FROM annotations       WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_charts WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_review_legends WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_review_diagrams WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_review_pages WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_review_sessions WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipes           WHERE id=?",        (recipe_id,))
     _prune_orphan_categories(conn)
     conn.commit()
@@ -3817,6 +4657,274 @@ async def create_recipe_text_job(
     conn.close()
     _ensure_ai_queue_processor()
     return {"job": _job_dict(row)}
+
+
+@app.get("/api/recipes/{recipe_id}/review-session")
+def get_recipe_review_session(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM recipe_review_sessions WHERE recipe_id=? AND status IN ('ready_to_review','in_review','paused') ORDER BY updated_at DESC LIMIT 1",
+        (recipe_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return {"exists": False}
+    data = _review_session_dict(conn, row)
+    data["exists"] = True
+    conn.close()
+    return data
+
+
+@app.post("/api/recipes/{recipe_id}/review-session")
+async def start_recipe_review_session(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    language = str(data.get("language", "") or current_user.get("language", "en"))
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    cfg = _ai_settings(conn, reveal_secret=True)
+    conn.close()
+    if cfg.get("ai_enabled", "false").lower() != "true":
+        raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
+    session = await _create_review_session_from_ocr(recipe_id, language, cfg, current_user["username"])
+    session["exists"] = True
+    return session
+
+
+@app.put("/api/review-sessions/{session_id}/pages/{page_id}")
+def save_review_page(session_id: str, page_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    text = str(data.get("reviewed_text", ""))
+    status = str(data.get("status", "draft"))
+    status = status if status in {"draft", "accepted"} else "draft"
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    page = conn.execute("SELECT * FROM recipe_review_pages WHERE id=? AND session_id=?", (page_id, session_id)).fetchone()
+    if not page:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review page not found")
+    conn.execute(
+        "UPDATE recipe_review_pages SET reviewed_text=?, status=?, updated_at=? WHERE id=?",
+        (text, status, now, page_id)
+    )
+    conn.execute(
+        "UPDATE recipe_review_sessions SET status='in_review', current_page_order=?, updated_at=? WHERE id=? AND status!='completed'",
+        (page["page_order"], now, session_id)
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    data = _review_session_dict(conn, row)
+    data["exists"] = True
+    conn.close()
+    return data
+
+
+@app.post("/api/review-sessions/{session_id}/pause")
+def pause_review_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review session not found")
+    conn.execute("UPDATE recipe_review_sessions SET status='paused', updated_at=? WHERE id=?", (now, session_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    data = _review_session_dict(conn, row)
+    data["exists"] = True
+    conn.close()
+    return data
+
+
+@app.post("/api/review-sessions/{session_id}/cancel")
+def cancel_review_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review session not found")
+    recipe_id = row["recipe_id"]
+    conn.execute("DELETE FROM recipe_review_legends WHERE session_id=?", (session_id,))
+    conn.execute("DELETE FROM recipe_review_diagrams WHERE session_id=?", (session_id,))
+    conn.execute("DELETE FROM recipe_review_pages WHERE session_id=?", (session_id,))
+    conn.execute("DELETE FROM recipe_review_sessions WHERE id=?", (session_id,))
+    if row["job_id"]:
+        conn.execute("UPDATE ai_text_jobs SET dismissed=1 WHERE id=?", (row["job_id"],))
+    conn.commit()
+    conn.close()
+    _delete_review_session_assets(recipe_id, session_id)
+    return {"status": "cancelled"}
+
+
+@app.post("/api/review-sessions/{session_id}/complete")
+def complete_review_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    data = _complete_review_session(session_id, current_user["username"])
+    data["exists"] = True
+    return data
+
+
+@app.post("/api/review-sessions/{session_id}/pages/{page_id}/diagrams")
+def create_review_diagram(session_id: str, page_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    title = str(data.get("title") or "Diagram").strip()[:120] or "Diagram"
+    crop = data.get("crop") if isinstance(data.get("crop"), dict) else {}
+    grid_columns = int(_clamped_float(data.get("grid_columns"), 10, 1, 200))
+    grid_rows = int(_clamped_float(data.get("grid_rows"), 10, 1, 200))
+    rotation = float(_clamped_float(data.get("rotation"), 0, -45, 45))
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    session = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    page = conn.execute("SELECT * FROM recipe_review_pages WHERE id=? AND session_id=?", (page_id, session_id)).fetchone()
+    if not session or not page:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review session/page not found")
+    page_path = _review_page_source(session["recipe_id"], page["page_key"], conn)
+    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, grid_columns, grid_rows, rotation, "diagram")
+    diagram_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO recipe_review_diagrams (id,session_id,page_id,recipe_id,page_key,title,image_path,crop_json,grid_columns,grid_rows,rotation,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (diagram_id, session_id, page_id, session["recipe_id"], page["page_key"], title, rel_path, json.dumps(crop), grid_columns, grid_rows, rotation, now, now)
+    )
+    conn.execute("UPDATE recipe_review_sessions SET status='in_review', updated_at=? WHERE id=?", (now, session_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    out = _review_session_dict(conn, row)
+    out["exists"] = True
+    conn.close()
+    return out
+
+
+@app.post("/api/review-sessions/{session_id}/pages/{page_id}/legends")
+def create_review_legend(session_id: str, page_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    title = str(data.get("title") or "Legend").strip()[:120] or "Legend"
+    crop = data.get("crop") if isinstance(data.get("crop"), dict) else {}
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    session = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    page = conn.execute("SELECT * FROM recipe_review_pages WHERE id=? AND session_id=?", (page_id, session_id)).fetchone()
+    if not session or not page:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Review session/page not found")
+    page_path = _review_page_source(session["recipe_id"], page["page_key"], conn)
+    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, 0, 0, 0, "legend")
+    legend_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO recipe_review_legends (id,session_id,page_id,recipe_id,page_key,title,image_path,crop_json,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (legend_id, session_id, page_id, session["recipe_id"], page["page_key"], title, rel_path, json.dumps(crop), now, now)
+    )
+    conn.execute("UPDATE recipe_review_sessions SET status='in_review', updated_at=? WHERE id=?", (now, session_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
+    out = _review_session_dict(conn, row)
+    out["exists"] = True
+    conn.close()
+    return out
+
+
+@app.get("/api/recipes/{recipe_id}/review-assets/{asset_path:path}")
+def get_review_asset(recipe_id: str, asset_path: str, request: Request, token: Optional[str] = None):
+    _verify_token_param(request, token)
+    path = _review_image_path(recipe_id, asset_path)
+    return FileResponse(str(path), media_type="image/jpeg")
+
+
+@app.get("/api/recipes/{recipe_id}/charts")
+def get_recipe_charts(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    rows = conn.execute("SELECT * FROM recipe_charts WHERE recipe_id=? ORDER BY page_key, created_at", (recipe_id,)).fetchall()
+    conn.close()
+    return {"charts": [_chart_dict(row) for row in rows]}
+
+
+@app.post("/api/recipes/{recipe_id}/charts/extract")
+def extract_recipe_charts(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    language = str(data.get("language", "") or current_user.get("language", "en"))
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    cfg = _ai_settings(conn, reveal_secret=True)
+    conn.close()
+    max_pages = int(_clamped_float(data.get("max_pages") or cfg.get("ai_max_pages"), 8, 1, 30))
+    charts = _refresh_recipe_charts(recipe_id, language, cfg, current_user, max_pages=max_pages)
+    return {"charts": charts}
+
+
+@app.put("/api/recipes/{recipe_id}/charts/{chart_id}")
+def save_recipe_chart(recipe_id: str, chart_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    title = str(data.get("title") or "Chart").strip()[:120] or "Chart"
+    cells = data.get("cells") if isinstance(data.get("cells"), list) else []
+    cells = [[str(cell or ".")[:1] if str(cell or ".") != "" else "." for cell in row] for row in cells if isinstance(row, list)]
+    rows = len(cells)
+    columns = max((len(row) for row in cells), default=0)
+    if rows < 1 or columns < 1:
+        raise HTTPException(status_code=400, detail="Chart must contain at least one row and column")
+    cells = [row + ["."] * (columns - len(row)) for row in cells]
+    repeat_count = data.get("repeat_count")
+    try:
+        repeat_count = int(repeat_count) if repeat_count not in (None, "") else None
+    except Exception:
+        repeat_count = None
+    palette = data.get("palette") if isinstance(data.get("palette"), list) else _chart_palette_for_cells(cells)
+    chart_code = _chart_code(title, columns, rows, cells, repeat_count)
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipe_charts WHERE id=? AND recipe_id=?", (chart_id, recipe_id)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Chart not found")
+    conn.execute(
+        """
+        UPDATE recipe_charts
+        SET title=?, rows=?, columns=?, palette_json=?, cells_json=?, chart_code=?,
+            repeat_count=?, generated_by='user_reviewed', updated_at=?
+        WHERE id=? AND recipe_id=?
+        """,
+        (
+            title,
+            rows,
+            columns,
+            json.dumps(palette, ensure_ascii=False),
+            json.dumps(cells, ensure_ascii=False),
+            chart_code,
+            repeat_count,
+            now,
+            chart_id,
+            recipe_id,
+        )
+    )
+    conn.commit()
+    saved = conn.execute("SELECT * FROM recipe_charts WHERE id=? AND recipe_id=?", (chart_id, recipe_id)).fetchone()
+    conn.close()
+    return {"chart": _chart_dict(saved)}
+
+
+@app.get("/api/recipes/{recipe_id}/charts/{chart_id}/source")
+def get_recipe_chart_source(recipe_id: str, chart_id: str, current_user: dict = Depends(get_current_user)):
+    from PIL import Image, ImageOps
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipe_charts WHERE id=? AND recipe_id=?", (chart_id, recipe_id)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Chart not found")
+    chart = _chart_dict(row)
+    path = _chart_source_for_recipe(recipe_id, chart.get("page_key") or "", conn)
+    conn.close()
+    bbox = chart.get("source_bbox") or []
+    img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    if len(bbox) == 4:
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        pad = 28
+        crop_box = (max(0, x1 - pad), max(0, y1 - pad), min(img.width, x2 + pad), min(img.height, y2 + pad))
+        img = img.crop(crop_box)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=88)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/jpeg")
 
 
 @app.get("/api/work-queue")

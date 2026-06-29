@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Sparkles, Save } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -34,6 +34,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [viewMode, setViewMode] = useState(initialViewMode);
   const [textVersion, setTextVersion] = useState(null);
   const [textLoading, setTextLoading] = useState(false);
+  const [reviewSession, setReviewSession] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const addImagesInputRef = useRef(null);
   // Controls panel: open by default on desktop, closed on mobile
   const [controlsOpen, setControlsOpen] = useState(() =>
@@ -187,8 +189,9 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    setViewMode(initialViewMode || 'original');
+    setViewMode(initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
     setTextVersion(null);
+    setReviewSession(null);
     fetchRecipe(recipeId)
       .then(r => {
         setRecipe(r);
@@ -219,6 +222,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       .then(setTextVersion)
       .catch(() => setTextVersion({ exists: false, error: true }))
       .finally(() => setTextLoading(false));
+  }, [recipeId, viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'review') return;
+    setReviewLoading(true);
+    fetchReviewSession(recipeId)
+      .then(setReviewSession)
+      .catch(() => setReviewSession({ exists: false, error: true }))
+      .finally(() => setReviewLoading(false));
   }, [recipeId, viewMode]);
 
   const handleKey = useCallback((e) => {
@@ -314,6 +326,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           <FileText size={16} />
           <span>{t('textVersion')}</span>
         </button>
+        <button
+          className={`viewer-mode-tab ${viewMode === 'review' ? 'active' : ''}`}
+          onClick={() => setViewMode('review')}
+          role="tab"
+          aria-selected={viewMode === 'review'}
+        >
+          <CheckCircle2 size={16} />
+          <span>{t('reviewText')}</span>
+        </button>
       </div>
 
       <div className="viewer-body">
@@ -328,6 +349,23 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               loading={textLoading}
               setLoading={setTextLoading}
               onTextJobQueued={onTextJobQueued}
+            />
+          ) : viewMode === 'review' ? (
+            <ReviewSessionPanel
+              t={t}
+              recipe={recipe}
+              recipeId={recipeId}
+              language={language}
+              session={reviewSession}
+              setSession={setReviewSession}
+              loading={reviewLoading}
+              setLoading={setReviewLoading}
+              onTextJobQueued={onTextJobQueued}
+              onCompleted={(textVersionResult) => {
+                setTextVersion(textVersionResult || null);
+                setViewMode('text');
+                onTextJobQueued?.();
+              }}
             />
           ) : recipe.file_type === 'pdf' ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
@@ -893,6 +931,428 @@ function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
   );
 }
 
+function cleanReviewDraftText(text) {
+  return String(text || '')
+    .replace(/^```(?:markdown|md|text)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession, loading, setLoading, onTextJobQueued, onCompleted }) {
+  const [pageIndex, setPageIndex] = useState(0);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [assetMode, setAssetMode] = useState(null);
+
+  const pages = session?.pages || [];
+  const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
+
+  useEffect(() => {
+    if (!page) { setDraft(''); return; }
+    setDraft(cleanReviewDraftText(page.reviewed_text || page.ocr_text || ''));
+  }, [page?.id]);
+
+  const pageSrc = page ? reviewPageImageSrc(recipe, recipeId, page.page_key) : '';
+
+  const queueScan = async () => {
+    setLoading(true); setError('');
+    try {
+      await createTextVersionJob(recipeId, language);
+      onTextJobQueued?.();
+      setSession({ exists: false, queued: true });
+    } catch (e) {
+      setError(e.message || t('textVersionGenerateError'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const savePage = async (status = 'draft', moveNext = false) => {
+    if (!session?.id || !page?.id) return null;
+    setSaving(true); setError('');
+    try {
+      const updated = await saveReviewPage(session.id, page.id, draft, status);
+      setSession(updated);
+      if (moveNext && pageIndex < pages.length - 1) setPageIndex(i => i + 1);
+      return updated;
+    } catch (e) {
+      setError(e.message || 'Failed to save page');
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pause = async () => {
+    if (!session?.id) return;
+    await savePage('draft');
+    await pauseReviewSession(session.id).catch(() => {});
+    onTextJobQueued?.();
+  };
+
+  const cancel = async () => {
+    if (!session?.id || !window.confirm(t('cancelReviewConfirm'))) return;
+    setSaving(true);
+    try {
+      await cancelReviewSession(session.id);
+      setSession({ exists: false });
+      onTextJobQueued?.();
+    } catch (e) {
+      setError(e.message || 'Failed to cancel review');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const complete = async () => {
+    if (!session?.id) return;
+    await savePage('accepted');
+    setSaving(true); setError('');
+    try {
+      await completeReviewSession(session.id);
+      const text = await fetchTextVersion(recipeId).catch(() => null);
+      onCompleted?.(text);
+    } catch (e) {
+      setError(e.message || 'Failed to complete review');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAsset = async (payload) => {
+    if (!session?.id || !page?.id) return;
+    setSaving(true); setError('');
+    try {
+      const updated = assetMode === 'legend'
+        ? await createReviewLegend(session.id, page.id, payload)
+        : await createReviewDiagram(session.id, page.id, payload);
+      setSession(updated);
+      setAssetMode(null);
+    } catch (e) {
+      setError(e.message || 'Failed to save asset');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="review-panel review-panel--empty"><div className="spinner" /><p>{t('loading')}</p></div>;
+  }
+
+  if (!session?.exists) {
+    return (
+      <div className="review-panel review-panel--empty">
+        <Clock3 size={34} />
+        <h2>{session?.queued ? t('reviewQueued') : t('reviewReadyEmpty')}</h2>
+        <p>{session?.queued ? t('reviewQueuedHint') : t('reviewStartHint')}</p>
+        {error && <p className="status-error">{error}</p>}
+        {!session?.queued && (
+          <button className="btn-primary btn-icon-label" onClick={queueScan} disabled={saving}>
+            <Sparkles size={15} />{t('queueTextVersion') || 'Scan pages'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-panel">
+      <div className="review-topbar">
+        <div>
+          <h2>{t('reviewText')}</h2>
+          <p>{pages.length ? `${pageIndex + 1} / ${pages.length} · ${session.accepted_count || 0} ${t('reviewPagesAccepted')}` : ''}</p>
+        </div>
+        <div className="review-actions">
+          <button className="btn-secondary" onClick={cancel} disabled={saving}>{t('cancel') || 'Cancel'}</button>
+          <button className="btn-secondary" onClick={pause} disabled={saving}>{t('doLater')}</button>
+          <button className="btn-secondary btn-icon-label" onClick={() => setAssetMode('legend')} disabled={!page || saving}>
+            <Scissors size={15} />{t('cropLegend')}
+          </button>
+          <button className="btn-primary btn-icon-label review-insert-diagram" onClick={() => setAssetMode('diagram')} disabled={!page || saving}>
+            <Grid3X3 size={16} />{t('insertDiagram')}
+          </button>
+        </div>
+      </div>
+      {error && <p className="status-error">{error}</p>}
+      {page && (
+        <div className="review-body">
+          <div className="review-page-side">
+            <img src={pageSrc} alt="" />
+          </div>
+          <div className="review-text-side">
+            <div className="review-page-nav">
+              <button className="btn-secondary" onClick={() => setPageIndex(i => Math.max(0, i - 1))} disabled={pageIndex === 0 || saving}>
+                <ChevronLeft size={15} />{t('previous') || 'Previous'}
+              </button>
+              <span>{page.page_key}</span>
+              <button className="btn-secondary" onClick={() => setPageIndex(i => Math.min(pages.length - 1, i + 1))} disabled={pageIndex >= pages.length - 1 || saving}>
+                {t('next') || 'Next'}<ChevronRight size={15} />
+              </button>
+            </div>
+            <textarea className="review-textarea" value={draft} onChange={e => setDraft(e.target.value)} />
+            {(page.diagrams?.length > 0 || page.legends?.length > 0) && (
+              <div className="review-assets">
+                {page.diagrams?.map(item => <img key={item.id} src={reviewAssetUrl(recipeId, item.image_path)} alt={item.title} />)}
+                {page.legends?.map(item => <img key={item.id} src={reviewAssetUrl(recipeId, item.image_path)} alt={item.title} />)}
+              </div>
+            )}
+            <div className="review-bottom-actions">
+              <button className="btn-secondary" onClick={() => savePage('draft')} disabled={saving}><Save size={15} />{t('saveChanges')}</button>
+              <button className="btn-primary" onClick={() => savePage('accepted', true)} disabled={saving}>
+                <CheckCircle2 size={15} />{pageIndex >= pages.length - 1 ? t('acceptPage') : t('acceptNext')}
+              </button>
+              <button className="btn-primary" onClick={complete} disabled={saving || !pages.length}>
+                {t('completeReview')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {assetMode && page && (
+        <ReviewAssetModal
+          t={t}
+          mode={assetMode}
+          imageSrc={pageSrc}
+          onClose={() => setAssetMode(null)}
+          onSave={saveAsset}
+        />
+      )}
+    </div>
+  );
+}
+
+function reviewPageImageSrc(recipe, recipeId, pageKey) {
+  if (!recipe || !pageKey) return '';
+  return recipe.file_type === 'pdf' ? pdfPageUrl(recipeId, pageKey) : imageUrl(recipeId, pageKey, recipe.thumbnail_version);
+}
+
+function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
+  const imgRef = useRef(null);
+  const interactionRef = useRef(null);
+  const [natural, setNatural] = useState({ w: 1, h: 1 });
+  const [box, setBox] = useState({ x: 20, y: 20, w: 55, h: 38 });
+  const [title, setTitle] = useState(mode === 'legend' ? t('legendDefaultTitle') : t('diagramDefaultTitle'));
+  const [cols, setCols] = useState(10);
+  const [rows, setRows] = useState(10);
+  const [rotation, setRotation] = useState(0);
+  const [opacity, setOpacity] = useState(0.85);
+
+  const clampBox = (next) => {
+    const x = Math.max(0, Math.min(95, Number(next.x)));
+    const y = Math.max(0, Math.min(95, Number(next.y)));
+    const w = Math.max(5, Math.min(100 - x, Number(next.w)));
+    const h = Math.max(5, Math.min(100 - y, Number(next.h)));
+    return { x, y, w, h };
+  };
+
+  const updateBox = (next) => setBox(clampBox(next));
+
+  const moveBox = (next) => {
+    const w = Math.max(5, Math.min(100, Number(next.w)));
+    const h = Math.max(5, Math.min(100, Number(next.h)));
+    setBox({
+      x: Math.max(0, Math.min(100 - w, Number(next.x))),
+      y: Math.max(0, Math.min(100 - h, Number(next.y))),
+      w,
+      h,
+    });
+  };
+
+  const pointToPercent = (event) => {
+    const rect = imgRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return { x: 0, y: 0 };
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    };
+  };
+
+  const resizeBox = (start, handle, dx, dy) => {
+    let { x, y, w, h } = start;
+    const right = x + w;
+    const bottom = y + h;
+    const min = 5;
+    if (handle.includes('w')) {
+      x = Math.min(right - min, Math.max(0, x + dx));
+      w = right - x;
+    }
+    if (handle.includes('e')) {
+      w = Math.max(min, Math.min(100 - x, w + dx));
+    }
+    if (handle.includes('n')) {
+      y = Math.min(bottom - min, Math.max(0, y + dy));
+      h = bottom - y;
+    }
+    if (handle.includes('s')) {
+      h = Math.max(min, Math.min(100 - y, h + dy));
+    }
+    return clampBox({ x, y, w, h });
+  };
+
+  const startInteraction = (event, type, handle = '') => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startPoint = pointToPercent(event);
+    const startBox = box;
+    const startRotation = rotation;
+    const center = { x: startBox.x + startBox.w / 2, y: startBox.y + startBox.h / 2 };
+    const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
+    interactionRef.current = { type, handle, startPoint, startBox, startRotation, startAngle };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveInteraction = (event) => {
+    const active = interactionRef.current;
+    if (!active) return;
+    event.preventDefault();
+    const point = pointToPercent(event);
+    const dx = point.x - active.startPoint.x;
+    const dy = point.y - active.startPoint.y;
+    if (active.type === 'move') {
+      moveBox({
+        ...active.startBox,
+        x: active.startBox.x + dx,
+        y: active.startBox.y + dy,
+      });
+    } else if (active.type === 'resize') {
+      setBox(resizeBox(active.startBox, active.handle, dx, dy));
+    } else if (active.type === 'rotate') {
+      const center = {
+        x: active.startBox.x + active.startBox.w / 2,
+        y: active.startBox.y + active.startBox.h / 2,
+      };
+      const angle = Math.atan2(point.y - center.y, point.x - center.x);
+      const delta = (angle - active.startAngle) * (180 / Math.PI);
+      const next = Math.max(-45, Math.min(45, active.startRotation + delta));
+      setRotation(Math.round(next * 10) / 10);
+    }
+  };
+
+  const endInteraction = (event) => {
+    interactionRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const resetSelection = () => {
+    setBox({ x: 20, y: 20, w: 55, h: 38 });
+    setRotation(0);
+    setOpacity(0.85);
+  };
+
+  const crop = {
+    x: Math.round(natural.w * box.x / 100),
+    y: Math.round(natural.h * box.y / 100),
+    width: Math.round(natural.w * box.w / 100),
+    height: Math.round(natural.h * box.h / 100),
+  };
+
+  const save = () => {
+    onSave({
+      title,
+      crop,
+      grid_columns: mode === 'diagram' ? cols : 0,
+      grid_rows: mode === 'diagram' ? rows : 0,
+      rotation: mode === 'diagram' ? rotation : 0,
+    });
+  };
+
+  return (
+    <div className="review-asset-overlay" onClick={onClose}>
+      <div className="review-asset-modal" onClick={e => e.stopPropagation()}>
+        <div className="review-asset-head">
+          <div>
+            <h3>{mode === 'legend' ? t('cropLegend') : t('insertDiagram')}</h3>
+            <p>{mode === 'legend' ? t('cropLegendHint') : t('insertDiagramHint')}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="review-asset-body">
+          <div className="review-asset-preview">
+            <img
+              ref={imgRef}
+              src={imageSrc}
+              alt=""
+              onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
+            />
+            <div
+              className={`review-crop-box ${mode === 'diagram' ? 'review-crop-box--grid' : ''}`}
+              onPointerDown={e => startInteraction(e, 'move')}
+              onPointerMove={moveInteraction}
+              onPointerUp={endInteraction}
+              onPointerCancel={endInteraction}
+              style={{
+                left: `${box.x}%`,
+                top: `${box.y}%`,
+                width: `${box.w}%`,
+                height: `${box.h}%`,
+                opacity,
+                '--review-grid-cols': cols,
+                '--review-grid-rows': rows,
+                transform: `rotate(${rotation}deg)`,
+              }}
+            >
+              {mode === 'diagram' && (
+                <button
+                  type="button"
+                  className="review-crop-rotate"
+                  aria-label={t('diagramRotation')}
+                  onPointerDown={e => startInteraction(e, 'rotate')}
+                  onPointerMove={moveInteraction}
+                  onPointerUp={endInteraction}
+                  onPointerCancel={endInteraction}
+                />
+              )}
+              {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => (
+                <button
+                  type="button"
+                  key={handle}
+                  className={`review-crop-handle review-crop-handle--${handle}`}
+                  aria-label={`${t('cropResize')} ${handle}`}
+                  onPointerDown={e => startInteraction(e, 'resize', handle)}
+                  onPointerMove={moveInteraction}
+                  onPointerUp={endInteraction}
+                  onPointerCancel={endInteraction}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="review-asset-controls">
+            <label className="review-control-field">{t('diagramTitle')}<input value={title} onChange={e => setTitle(e.target.value)} /></label>
+            {mode === 'diagram' && (
+              <>
+                <div className="review-control-grid">
+                  <label>{t('diagramColumns')}<input type="number" min="1" max="200" value={cols} onChange={e => setCols(Number(e.target.value) || 1)} /></label>
+                  <label>{t('diagramRows')}<input type="number" min="1" max="200" value={rows} onChange={e => setRows(Number(e.target.value) || 1)} /></label>
+                </div>
+                <label>{t('diagramOverlay')}<input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={e => setOpacity(Number(e.target.value))} /></label>
+              </>
+            )}
+            <div className="review-control-grid review-control-grid--crop">
+              {[
+                ['x', t('cropX')],
+                ['y', t('cropY')],
+                ['w', t('cropWidth')],
+                ['h', t('cropHeight')],
+              ].map(([key, label]) => (
+                <label key={key}>{label}<input type="number" min="0" max="100" step="0.1" value={Math.round(box[key] * 10) / 10} onChange={e => updateBox({ ...box, [key]: e.target.value })} /></label>
+              ))}
+            </div>
+            {mode === 'diagram' && (
+              <p className="review-control-note">{t('diagramRotationValue')}: {rotation}°</p>
+            )}
+            <button className="btn-secondary" type="button" onClick={resetSelection}>{t('resetSelection')}</button>
+          </div>
+        </div>
+        <div className="review-asset-footer">
+          <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={save}>{t('saveChanges')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -992,6 +1452,8 @@ function MarkdownView({ content }) {
     if (line.startsWith('### ')) { elements.push(<h4 key={i}>{line.slice(4)}</h4>); return; }
     if (line.startsWith('## ')) { elements.push(<h3 key={i}>{line.slice(3)}</h3>); return; }
     if (line.startsWith('# ')) { elements.push(<h2 key={i}>{line.slice(2)}</h2>); return; }
+    const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (img) { elements.push(<img key={i} className="markdown-image" src={img[2]} alt={img[1]} />); return; }
     if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>); return; }
     if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{line.trim().slice(1, -1)}</p>); return; }
     elements.push(<p key={i}>{line}</p>);
