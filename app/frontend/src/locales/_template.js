@@ -14,6 +14,7 @@ const xx = {
   appName: "Knitting Library",
   navHome: "Home",
   navAdd: "Add",
+  recipeStarted: "Recipe started",
   reviewText: "Review",
   reviewReadyEmpty: "No review draft yet",
   reviewStartHint: "Scan the recipe, then review each page before publishing the text version.",

@@ -64,6 +64,50 @@
   flex-shrink: 0;
 }
 
+.viewer-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.recipe-started-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(36vw, 260px);
+  padding: 7px 10px;
+  border: 1px solid rgba(82, 143, 92, 0.26);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg) 78%, #dff1df 22%);
+  color: #2f6d3c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(47, 109, 60, 0.08);
+}
+
+.recipe-started-badge svg {
+  flex: 0 0 auto;
+}
+
+.recipe-started-badge-main,
+.recipe-started-badge-date {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recipe-started-badge-date {
+  color: color-mix(in srgb, #2f6d3c 76%, var(--text-secondary));
+  font-weight: 600;
+}
+
+.recipe-started-badge--mobile {
+  display: none;
+}
+
 .viewer-action-btn {
   width: 40px;
   height: 40px;
@@ -2054,6 +2098,19 @@ a.viewer-action-btn { text-decoration: none; }
 
   .viewer-topbar { display: none; }
 
+  .recipe-started-badge--mobile {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top, 14px));
+    right: max(12px, env(safe-area-inset-right, 12px));
+    z-index: 137;
+    display: inline-flex;
+    max-width: min(58vw, 260px);
+    padding: 7px 9px;
+    box-shadow: 0 10px 28px rgba(47, 109, 60, 0.16);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
   .viewer-body {
     height: var(--mobile-recipe-viewer-height);
     min-height: 0;
@@ -2319,23 +2376,35 @@ a.viewer-action-btn { text-decoration: none; }
 
   .mobile-quick-strip {
     position: fixed;
-    left: max(14px, env(safe-area-inset-left, 14px));
-    bottom: calc(var(--app-mobile-nav-space, 0px) + 12px);
+    top: max(88px, calc(env(safe-area-inset-top, 0px) + 78px));
     z-index: 138;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 5px;
-    max-width: min(54vw, 260px);
-    padding: 6px;
-    overflow-x: auto;
+    gap: 6px;
+    width: 48px;
+    max-height: min(50dvh, 360px);
+    padding: 7px 6px;
+    overflow-x: hidden;
+    overflow-y: auto;
     border: 1px solid rgba(255,255,255,0.56);
-    border-radius: 14px;
+    border-radius: 16px;
     background: color-mix(in srgb, var(--card-bg) 94%, transparent);
     box-shadow: 0 12px 34px rgba(26, 26, 46, 0.22);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     scrollbar-width: none;
+    touch-action: pan-y;
+    user-select: none;
     animation: mobileQuickStripIn 0.18s ease both;
+  }
+
+  .mobile-quick-strip--left {
+    left: max(10px, env(safe-area-inset-left, 10px));
+  }
+
+  .mobile-quick-strip--right {
+    right: max(10px, env(safe-area-inset-right, 10px));
   }
 
   .viewer--mobile-panel-open .mobile-quick-strip {
@@ -2344,16 +2413,35 @@ a.viewer-action-btn { text-decoration: none; }
 
   .mobile-quick-strip::-webkit-scrollbar { display: none; }
 
+  .mobile-quick-grip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 16px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+    background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    cursor: grab;
+  }
+
+  .mobile-quick-strip:active .mobile-quick-grip {
+    cursor: grabbing;
+    color: var(--terracotta);
+  }
+
   .mobile-quick-thumb {
     flex: 0 0 auto;
-    width: 28px;
-    height: 38px;
+    width: 34px;
+    height: 46px;
     padding: 0;
     overflow: hidden;
     border: 2px solid transparent;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--bg-secondary);
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(26, 26, 46, 0.12);
   }
 
   .mobile-quick-thumb.active {
@@ -2368,8 +2456,8 @@ a.viewer-action-btn { text-decoration: none; }
   }
 
   @keyframes mobileQuickStripIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
   }
 
   .mobile-edit-tray {

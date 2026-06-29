@@ -45,8 +45,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
+  const [mobileStripSide, setMobileStripSide] = useState('left');
   const [panelDragY, setPanelDragY] = useState(0);
   const panelDragStartY = useRef(null);
+  const mobileStripDrag = useRef(null);
+  const mobileStripClickGuard = useRef(false);
   const touchStartX = useRef(null);
 
   useEffect(() => {
@@ -189,6 +192,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
+    setMobileStripSide('left');
     setViewMode(initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
     setTextVersion(null);
     setReviewSession(null);
@@ -256,6 +260,60 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     touchStartX.current = null;
   };
 
+  const beginMobileStripDrag = (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    mobileStripDrag.current = { x: event.clientX, y: event.clientY, dragging: false };
+    mobileStripClickGuard.current = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveMobileStripDrag = (event) => {
+    const start = mobileStripDrag.current;
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) + Math.abs(dy) > 8) {
+      start.dragging = true;
+      mobileStripClickGuard.current = true;
+    }
+  };
+
+  const endMobileStripDrag = (event) => {
+    const start = mobileStripDrag.current;
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (start.dragging && Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
+      setMobileStripSide(dx > 0 ? 'right' : 'left');
+    }
+    mobileStripDrag.current = null;
+    window.setTimeout(() => { mobileStripClickGuard.current = false; }, 180);
+  };
+
+  const handleMobileThumbClick = (index, event) => {
+    if (mobileStripClickGuard.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    setImageIndex(index);
+  };
+
+  const formatStartedDate = (iso) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString(getLanguageLocale(language), {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const isRecipeStarted = recipe?.project_status === 'active';
+  const startedAtLabel = formatStartedDate(recipe?.active_started_at);
+
   const handleDelete = async () => {
     try { await deleteRecipe(recipeId); onDeleted(); }
     catch (e) { alert('Failed to delete recipe.'); }
@@ -280,30 +338,39 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
         </button>
-        <div className="viewer-actions">
-          <button
-            className="viewer-action-btn viewer-info-toggle"
-            onClick={() => setDesktopInfoOpen(open => !open)}
-            title={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
-            aria-label={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
-            aria-pressed={!desktopInfoOpen}
-          >
-            {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
-          <a
-            className="viewer-action-btn"
-            href={downloadUrl(recipeId)}
-            download
-            title={recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images (ZIP)'}
-          >
-            <Download size={18} />
-          </a>
-          <button className="viewer-action-btn" onClick={() => setEditing(true)} title={t('editRecipe')}>
-            <Pencil size={18} />
-          </button>
-          <button className="viewer-action-btn danger" onClick={() => setDeleteConfirm(true)} title={t('deleteRecipe')}>
-            <Trash2 size={18} />
-          </button>
+        <div className="viewer-topbar-right">
+          {isRecipeStarted && (
+            <div className="recipe-started-badge" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
+              <CheckCircle2 size={15} />
+              <span className="recipe-started-badge-main">{t('recipeStarted')}</span>
+              {startedAtLabel && <span className="recipe-started-badge-date">{startedAtLabel}</span>}
+            </div>
+          )}
+          <div className="viewer-actions">
+            <button
+              className="viewer-action-btn viewer-info-toggle"
+              onClick={() => setDesktopInfoOpen(open => !open)}
+              title={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+              aria-label={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+              aria-pressed={!desktopInfoOpen}
+            >
+              {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+            <a
+              className="viewer-action-btn"
+              href={downloadUrl(recipeId)}
+              download
+              title={recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images (ZIP)'}
+            >
+              <Download size={18} />
+            </a>
+            <button className="viewer-action-btn" onClick={() => setEditing(true)} title={t('editRecipe')}>
+              <Pencil size={18} />
+            </button>
+            <button className="viewer-action-btn danger" onClick={() => setDeleteConfirm(true)} title={t('deleteRecipe')}>
+              <Trash2 size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -672,6 +739,14 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       {/* ── Knitting tools remain available on desktop through their floating button. ── */}
       <KnittingToolbar recipeId={recipeId} t={t} />
 
+      {isRecipeStarted && (
+        <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
+          <CheckCircle2 size={15} />
+          <span className="recipe-started-badge-main">{t('recipeStarted')}</span>
+          {startedAtLabel && <span className="recipe-started-badge-date">{startedAtLabel}</span>}
+        </div>
+      )}
+
       {/* ── Mobile Info panel ── */}
       <div
         className={`mobile-panel mobile-panel--info ${mobilePanel === 'info' ? 'mobile-panel--open' : ''}`}
@@ -765,12 +840,22 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       {recipe.file_type === 'images' && (
         <>
           {recipe.images.length > 1 && !mobileImageEditing && !fullscreen && (
-            <div className="mobile-quick-strip" aria-label="Recipe images">
+            <div
+              className={`mobile-quick-strip mobile-quick-strip--${mobileStripSide}`}
+              aria-label="Recipe images"
+              onPointerDown={beginMobileStripDrag}
+              onPointerMove={moveMobileStripDrag}
+              onPointerUp={endMobileStripDrag}
+              onPointerCancel={() => { mobileStripDrag.current = null; }}
+            >
+              <div className="mobile-quick-grip" aria-hidden="true">
+                <GripVertical size={14} />
+              </div>
               {recipe.images.map((img, i) => (
                 <button
                   key={img}
                   className={`mobile-quick-thumb ${i === imageIndex ? 'active' : ''}`}
-                  onClick={() => setImageIndex(i)}
+                  onClick={(event) => handleMobileThumbClick(i, event)}
                   aria-label={`Page ${i + 1}`}
                 >
                   <img src={imageUrl(recipeId, img, imageVersions[img] || recipe.thumbnail_version)} alt="" loading="lazy" />
