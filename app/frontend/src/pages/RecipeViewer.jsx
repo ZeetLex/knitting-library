@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
+import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
@@ -1821,32 +1822,9 @@ function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpda
 function EditModal({ t, recipe, onClose, onSaved }) {
   const [title, setTitle]           = useState(recipe.title);
   const [description, setDesc]      = useState(recipe.description || '');
-  const [categories, setCategories] = useState([]);
   const [selCats, setSelCats]       = useState(recipe.categories);
-  const [newCatInput, setNewCatInput] = useState('');
-  const [tagInput, setTagInput]     = useState(recipe.tags.join(', '));
+  const [selTags, setSelTags]       = useState(recipe.tags);
   const [saving, setSaving]         = useState(false);
-
-  useEffect(() => { fetchCategories().then(setCategories).catch(console.error); }, []);
-
-  const toggleCat = (cat) => {
-    setSelCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  };
-
-  const addNewCategory = () => {
-    const cat = newCatInput.trim();
-    if (cat && !categories.includes(cat) && !selCats.includes(cat)) {
-      setCategories(prev => [...prev, cat]);
-      setNewCatInput('');
-    }
-  };
-
-  const removeCategory = (cat) => {
-    // Only remove from existing categories, not from selected
-    if (!selCats.includes(cat)) {
-      setCategories(prev => prev.filter(c => c !== cat));
-    }
-  };
 
   const handleSave = async () => {
     if (!title.trim()) return alert(t('recipeNameLabel') + ' is required.');
@@ -1856,7 +1834,7 @@ function EditModal({ t, recipe, onClose, onSaved }) {
       fd.append('title', title.trim());
       fd.append('description', description.trim());
       fd.append('categories', selCats.join(','));
-      fd.append('tags', tagInput);
+      fd.append('tags', selTags.join(','));
       const updated = await updateRecipe(recipe.id, fd);
       onSaved(updated);
     } catch (e) {
@@ -1882,47 +1860,19 @@ function EditModal({ t, recipe, onClose, onSaved }) {
           <textarea className="form-input form-textarea" value={description}
             onChange={e => setDesc(e.target.value)} placeholder={t('notesPlaceholder')} rows={3} />
 
-          <label className="form-label">{t('categoryLabel')}</label>
-          <div className="category-editor">
-            {/* Existing categories - can be toggled or deleted */}
-            <div className="form-pills">
-              {categories.map(cat => (
-                <div key={cat} className="pill-group">
-                  <button type="button"
-                    className={`pill ${selCats.includes(cat) ? 'pill-active' : ''}`}
-                    onClick={() => toggleCat(cat)}>{cat}</button>
-                  <button type="button" className="pill-remove" onClick={() => removeCategory(cat)}>×</button>
-                </div>
-              ))}
-            </div>
+          <TaxonomyField
+            type="category"
+            label={t('categoryLabel')}
+            values={selCats}
+            onChange={setSelCats}
+          />
 
-            {/* Add new category input */}
-            <div className="add-category-row">
-              <input
-                type="text"
-                className="add-category-input"
-                value={newCatInput}
-                onChange={e => setNewCatInput(e.target.value)}
-                placeholder={t('newCategoryPlaceholder')}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addNewCategory();
-                  }
-                }}
-              />
-              <button type="button" className="add-category-btn" onClick={addNewCategory}>
-                +
-              </button>
-            </div>
-            <p className="category-hint">{t('categoryHint')}</p>
-          </div>
-
-          <label className="form-label">
-            {t('tagsLabel')} <span className="form-hint">— {t('tagsSeparator')}</span>
-          </label>
-          <input className="form-input" value={tagInput} onChange={e => setTagInput(e.target.value)}
-            placeholder={t('tagsPlaceholder')} />
+          <TaxonomyField
+            type="tag"
+            label={t('tagsLabel')}
+            values={selTags}
+            onChange={setSelTags}
+          />
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>

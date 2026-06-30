@@ -96,8 +96,23 @@ export async function fetchAllCategories() {
   if (!res.ok) throw new Error('Failed to load categories');
   return res.json();
 }
+export async function fetchCategoryDetails() {
+  const res = await fetch(`${API_BASE}/categories?all=true&details=true`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load categories');
+  return res.json();
+}
 export async function fetchTags() {
   const res = await fetch(`${API_BASE}/tags`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load tags');
+  return res.json();
+}
+export async function fetchAllTags() {
+  const res = await fetch(`${API_BASE}/tags?all=true`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load tags');
+  return res.json();
+}
+export async function fetchTagDetails() {
+  const res = await fetch(`${API_BASE}/tags?all=true&details=true`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load tags');
   return res.json();
 }
@@ -110,6 +125,17 @@ export async function addCategory(name) {
 export async function deleteCategory(name) {
   const res = await fetch(`${API_BASE}/categories/${encodeURIComponent(name)}`, { method:'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to delete category');
+  return res.json();
+}
+export async function addTag(name) {
+  const res = await fetch(`${API_BASE}/tags`, { method:'POST', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify({name}) });
+  if (!res.ok) throw new Error('Failed to add tag');
+  return res.json();
+}
+
+export async function deleteTag(name) {
+  const res = await fetch(`${API_BASE}/tags/${encodeURIComponent(name)}`, { method:'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to delete tag');
   return res.json();
 }
 export async function fetchUsers() {

@@ -1402,10 +1402,56 @@ def _hash_files(file_data_list: list) -> str:
 
 
 def _prune_orphan_categories(conn):
-    """Delete categories that are no longer associated with any recipe."""
-    conn.execute(
-        "DELETE FROM categories WHERE id NOT IN (SELECT category_id FROM recipe_categories)"
-    )
+    """Legacy no-op.
+
+    Categories are now user-managed taxonomy items and must stay available even
+    when no recipe currently uses them.
+    """
+    return
+
+
+def _taxonomy_rows(conn, table: str, link_table: str, link_column: str, assigned_only: bool = False):
+    join_type = "JOIN" if assigned_only else "LEFT JOIN"
+    query = f"""
+        SELECT x.name, COUNT(l.recipe_id) AS usage_count
+        FROM {table} x
+        {join_type} {link_table} l ON l.{link_column}=x.id
+        GROUP BY x.id, x.name
+        ORDER BY x.name
+    """
+    return conn.execute(query).fetchall()
+
+
+def _taxonomy_names(conn, table: str, link_table: str, link_column: str, assigned_only: bool = False):
+    return [r["name"] for r in _taxonomy_rows(conn, table, link_table, link_column, assigned_only)]
+
+
+def _taxonomy_details(conn, table: str, link_table: str, link_column: str, assigned_only: bool = False):
+    return [
+        {"name": r["name"], "usage_count": int(r["usage_count"] or 0)}
+        for r in _taxonomy_rows(conn, table, link_table, link_column, assigned_only)
+    ]
+
+
+def _add_taxonomy_item(conn, table: str, name: str):
+    conn.execute(f"INSERT OR IGNORE INTO {table} (name) VALUES (?)", (name,))
+    row = conn.execute(f"SELECT id, name FROM {table} WHERE name=?", (name,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=500, detail="Could not save taxonomy item")
+    return row
+
+
+def _delete_taxonomy_item(conn, table: str, link_table: str, link_column: str, name: str, label: str):
+    row = conn.execute(f"SELECT id FROM {table} WHERE name=?", (name,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    usage = conn.execute(
+        f"SELECT COUNT(DISTINCT recipe_id) AS value FROM {link_table} WHERE {link_column}=?",
+        (row["id"],)
+    ).fetchone()["value"]
+    conn.execute(f"DELETE FROM {link_table} WHERE {link_column}=?", (row["id"],))
+    conn.execute(f"DELETE FROM {table} WHERE id=?", (row["id"],))
+    return int(usage or 0)
 
 
 def _save_cats_tags(conn, recipe_id: str, categories: str, tags: str):
@@ -3905,20 +3951,20 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
 
 
 @app.get("/api/categories")
-def list_categories(all: bool = False, current_user: dict = Depends(get_current_user)):
+def list_categories(
+    all: bool = False,
+    details: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
     conn = get_db()
-    if all:
-        # Return every category (used by management UI — includes unassigned ones)
-        rows = conn.execute("SELECT name FROM categories ORDER BY name").fetchall()
-    else:
-        # Only return categories assigned to at least one recipe (used by filter pills)
-        rows = conn.execute(
-            "SELECT DISTINCT c.name FROM categories c "
-            "JOIN recipe_categories rc ON c.id = rc.category_id "
-            "ORDER BY c.name"
-        ).fetchall()
+    assigned_only = not all
+    result = (
+        _taxonomy_details(conn, "categories", "recipe_categories", "category_id", assigned_only)
+        if details else
+        _taxonomy_names(conn, "categories", "recipe_categories", "category_id", assigned_only)
+    )
     conn.close()
-    return [r["name"] for r in rows]
+    return result
 
 
 @app.post("/api/categories")
@@ -3927,7 +3973,7 @@ def add_category(data: dict, current_user: dict = Depends(get_current_user)):
     if not name:
         raise HTTPException(status_code=400, detail="Name required")
     conn = get_db()
-    conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+    _add_taxonomy_item(conn, "categories", name)
     conn.commit()
     conn.close()
     return {"message": f"Category '{name}' added"}
@@ -3936,25 +3982,48 @@ def add_category(data: dict, current_user: dict = Depends(get_current_user)):
 @app.delete("/api/categories/{name}")
 def delete_category(name: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
-    row  = conn.execute("SELECT id FROM categories WHERE name=?", (name,)).fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Category not found")
-    conn.execute("DELETE FROM recipe_categories WHERE category_id=?", (row["id"],))
-    conn.execute("DELETE FROM categories        WHERE id=?",          (row["id"],))
+    usage = _delete_taxonomy_item(conn, "categories", "recipe_categories", "category_id", name, "Category")
     conn.commit()
     conn.close()
-    return {"message": f"Category '{name}' deleted"}
+    return {"message": f"Category '{name}' deleted", "usage_count": usage}
 
 
 @app.get("/api/tags")
-def list_tags(current_user: dict = Depends(get_current_user)):
+def list_tags(
+    all: bool = False,
+    details: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
     conn = get_db()
-    rows = conn.execute(
-        "SELECT DISTINCT t.name FROM tags t JOIN recipe_tags rt ON t.id=rt.tag_id ORDER BY t.name"
-    ).fetchall()
+    assigned_only = not all
+    result = (
+        _taxonomy_details(conn, "tags", "recipe_tags", "tag_id", assigned_only)
+        if details else
+        _taxonomy_names(conn, "tags", "recipe_tags", "tag_id", assigned_only)
+    )
     conn.close()
-    return [r["name"] for r in rows]
+    return result
+
+
+@app.post("/api/tags")
+def add_tag(data: dict, current_user: dict = Depends(get_current_user)):
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    conn = get_db()
+    _add_taxonomy_item(conn, "tags", name)
+    conn.commit()
+    conn.close()
+    return {"message": f"Tag '{name}' added"}
+
+
+@app.delete("/api/tags/{name}")
+def delete_tag(name: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    usage = _delete_taxonomy_item(conn, "tags", "recipe_tags", "tag_id", name, "Tag")
+    conn.commit()
+    conn.close()
+    return {"message": f"Tag '{name}' deleted", "usage_count": usage}
 
 # ── File serving ──────────────────────────────────────────────────────────────
 

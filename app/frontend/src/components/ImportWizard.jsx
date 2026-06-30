@@ -9,11 +9,12 @@ import {
 import { useApp } from '../utils/AppContext';
 import {
   uploadImportGroup, getImportQueue, confirmImportItem,
-  discardImportItem, fetchCategories, fetchTags, thumbnailUrl,
+  discardImportItem, thumbnailUrl,
   fetchPdfPages, pdfPageUrl, imageUrl, checkImportDuplicate,
   rotateImage, deleteRecipeImage, cropImage, saveImageOrder,
 } from '../utils/api';
 import CropModal from './CropModal';
+import TaxonomyField from './TaxonomyManager';
 import './ImportWizard.css';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
@@ -439,8 +440,6 @@ function UploadPhase({ onGroupsReady, onClose, t }) {
 function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
   const [items, setItems]           = useState(initialItems);
   const [cursor, setCursor]         = useState(0);
-  const [allCats, setAllCats]       = useState([]);
-  const [allTags, setAllTags]       = useState([]);
   const [title, setTitle]           = useState('');
   const [categories, setCategories] = useState([]);
   const [tags, setTags]             = useState([]);
@@ -462,8 +461,6 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
   const [reorderMode, setReorderMode]   = useState(false);
 
   useEffect(() => {
-    fetchCategories().then(setAllCats).catch(() => {});
-    fetchTags().then(setAllTags).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -585,8 +582,6 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
         tags: tags.join(','), description,
       });
       onRecipeAdded && onRecipeAdded();
-      fetchCategories().then(setAllCats).catch(() => {});
-      fetchTags().then(setAllTags).catch(() => {});
       advance();
     } catch (e) { setSaving(false); }
   };
@@ -785,8 +780,8 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
                 <label className="iw-label">{t('importNameLabel')} <span className="iw-required">*</span></label>
                 <input type="text" className="iw-input" value={title} onChange={e=>setTitle(e.target.value)} autoFocus />
               </div>
-              <PillInput label={t('categories')} values={categories} allOptions={allCats} onChange={setCategories} placeholder={t('addCategory')||'Add category…'} />
-              <PillInput label={t('tags')} values={tags} allOptions={allTags} onChange={setTags} placeholder={t('addTag')||'Add tag…'} />
+              <TaxonomyField type="category" label={t('categories')} values={categories} onChange={setCategories} />
+              <TaxonomyField type="tag" label={t('tags')} values={tags} onChange={setTags} />
               <div className="iw-field">
                 <label className="iw-label">{t('description')}</label>
                 <textarea className="iw-textarea" rows={2} value={description} onChange={e=>setDescription(e.target.value)} placeholder={t('optionalNotes')||'Optional notes…'} />

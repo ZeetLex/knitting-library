@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
-  Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2, Plus,
+  Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2,
   MousePointer2, Tag,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CollectionToolbar from '../components/CollectionToolbar';
+import TaxonomyField, { TaxonomyManagerModal } from '../components/TaxonomyManager';
 
 import { useApp } from '../utils/AppContext';
-import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRecipe, addCategory, deleteCategory, bulkUpdateRecipes } from '../utils/api';
+import { fetchRecipes, fetchCategories, fetchTags, deleteRecipe, bulkUpdateRecipes } from '../utils/api';
 import './Library.css';
 
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
@@ -62,56 +63,20 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     try { localStorage.setItem(viewStorageKey, nextSize); } catch (_) {}
   };
 
-  // ── Category management ───────────────────────────────────────────────────
-  const [managingCats, setManagingCats]   = useState(false);
-  const [allCategories, setAllCategories] = useState([]);  // all cats for manage UI
-  const [newCatName, setNewCatName]       = useState('');
-  const [catSaving, setCatSaving]         = useState(false);
-  const [catError, setCatError]           = useState('');
-  const newCatRef = useRef(null);
+  const [taxonomyModal, setTaxonomyModal] = useState(null);
 
-  // Fetch all categories (including unassigned) for the manage panel
-  useEffect(() => {
-    if (managingCats) {
-      fetchAllCategories().then(setAllCategories).catch(console.error);
-    }
-  }, [managingCats]);
-
-  const refreshCategories = useCallback(() => {
-    // Refresh both the filter pills and the manage panel list
-    fetchCategories().then(setCategories).catch(console.error);
-    if (managingCats) {
-      fetchAllCategories().then(setAllCategories).catch(console.error);
-    }
-  }, [managingCats]);
-
-  const handleAddCategory = async (e) => {
-    e.preventDefault();
-    const name = newCatName.trim();
-    if (!name) return;
-    setCatSaving(true); setCatError('');
+  const refreshTaxonomy = useCallback(async () => {
     try {
-      await addCategory(name);
-      setNewCatName('');
-      refreshCategories();
-      newCatRef.current?.focus();
-    } catch (err) {
-      setCatError(err.message || 'Could not add category');
-    } finally {
-      setCatSaving(false);
-    }
-  };
-
-  const handleDeleteCategory = async (name) => {
+      const nextCategories = await fetchCategories();
+      setCategories(nextCategories);
+      setCategory(prev => (prev && !nextCategories.includes(prev) ? '' : prev));
+    } catch (e) { console.error(e); }
     try {
-      // If this category is currently active as a filter, clear the filter first
-      if (category === name) setCategory('');
-      await deleteCategory(name);
-      refreshCategories();
-    } catch (err) {
-      setCatError(err.message || 'Could not delete category');
-    }
-  };
+      const nextTags = await fetchTags();
+      setAllTags(nextTags);
+      setActiveTags(prev => prev.filter(tag => nextTags.includes(tag)));
+    } catch (e) { console.error(e); }
+  }, []);
 
   // ── Scroll restoration ────────────────────────────────────────────────────
   const SCROLL_KEY = 'library_scroll_y';
@@ -143,8 +108,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   // ── Bulk tag/category state ───────────────────────────────────────────────
   const [bulkModal, setBulkModal]     = useState(false);
-  const [bulkTags, setBulkTags]       = useState('');
-  const [bulkCats, setBulkCats]       = useState('');
+  const [bulkTags, setBulkTags]       = useState([]);
+  const [bulkCats, setBulkCats]       = useState([]);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkDone, setBulkDone]       = useState(false);
 
@@ -246,8 +211,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setSelectionModeActive(false);
     setDeleteConfirm(false);
     setBulkModal(false);
-    setBulkTags('');
-    setBulkCats('');
+    setBulkTags([]);
+    setBulkCats([]);
     setBulkDone(false);
   };
 
@@ -261,15 +226,16 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   // ── Bulk apply tags/categories ────────────────────────────────────────────
   const handleBulkApply = async () => {
-    const tags = bulkTags.split(',').map(s => s.trim()).filter(Boolean);
-    const cats = bulkCats.split(',').map(s => s.trim()).filter(Boolean);
+    const tags = bulkTags.map(s => s.trim()).filter(Boolean);
+    const cats = bulkCats.map(s => s.trim()).filter(Boolean);
     if (!tags.length && !cats.length) return;
     setBulkApplying(true);
     try {
       await bulkUpdateRecipes(Array.from(selectedIds), { tags, categories: cats });
       setBulkDone(true);
-      setBulkTags('');
-      setBulkCats('');
+      setBulkTags([]);
+      setBulkCats([]);
+      refreshTaxonomy();
       // Reload to reflect updated tags/categories on cards
       loadRecipes();
       setTimeout(() => setBulkDone(false), 2000);
@@ -359,86 +325,56 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                 <div className="filter-label-row">
                   <label className="filter-label">{t('category')}</label>
                   <button
-                    className={`cat-manage-btn ${managingCats ? 'active' : ''}`}
-                    onClick={() => { setManagingCats(m => !m); setCatError(''); setNewCatName(''); }}
-                    title={managingCats ? t('doneManagingCategories') : t('manageCategoriesHint')}
+                    className="cat-manage-btn"
+                    onClick={() => setTaxonomyModal('category')}
+                    title={t('manageCategoriesHint')}
                   >
                     <Settings2 size={13} />
-                    {managingCats ? t('done') : t('manage')}
+                    {t('manage')}
                   </button>
                 </div>
 
-                {managingCats ? (
-                  <div className="cat-manage-panel">
-                    {catError && <p className="cat-manage-error">{catError}</p>}
-                    <div className="cat-manage-pills">
-                      {allCategories.length === 0 && (
-                        <span className="cat-manage-empty">{t('noCategoriesShort')}</span>
-                      )}
-                      {allCategories.map(cat => (
-                        <span key={cat} className="cat-manage-pill">
-                          {cat}
-                          <button
-                            className="cat-manage-delete"
-                            onClick={() => handleDeleteCategory(cat)}
-                            title={`${t('deleteCategoryConfirm')} "${cat}"`}
-                            aria-label={`${t('deleteCategoryConfirm')} ${cat}`}
-                          >
-                            <X size={11} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <form className="cat-manage-add" onSubmit={handleAddCategory}>
-                      <input
-                        ref={newCatRef}
-                        type="text"
-                        value={newCatName}
-                        onChange={e => setNewCatName(e.target.value)}
-                        placeholder={t('newCategoryNamePlaceholder')}
-                        className="cat-manage-input"
-                        disabled={catSaving}
-                        maxLength={60}
-                      />
-                      <button type="submit" className="cat-manage-add-btn" disabled={catSaving || !newCatName.trim()}>
-                        <Plus size={14} />
-                      </button>
-                    </form>
-                  </div>
-                ) : (
-                  <div className="filter-pills">
-                    <button className={`pill ${!category ? 'pill-active' : ''}`} onClick={() => setCategory('')}>
-                      {t('all')}
+                <div className="filter-pills">
+                  <button className={`pill ${!category ? 'pill-active' : ''}`} onClick={() => setCategory('')}>
+                    {t('all')}
+                  </button>
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      className={`pill ${category === cat ? 'pill-active' : ''}`}
+                      onClick={() => setCategory(category === cat ? '' : cat)}
+                    >
+                      {cat}
                     </button>
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        className={`pill ${category === cat ? 'pill-active' : ''}`}
-                        onClick={() => setCategory(category === cat ? '' : cat)}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
 
-              {allTags.length > 0 && (
-                <div className="filter-group">
+              <div className="filter-group">
+                <div className="filter-label-row">
                   <label className="filter-label">{t('tags')}</label>
-                  <div className="filter-pills">
-                    {allTags.map(tag => (
-                      <button
-                        key={tag}
-                        className={`pill ${activeTags.includes(tag) ? 'pill-active' : ''}`}
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    className="cat-manage-btn"
+                    onClick={() => setTaxonomyModal('tag')}
+                    title={t('manageTagsHint')}
+                  >
+                    <Settings2 size={13} />
+                    {t('manage')}
+                  </button>
                 </div>
-              )}
+                <div className="filter-pills">
+                  {allTags.length === 0 && <span className="filter-empty-note">{t('noTagsShort')}</span>}
+                  {allTags.map(tag => (
+                    <button
+                      key={tag}
+                      className={`pill ${activeTags.includes(tag) ? 'pill-active' : ''}`}
+                      onClick={() => toggleTag(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {hasActiveFilters && (
                 <button className="clear-filters-btn" onClick={clearFilters}>
@@ -613,26 +549,20 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               <p className="bulk-tag-hint">
                 {t('bulkAddTags')} &amp; {t('bulkAddCategories')} — {t('bulkSelected')}: {selectedIds.size}
               </p>
-              <div className="bulk-tag-row">
-                <label className="bulk-tag-label">{t('tagsLabel')}</label>
-                <input
-                  className="bulk-tag-input"
-                  value={bulkTags}
-                  onChange={e => setBulkTags(e.target.value)}
-                  placeholder={t('bulkTagsPlaceholder')}
-                  disabled={bulkApplying}
-                />
-              </div>
-              <div className="bulk-tag-row">
-                <label className="bulk-tag-label">{t('category')}</label>
-                <input
-                  className="bulk-tag-input"
-                  value={bulkCats}
-                  onChange={e => setBulkCats(e.target.value)}
-                  placeholder={t('bulkCatsPlaceholder')}
-                  disabled={bulkApplying}
-                />
-              </div>
+              <TaxonomyField
+                type="tag"
+                label={t('tagsLabel')}
+                values={bulkTags}
+                onChange={setBulkTags}
+                onChanged={refreshTaxonomy}
+              />
+              <TaxonomyField
+                type="category"
+                label={t('category')}
+                values={bulkCats}
+                onChange={setBulkCats}
+                onChanged={refreshTaxonomy}
+              />
               <div className="bulk-tag-actions">
                 <button
                   className="selection-btn selection-btn--ghost"
@@ -644,7 +574,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                 <button
                   className="selection-btn selection-btn--primary"
                   onClick={handleBulkApply}
-                  disabled={bulkApplying || (!bulkTags.trim() && !bulkCats.trim())}
+                  disabled={bulkApplying || (!bulkTags.length && !bulkCats.length)}
                 >
                   {bulkDone ? t('bulkApplied') : bulkApplying ? t('bulkApplying') : t('bulkApply')}
                 </button>
@@ -652,6 +582,17 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             </div>
           )}
         </div>
+      )}
+
+      {taxonomyModal && (
+        <TaxonomyManagerModal
+          type={taxonomyModal}
+          selected={[]}
+          onChange={() => {}}
+          selectionEnabled={false}
+          onClose={() => setTaxonomyModal(null)}
+          onChanged={refreshTaxonomy}
+        />
       )}
     </div>
   );
