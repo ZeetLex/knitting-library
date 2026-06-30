@@ -232,7 +232,8 @@
 .collection-view-btn:hover:not(.active) { background: var(--bg-hover); color: var(--text-primary); }
 
 .collection-action,
-.collection-filter-btn {
+.collection-filter-btn,
+.collection-sort-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -253,6 +254,46 @@
   position: relative;
 }
 
+.collection-sort {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.collection-sort-btn .rotated { transform: rotate(180deg); }
+
+.collection-sort-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  z-index: 45;
+}
+
+.collection-sort-option {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.collection-sort-option:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.collection-sort-option.active { background: rgba(196,113,74,0.12); color: var(--terracotta); font-weight: 600; }
+
 .collection-action:not(.collection-action--secondary) {
   border-color: var(--terracotta);
   background: var(--terracotta);
@@ -261,7 +302,9 @@
 
 .collection-action--secondary:hover,
 .collection-filter-btn:hover,
-.collection-filter-btn.active {
+.collection-filter-btn.active,
+.collection-sort-btn:hover,
+.collection-sort-btn.active {
   border-color: var(--terracotta);
   color: var(--terracotta);
   background: rgba(196, 113, 74, 0.06);
@@ -315,6 +358,16 @@
 
   .collection-filter-btn span {
     display: none;
+  }
+
+  .collection-sort-btn {
+    padding: 0 11px;
+  }
+
+  .collection-sort-btn span {
+    max-width: 112px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .collection-action {

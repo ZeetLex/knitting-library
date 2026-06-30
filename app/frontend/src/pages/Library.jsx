@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2,
-  MousePointer2, Tag,
+  MousePointer2, Tag, ArrowUpDown, ChevronDown,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CollectionToolbar from '../components/CollectionToolbar';
@@ -38,6 +38,27 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [categories, setCategories]   = useState([]);
   const [allTags, setAllTags]         = useState([]);
+  const sortStorageKey = `library_recipe_sort_${user?.id || user?.username || 'guest'}`;
+  const SORT_OPTIONS = [
+    { key: 'default', label: t('sortDefault') },
+    { key: 'title_asc', label: t('sortTitleAsc') },
+    { key: 'title_desc', label: t('sortTitleDesc') },
+    { key: 'created_desc', label: t('sortNewest') },
+    { key: 'created_asc', label: t('sortOldest') },
+    { key: 'last_completed_desc', label: t('sortLastCompleted') },
+    { key: 'rating_desc', label: t('sortRating') },
+  ];
+  const [sortBy, setSortBy] = useState(() => {
+    try {
+      const saved = localStorage.getItem(sortStorageKey);
+      return SORT_OPTIONS.some(option => option.key === saved) ? saved : 'default';
+    } catch (_) {
+      return 'default';
+    }
+  });
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef(null);
+  const activeSortOption = SORT_OPTIONS.find(option => option.key === sortBy) || SORT_OPTIONS[0];
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const viewStorageKey = `library_grid_size_${user?.id || user?.username || 'guest'}`;
@@ -58,9 +79,30 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } catch (_) {}
   }, [viewStorageKey]);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(sortStorageKey);
+      setSortBy(SORT_OPTIONS.some(option => option.key === saved) ? saved : 'default');
+    } catch (_) {}
+  }, [sortStorageKey]);
+
+  useEffect(() => {
+    const close = (event) => {
+      if (sortRef.current && !sortRef.current.contains(event.target)) setSortOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
   const handleGridSizeChange = (nextSize) => {
     setGridSize(nextSize);
     try { localStorage.setItem(viewStorageKey, nextSize); } catch (_) {}
+  };
+
+  const handleSortChange = (nextSort) => {
+    setSortBy(nextSort);
+    setSortOpen(false);
+    try { localStorage.setItem(sortStorageKey, nextSort); } catch (_) {}
   };
 
   const [taxonomyModal, setTaxonomyModal] = useState(null);
@@ -134,7 +176,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setSelectedIds(new Set());
     setDeleteConfirm(false);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, page: 1 });
+      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, sort: sortBy, page: 1 });
       setRecipes(data.recipes);
       setTotalPages(data.pages);
       setTotalCount(data.total);
@@ -143,7 +185,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } finally {
       setLoading(false);
     }
-  }, [search, category, activeTags, statusFilter, refreshKey]);
+  }, [search, category, activeTags, statusFilter, sortBy, refreshKey]);
 
   useEffect(() => {
     const timer = setTimeout(loadRecipes, 300);
@@ -155,7 +197,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     const nextPage = currentPage + 1;
     setLoadingMore(true);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, page: nextPage });
+      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, sort: sortBy, page: nextPage });
       setRecipes(prev => [...prev, ...data.recipes]);
       setCurrentPage(nextPage);
       setTotalPages(data.pages);
@@ -165,7 +207,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } finally {
       setLoadingMore(false);
     }
-  }, [search, category, activeTags, statusFilter, currentPage]);
+  }, [search, category, activeTags, statusFilter, sortBy, currentPage]);
 
   // ── Filter helpers ────────────────────────────────────────────────────────
   const toggleTag = (tag) => {
@@ -287,6 +329,38 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             <span>{t('filters')}</span>
             {hasActiveFilters && <span className="collection-filter-badge" />}
           </button>
+        )}
+        middleControls={(
+          <div className="collection-sort" ref={sortRef}>
+            <button
+              type="button"
+              className={`collection-sort-btn ${sortOpen || sortBy !== 'default' ? 'active' : ''}`}
+              onClick={() => setSortOpen(open => !open)}
+              aria-expanded={sortOpen}
+              aria-haspopup="menu"
+              title={`${t('sortBy')}: ${activeSortOption.label}`}
+            >
+              <ArrowUpDown size={17} />
+              <span>{activeSortOption.label}</span>
+              <ChevronDown size={13} className={sortOpen ? 'rotated' : ''} />
+            </button>
+            {sortOpen && (
+              <div className="collection-sort-menu" role="menu">
+                {SORT_OPTIONS.map(option => (
+                  <button
+                    type="button"
+                    key={option.key}
+                    className={`collection-sort-option ${sortBy === option.key ? 'active' : ''}`}
+                    onClick={() => handleSortChange(option.key)}
+                    role="menuitemradio"
+                    aria-checked={sortBy === option.key}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         viewOptions={Object.entries(GRID_SIZES).map(([key, val]) => ({ key, label: val.label, icon: val.icon }))}
         viewValue={gridSize}

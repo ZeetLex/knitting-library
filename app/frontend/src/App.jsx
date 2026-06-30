@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { AppProvider, useApp } from './utils/AppContext';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
@@ -19,6 +19,34 @@ import WorkQueueDock from './components/WorkQueueDock';
 import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement, fetchWorkQueue, cancelAIJob, dismissAIJob } from './utils/api';
 import './App.css';
 
+const APP_RESUME_PREFIX = 'knitting_app_resume_v1';
+
+function appResumeKey(user) {
+  return `${APP_RESUME_PREFIX}_${user?.id || user?.username || 'guest'}`;
+}
+
+function saveAppResume(user, data) {
+  if (!user || !data?.recipeId) return;
+  try {
+    localStorage.setItem(appResumeKey(user), JSON.stringify({ ...data, updatedAt: Date.now() }));
+  } catch (_) {}
+}
+
+function readAppResume(user) {
+  if (!user) return null;
+  try {
+    const raw = localStorage.getItem(appResumeKey(user));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearAppResume(user) {
+  if (!user) return;
+  try { localStorage.removeItem(appResumeKey(user)); } catch (_) {}
+}
+
 function AppInner() {
   const { user, loading, setupRequired, t } = useApp();
   const [activeView, setActiveView]           = useState('home');
@@ -36,6 +64,7 @@ function AppInner() {
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [workQueue, setWorkQueue]         = useState(null);
   const [recipeInitialView, setRecipeInitialView] = useState('original');
+  const resumeCheckedRef = useRef(false);
 
   const checkImport = useCallback(() => {
     getImportQueue().then(r => setImportCount(r.count || 0)).catch(() => {});
@@ -86,6 +115,7 @@ function AppInner() {
   }, [user]);
 
   const handleNavigate = (view) => {
+    clearAppResume(user);
     setActiveView(view);
     setViewingRecipeId(null);
     setViewingYarnId(null);
@@ -97,6 +127,7 @@ function AppInner() {
 
   const navigateApp = (view) => {
     if (view === 'settings') {
+      clearAppResume(user);
       setShowSettings(true);
       setShowStats(false);
       setShowHelp(false);
@@ -105,6 +136,7 @@ function AppInner() {
       return;
     }
     if (view === 'stats') {
+      clearAppResume(user);
       setShowStats(true);
       setShowSettings(false);
       setShowHelp(false);
@@ -113,6 +145,7 @@ function AppInner() {
       return;
     }
     if (view === 'help') {
+      clearAppResume(user);
       setShowHelp(true);
       setShowSettings(false);
       setShowStats(false);
@@ -130,6 +163,7 @@ function AppInner() {
     setShowHelp(false);
     setRecipeInitialView(initialView);
     setViewingRecipeId(id);
+    saveAppResume(user, { activeView: 'recipes', recipeId: id, initialViewMode: initialView });
   };
 
   const openYarn = (id) => {
@@ -138,6 +172,7 @@ function AppInner() {
   };
 
   const handleImportRecipe = () => {
+    clearAppResume(user);
     setActiveView('recipes');
     setViewingRecipeId(null);
     setRecipeInitialView('original');
@@ -149,12 +184,14 @@ function AppInner() {
   };
 
   const handleAddYarn = () => {
+    clearAppResume(user);
     setActiveView('inventory');
     setViewingYarnId(null);
     setYarnUploadOpen(true);
   };
 
   const handleAddTool = () => {
+    clearAppResume(user);
     setActiveView('inventory');
     setViewingRecipeId(null);
     setViewingYarnId(null);
@@ -163,6 +200,24 @@ function AppInner() {
     setShowHelp(false);
     setInventoryAddRequest({ type: 'tool', nonce: Date.now() });
   };
+
+  useEffect(() => {
+    if (!user) {
+      resumeCheckedRef.current = false;
+      return;
+    }
+    if (resumeCheckedRef.current) return;
+    resumeCheckedRef.current = true;
+    const saved = readAppResume(user);
+    if (saved?.activeView === 'recipes' && saved.recipeId) {
+      setActiveView('recipes');
+      setShowSettings(false);
+      setShowStats(false);
+      setShowHelp(false);
+      setRecipeInitialView(saved.initialViewMode || 'original');
+      setViewingRecipeId(saved.recipeId);
+    }
+  }, [user]);
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'var(--bg-primary)' }}>
@@ -253,7 +308,7 @@ function AppInner() {
         onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
-        onRecipeBack={() => setViewingRecipeId(null)}
+        onRecipeBack={() => { clearAppResume(user); setViewingRecipeId(null); }}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
@@ -285,8 +340,8 @@ function AppInner() {
             <RecipeViewer
               recipeId={viewingRecipeId}
               initialViewMode={recipeInitialView}
-              onBack={() => setViewingRecipeId(null)}
-              onDeleted={() => { setViewingRecipeId(null); setRefreshKey(k => k + 1); }}
+              onBack={() => { clearAppResume(user); setViewingRecipeId(null); }}
+              onDeleted={() => { clearAppResume(user); setViewingRecipeId(null); setRefreshKey(k => k + 1); }}
               onTextJobQueued={refreshWorkQueue}
             />
           ) : (

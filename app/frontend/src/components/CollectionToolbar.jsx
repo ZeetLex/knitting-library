@@ -16,6 +16,7 @@ export default function CollectionToolbar({
   fieldValue = '',
   onFieldChange,
   filterButton,
+  middleControls,
   viewOptions = [],
   viewValue,
   onViewChange,
@@ -139,6 +140,7 @@ export default function CollectionToolbar({
 
         <div className="collection-toolbar-rail" aria-label="Collection controls">
           {filterButton}
+          {middleControls}
 
           {viewOptions.length > 0 && (
             <div className="collection-view-switcher">

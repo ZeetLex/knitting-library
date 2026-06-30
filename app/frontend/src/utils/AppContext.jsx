@@ -33,6 +33,14 @@ function normalizeLanguage(language) {
   return isSupportedLanguage(language) ? language : 'en';
 }
 
+function clearResumeStorage() {
+  try {
+    Object.keys(localStorage)
+      .filter(key => key.startsWith('knitting_app_resume_v1_') || key.startsWith('knitting_recipe_viewer_state_v1_'))
+      .forEach(key => localStorage.removeItem(key));
+  } catch (_) {}
+}
+
 export function AppProvider({ children }) {
   const [user, setUser]               = useState(null);
   const [theme, setTheme]             = useState('light');
@@ -111,6 +119,7 @@ export function AppProvider({ children }) {
     if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
     await fetch('/api/auth/logout', { method: 'POST', headers, credentials: 'include' }).catch(() => {});
     localStorage.removeItem('knitting_token');
+    clearResumeStorage();
     setUser(null);
     setTheme('light');
     setColourTheme('terracotta');

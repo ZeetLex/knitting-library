@@ -10,13 +10,39 @@ import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
+const VIEWER_RESUME_PREFIX = 'knitting_recipe_viewer_state_v1';
+
+function viewerResumeKey(user, recipeId) {
+  return `${VIEWER_RESUME_PREFIX}_${user?.id || user?.username || 'guest'}_${recipeId}`;
+}
+
+function readViewerResume(user, recipeId) {
+  if (!recipeId) return null;
+  try {
+    const raw = localStorage.getItem(viewerResumeKey(user, recipeId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clampIndex(value, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(parsed, Math.max(0, max)));
+}
+
 export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
-  const { t, language } = useApp();
+  const { t, language, user } = useApp();
+  const initialResume = readViewerResume(user, recipeId);
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
-  const [imageIndex, setImageIndex] = useState(0);
-  const [zoom, setZoom]             = useState(1);
+  const [imageIndex, setImageIndex] = useState(() => clampIndex(initialResume?.imageIndex, 9999));
+  const [zoom, setZoom]             = useState(() => {
+    const savedZoom = Number(initialResume?.zoom);
+    return Number.isFinite(savedZoom) ? Math.max(0.5, Math.min(savedZoom, 4)) : 1;
+  });
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -32,7 +58,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [cropOpen, setCropOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
-  const [viewMode, setViewMode] = useState(initialViewMode);
+  const [viewMode, setViewMode] = useState(initialResume?.viewMode || (initialViewMode === 'charts' ? 'review' : initialViewMode));
   const [textVersion, setTextVersion] = useState(null);
   const [textLoading, setTextLoading] = useState(false);
   const [reviewSession, setReviewSession] = useState(null);
@@ -46,10 +72,12 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
-  const [mobileImagesVisible, setMobileImagesVisible] = useState(false);
+  const [mobileImagesVisible, setMobileImagesVisible] = useState(Boolean(initialResume?.mobileImagesVisible));
   const [panelDragY, setPanelDragY] = useState(0);
   const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
+  const pendingScrollY = useRef(Number.isFinite(Number(initialResume?.scrollY)) ? Number(initialResume.scrollY) : null);
+  const restoredScrollRef = useRef(false);
 
   useEffect(() => {
     const openPanel = (event) => {
@@ -213,16 +241,27 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   };
 
   useEffect(() => {
+    const saved = readViewerResume(user, recipeId);
+    const nextViewMode = saved?.viewMode || (initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
+    pendingScrollY.current = Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null;
+    restoredScrollRef.current = false;
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    setMobileImagesVisible(false);
-    setViewMode(initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
+    setMobileImagesVisible(Boolean(saved?.mobileImagesVisible));
+    setViewMode(nextViewMode);
+    setImageIndex(clampIndex(saved?.imageIndex, 9999));
+    const savedZoom = Number(saved?.zoom);
+    setZoom(Number.isFinite(savedZoom) ? Math.max(0.5, Math.min(savedZoom, 4)) : 1);
+    setFullscreen(false);
     setTextVersion(null);
     setReviewSession(null);
     fetchRecipe(recipeId)
       .then(r => {
         setRecipe(r);
+        if (r.file_type === 'images') {
+          setImageIndex(index => clampIndex(index, (r.images || []).length - 1));
+        }
         if (r.file_type === 'pdf') {
           fetchPdfPages(recipeId).then(d => {
             const pages = d.pages || [];
@@ -241,7 +280,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       })
       .catch(() => setError('Could not load this recipe.'))
       .finally(() => setLoading(false));
-  }, [recipeId, initialViewMode]);
+  }, [recipeId, initialViewMode, user]);
 
   useEffect(() => {
     if (viewMode !== 'text') return;
@@ -260,6 +299,68 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       .catch(() => setReviewSession({ exists: false, error: true }))
       .finally(() => setReviewLoading(false));
   }, [recipeId, viewMode]);
+
+  const saveViewerResume = useCallback(() => {
+    try {
+      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify({
+        recipeId,
+        viewMode,
+        imageIndex,
+        zoom,
+        scrollY: window.scrollY || 0,
+        mobileImagesVisible,
+        updatedAt: Date.now(),
+      }));
+    } catch (_) {}
+  }, [user, recipeId, viewMode, imageIndex, zoom, mobileImagesVisible]);
+
+  useEffect(() => {
+    if (!recipeId) return undefined;
+    const saveOnPageHide = () => saveViewerResume();
+    const saveOnVisibility = () => {
+      if (document.visibilityState === 'hidden') saveViewerResume();
+    };
+    let scrollFrame = null;
+    const saveOnScroll = () => {
+      if (scrollFrame != null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        saveViewerResume();
+      });
+    };
+
+    window.addEventListener('pagehide', saveOnPageHide);
+    document.addEventListener('visibilitychange', saveOnVisibility);
+    window.addEventListener('scroll', saveOnScroll, { passive: true });
+    return () => {
+      saveViewerResume();
+      if (scrollFrame != null) cancelAnimationFrame(scrollFrame);
+      window.removeEventListener('pagehide', saveOnPageHide);
+      document.removeEventListener('visibilitychange', saveOnVisibility);
+      window.removeEventListener('scroll', saveOnScroll);
+    };
+  }, [recipeId, saveViewerResume]);
+
+  useEffect(() => {
+    if (!recipeId || loading) return;
+    if (pendingScrollY.current != null && !restoredScrollRef.current) return;
+    saveViewerResume();
+  }, [recipeId, loading, viewMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
+
+  useEffect(() => {
+    if (loading || restoredScrollRef.current || pendingScrollY.current == null) return;
+    if (viewMode === 'text' && textLoading) return;
+    if (viewMode === 'review' && reviewLoading) return;
+    if (viewMode === 'original' && recipe?.file_type === 'pdf' && pdfPages.length === 0 && !converting) return;
+
+    const targetY = Math.max(0, pendingScrollY.current);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, targetY);
+        restoredScrollRef.current = true;
+      });
+    });
+  }, [loading, viewMode, textLoading, reviewLoading, recipe?.file_type, pdfPages.length, converting]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') setFullscreen(false);

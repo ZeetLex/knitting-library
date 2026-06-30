@@ -3686,6 +3686,7 @@ def list_recipes(
     category: Optional[str] = None,
     tags:     Optional[str] = None,
     status:   Optional[str] = None,
+    sort:     str = "default",
     page:     int = 1,
     per_page: int = _RECIPES_PER_PAGE,
     current_user: dict = Depends(get_current_user)
@@ -3696,14 +3697,50 @@ def list_recipes(
 
     conn = get_db()
 
+    allowed_sorts = {
+        "default",
+        "title_asc",
+        "title_desc",
+        "created_desc",
+        "created_asc",
+        "last_completed_desc",
+        "rating_desc",
+    }
+    if sort not in allowed_sorts:
+        sort = "default"
+
     # Build the filtered ID list with a single query
     id_query = """
-        SELECT DISTINCT r.id, r.created_date
+        SELECT DISTINCT
+            r.id,
+            r.title,
+            r.created_date,
+            CASE WHEN active_ps.recipe_id IS NOT NULL THEN 1 ELSE 0 END AS has_active,
+            CASE WHEN any_ps.recipe_id IS NOT NULL THEN 1 ELSE 0 END AS has_sessions,
+            completed_ps.last_completed_at,
+            rating.avg_score
         FROM recipes r
         LEFT JOIN recipe_categories rc ON r.id=rc.recipe_id
         LEFT JOIN categories c         ON rc.category_id=c.id
         LEFT JOIN recipe_tags rt       ON r.id=rt.recipe_id
         LEFT JOIN tags t               ON rt.tag_id=t.id
+        LEFT JOIN (
+            SELECT DISTINCT recipe_id FROM project_sessions WHERE finished_at IS NULL
+        ) active_ps ON active_ps.recipe_id = r.id
+        LEFT JOIN (
+            SELECT DISTINCT recipe_id FROM project_sessions
+        ) any_ps ON any_ps.recipe_id = r.id
+        LEFT JOIN (
+            SELECT recipe_id, MAX(finished_at) AS last_completed_at
+            FROM project_sessions
+            WHERE finished_at IS NOT NULL
+            GROUP BY recipe_id
+        ) completed_ps ON completed_ps.recipe_id = r.id
+        LEFT JOIN (
+            SELECT recipe_id, AVG((rating_recipe + rating_difficulty + rating_result) / 3.0) AS avg_score
+            FROM project_feedback
+            GROUP BY recipe_id
+        ) rating ON rating.recipe_id = r.id
         WHERE 1=1
     """
     params = []
@@ -3730,14 +3767,33 @@ def list_recipes(
             SELECT recipe_id FROM project_sessions
         )"""
 
-    # Sort: active projects first, then by newest
-    id_query += """
-        ORDER BY
-            CASE WHEN r.id IN (SELECT recipe_id FROM project_sessions WHERE finished_at IS NULL) THEN 0
-                 WHEN r.id IN (SELECT recipe_id FROM project_sessions) THEN 1
-                 ELSE 2 END,
-            r.created_date DESC
-    """
+    sort_sql = {
+        "default": """
+            ORDER BY
+                CASE WHEN has_active = 1 THEN 0
+                     WHEN has_sessions = 1 THEN 1
+                     ELSE 2 END,
+                r.created_date DESC,
+                LOWER(r.title) ASC
+        """,
+        "title_asc": "ORDER BY LOWER(r.title) ASC, r.created_date DESC",
+        "title_desc": "ORDER BY LOWER(r.title) DESC, r.created_date DESC",
+        "created_desc": "ORDER BY r.created_date DESC, LOWER(r.title) ASC",
+        "created_asc": "ORDER BY r.created_date ASC, LOWER(r.title) ASC",
+        "last_completed_desc": """
+            ORDER BY
+                CASE WHEN completed_ps.last_completed_at IS NULL THEN 1 ELSE 0 END,
+                completed_ps.last_completed_at DESC,
+                LOWER(r.title) ASC
+        """,
+        "rating_desc": """
+            ORDER BY
+                CASE WHEN rating.avg_score IS NULL THEN 1 ELSE 0 END,
+                rating.avg_score DESC,
+                LOWER(r.title) ASC
+        """,
+    }
+    id_query += sort_sql[sort]
 
     all_ids = [row["id"] for row in conn.execute(id_query, params).fetchall()]
     total   = len(all_ids)

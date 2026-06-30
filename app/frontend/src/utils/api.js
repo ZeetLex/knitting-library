@@ -40,12 +40,13 @@ export async function createFirstAdmin(username, password) {
   return data;
 }
 
-export async function fetchRecipes({ search='', category='', tags=[], status='', page=1, per_page=60 }={}) {
+export async function fetchRecipes({ search='', category='', tags=[], status='', sort='default', page=1, per_page=60 }={}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (category) params.set('category', category);
   if (tags.length) params.set('tags', tags.join(','));
   if (status) params.set('status', status);
+  if (sort && sort !== 'default') params.set('sort', sort);
   params.set('page', page);
   params.set('per_page', per_page);
   const res = await fetch(`${API_BASE}/recipes?${params}`, { headers: authHeaders() });
