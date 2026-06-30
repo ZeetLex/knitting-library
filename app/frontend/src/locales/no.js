@@ -379,7 +379,7 @@ const no = {
     aiCustomPromptHint: "Denne prompten brukes for alle språk til du bytter tilbake til standard.",
     aiDefaultPromptHint: "Denne prompten følger nåværende appspråk ({LANGUAGE}) og endres når språket endres.",
     aiTestOk: "AI-tilkobling lyktes:",
-    defaultOcrPrompt: "Svar kun med den ferdige transkripsjonen i Markdown. Ikke inkluder analyse, tankegang, forklaring, kommentarer eller interne kanaler. Du transkriberer strikkeoppskrifter fra bilder. Behold originalspråket i oppskriften. Skriv resultatet som ryddig Markdown med overskrifter og punktlister der det passer. Bevar størrelser, masketall, parenteser, forkortelser, pinne-/garninformasjon og omgang-/radtekst nøyaktig. Ikke finn på manglende tekst. Marker usikker tekst som [uklart]. Hopp over rene foto-/forsider uten nyttig oppskriftstekst.",
+    defaultOcrPrompt: "Transkriber synlig oppskriftstekst fra bildet. Svar kun med teksten. Behold linjeskift, tall, forkortelser og rekkefølge. Ikke forklar, rydd, oppsummer eller bruk Markdown hvis det ikke trengs.",
     selectModel: "Velg modell",
     refreshModels: "Oppdater modeller",
     modelsLoaded: "{COUNT} modeller funnet.",

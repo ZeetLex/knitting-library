@@ -381,7 +381,7 @@ const hu = {
     aiCustomPromptHint: "Ez az egyedi prompt minden nyelvnél használatban lesz, amíg vissza nem váltasz alapértelmezettre.",
     aiDefaultPromptHint: "Ez a prompt az aktuális appnyelvet ({LANGUAGE}) követi, és nyelvváltáskor változik.",
     aiTestOk: "AI kapcsolat sikeres:",
-    defaultOcrPrompt: "Csak a kész Markdown átírást add vissza. Ne írj elemzést, gondolatmenetet, magyarázatot, kommentárt vagy belső csatornákat. Kötésmintákat írsz át képekről. Őrizd meg a minta eredeti nyelvét. Az eredményt tiszta Markdown formában add vissza címsorokkal és listákkal, ahol hasznos. Pontosan őrizd meg a méreteket, szemszámokat, zárójeleket, rövidítéseket, tű-/fonaladatokat és sor/kör utasításokat. Ne találj ki hiányzó szöveget. A bizonytalan részeket jelöld így: [unclear]. Hagyd ki a pusztán dekoratív fotókat vagy borítóoldalakat, ha nincs rajtuk hasznos mintaszöveg.",
+    defaultOcrPrompt: "Írd át a képen látható mintaszöveget. Csak a szöveget add vissza. Őrizd meg a sortöréseket, számokat, rövidítéseket és sorrendet. Ne magyarázz, ne tisztítsd át, ne foglald össze, és ne használj Markdown-t, ha nem szükséges.",
     selectModel: "Modell kiválasztása",
     refreshModels: "Modellek frissítése",
     modelsLoaded: "{COUNT} modell található.",

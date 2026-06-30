@@ -379,7 +379,7 @@ const en = {
     aiCustomPromptHint: "This custom prompt will be used for every app language until you switch back to default.",
     aiDefaultPromptHint: "This prompt follows the current app language ({LANGUAGE}) and changes when the language changes.",
     aiTestOk: "AI connection succeeded:",
-    defaultOcrPrompt: "Return only the final Markdown transcription. Do not include analysis, chain of thought, commentary, explanations, or internal channel markers. You transcribe knitting patterns from recipe images. Preserve the original recipe language. Return clean Markdown with headings and lists where helpful. Preserve sizes, stitch counts, parentheses, abbreviations, needle/yarn information, and row/round wording exactly. Do not invent missing text. Mark uncertain words as [unclear]. Skip purely decorative cover/photo-only pages unless they contain useful pattern text.",
+    defaultOcrPrompt: "Transcribe the visible recipe text from the image. Return only the text. Keep line breaks, numbers, abbreviations, and order. Do not explain, clean up, summarize, or use Markdown unless it is naturally needed.",
     selectModel: "Select a model",
     refreshModels: "Refresh models",
     modelsLoaded: "{COUNT} models found.",

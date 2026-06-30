@@ -24,7 +24,7 @@ from email.mime.text import MIMEText
 import ipaddress
 import socket
 import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -104,6 +104,7 @@ YARN_DIR.mkdir(parents=True, exist_ok=True)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
 AI_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_MAX_OUTPUT_TOKENS", "32768"))
+AI_PAGE_SCAN_WORKERS = max(1, min(8, int(os.environ.get("AI_PAGE_SCAN_WORKERS", "2"))))
 AI_SETTING_KEYS = {
     "ai_enabled",
     "ai_provider",
@@ -1680,27 +1681,17 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
 def _default_ai_scan_prompt(language: str = "en") -> str:
     prompts = {
         "no": (
-            "Svar kun med transkripsjonen for dette ene bildet i Markdown. Ikke inkluder analyse, tankegang, forklaring, kommentarer eller interne kanaler. "
-            "Du transkriberer nøyaktig én side fra en strikkeoppskrift. Behold originalspråket i oppskriften. "
-            "Bevar linjeskift, tabeller, kolonner og punktlister så langt det er praktisk i Markdown. "
-            "Bevar størrelser, masketall, parenteser, forkortelser, pinne-/garninformasjon og omgang-/radtekst nøyaktig. "
-            "Ikke omskriv, forkort, forbedre eller finn på manglende tekst. Marker usikker tekst som [uklart]. "
-            "Hopp over rene foto-/forsider uten nyttig oppskriftstekst."
+            "Transkriber synlig oppskriftstekst fra bildet. Svar kun med teksten. "
+            "Behold linjeskift, tall, forkortelser og rekkefølge. Ikke forklar, rydd, oppsummer eller bruk Markdown hvis det ikke trengs."
         ),
         "hu": (
-            "Csak ennek az egy képnek a Markdown átírását add vissza. Ne írj elemzést, gondolatmenetet, magyarázatot, kommentárt vagy belső csatornákat. "
-            "Pontosan egy kötésminta-oldalt írsz át. Őrizd meg a minta eredeti nyelvét. "
-            "A sortöréseket, táblázatokat, oszlopokat és listákat őrizd meg, amennyire Markdownban lehetséges. "
-            "Pontosan őrizd meg a méreteket, szemszámokat, zárójeleket, rövidítéseket, tű-/fonaladatokat és sor/kör utasításokat. "
-            "Ne fogalmazd át, ne rövidítsd, ne javítsd át stílusosan, és ne találj ki hiányzó szöveget. A bizonytalan részeket jelöld így: [unclear]. "
-            "Hagyd ki a pusztán dekoratív fotókat vagy borítóoldalakat, ha nincs rajtuk hasznos mintaszöveg."
+            "Írd át a képen látható mintaszöveget. Csak a szöveget add vissza. "
+            "Őrizd meg a sortöréseket, számokat, rövidítéseket és sorrendet. Ne magyarázz, ne tisztítsd át, ne foglald össze, és ne használj Markdown-t, ha nem szükséges."
         ),
     }
     return prompts.get(language, (
-        "Return only the Markdown transcription for this one image. Do not include analysis, chain of thought, commentary, explanations, or internal channel markers. "
-        "You transcribe exactly one page of a knitting pattern. Preserve the original recipe language. "
-        "Preserve line breaks, tables, columns, and lists as well as practical in Markdown. Preserve sizes, stitch counts, parentheses, abbreviations, needle/yarn information, and row/round wording exactly. "
-        "Do not paraphrase, shorten, improve wording, or invent missing text. Mark uncertain words as [unclear]. Skip purely decorative cover/photo-only pages unless they contain useful pattern text."
+        "Transcribe the visible recipe text from the image. Return only the text. "
+        "Keep line breaks, numbers, abbreviations, and order. Do not explain, clean up, summarize, or use Markdown unless it is naturally needed."
     ))
 
 
@@ -1731,11 +1722,6 @@ def _collect_recipe_image_paths(recipe_id: str, conn, max_pages: int) -> list[Pa
     if not paths:
         raise HTTPException(status_code=400, detail="No recipe images available for text generation")
     return paths
-
-
-def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list[dict]:
-    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-    return [_image_payload_for_path(path) for path in paths]
 
 
 def _image_payload_for_path(path: Path) -> dict:
@@ -1770,9 +1756,7 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
                 "type": "text",
                 "text": (
                     f"{prompt}\n\n"
-                    f"This is page {page_no} of {page_count}. Transcribe only this image. "
-                    "Return only Markdown. Do not merge with other pages. Do not output reasoning, thoughts, or channel markers. "
-                    "If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"
+                    f"Page {page_no}/{page_count}. Transcribe only this image. Return only the text."
                 ),
             },
             _image_payload_for_path(path),
@@ -1811,25 +1795,36 @@ async def _scan_recipe_pages_with_ai(
     page_count = len(paths)
     usage_totals: dict[str, int] = {}
     prompt = _ai_scan_prompt(language, cfg)
-    results: list[dict] = []
-    for idx, path in enumerate(paths, start=1):
-        if job_id:
-            _update_ai_job(job_id, pages_sent=idx - 1, progress_stage=f"ai_page_{idx}_of_{page_count}")
-        text, usage, prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
-        for key, value in (usage or {}).items():
-            if isinstance(value, (int, float)):
-                usage_totals[key] = usage_totals.get(key, 0) + int(value)
+    completed = 0
+    progress_lock = asyncio.Lock()
+    usage_lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(AI_PAGE_SCAN_WORKERS)
+
+    async def scan_page(idx: int, path: Path) -> dict:
+        nonlocal completed
+        async with semaphore:
+            if job_id:
+                _update_ai_job(job_id, pages_sent=completed, progress_stage=f"ai_page_{idx}_of_{page_count}")
+            text, usage, _prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
+        async with usage_lock:
+            for key, value in (usage or {}).items():
+                if isinstance(value, (int, float)):
+                    usage_totals[key] = usage_totals.get(key, 0) + int(value)
         source_text = text.strip() or "_No useful text was detected on this page._"
-        results.append({
+        async with progress_lock:
+            completed += 1
+            if job_id:
+                _update_ai_job(job_id, pages_sent=completed, progress_stage=f"ai_pages_{completed}_of_{page_count}")
+        return {
             "page_order": idx,
             "page_key": path.name,
             "source_text": source_text,
             "reviewed_text": _clean_ai_transcription(source_text),
             "path": path,
-        })
-        if job_id:
-            _update_ai_job(job_id, pages_sent=idx, progress_stage=f"ai_page_{idx}_of_{page_count}")
-    return results, usage_totals, prompt
+        }
+
+    results = await asyncio.gather(*(scan_page(idx, path) for idx, path in enumerate(paths, start=1)))
+    return sorted(results, key=lambda page: page["page_order"]), usage_totals, prompt
 
 
 def _normalise_recognition_mode(value: str) -> str:
@@ -2178,37 +2173,6 @@ def _format_ocr_final_text(page_no: int, path: Path, buckets: dict[str, list[dic
             lines.append("")
         lines.append(diagram_md)
     return "\n".join(lines).strip()
-
-
-def _strip_page_marker(text: str) -> str:
-    return re.sub(r"(?m)^\s*<!--\s*Page\s+\d+:\s*.*?-->\s*$\n?", "", text or "").strip()
-
-
-def _normalise_for_loss_check(text: str) -> set[str]:
-    words = re.findall(r"[0-9A-Za-zÆØÅæøå]{2,}", (text or "").lower())
-    return {word for word in words if len(word) > 2 or any(ch.isdigit() for ch in word)}
-
-
-def _ai_cleanup_looks_lossy(source: str, cleaned: str) -> bool:
-    source_words = re.findall(r"\S+", _strip_page_marker(source))
-    cleaned_words = re.findall(r"\S+", _strip_page_marker(cleaned))
-    if len(source_words) >= 20 and len(cleaned_words) < max(14, int(len(source_words) * 0.82)):
-        return True
-    source_terms = _normalise_for_loss_check(source)
-    cleaned_terms = _normalise_for_loss_check(cleaned)
-    if len(source_terms) >= 12:
-        retained = len(source_terms & cleaned_terms) / max(1, len(source_terms))
-        if retained < 0.74:
-            return True
-    source_numbers = re.findall(r"\d+(?:[.,:/-]\d+)*", _strip_page_marker(source))
-    cleaned_numbers = re.findall(r"\d+(?:[.,:/-]\d+)*", _strip_page_marker(cleaned))
-    if source_numbers:
-        source_number_counts = Counter(source_numbers)
-        cleaned_number_counts = Counter(cleaned_numbers)
-        missing = sum(max(0, count - cleaned_number_counts.get(number, 0)) for number, count in source_number_counts.items())
-        if missing > max(1, int(len(source_numbers) * 0.12)):
-            return True
-    return False
 
 
 def _cleanup_ocr_markdown(text: str, unclear_marker: str = "[unclear]") -> str:
@@ -2846,103 +2810,6 @@ def _run_paddleocr_image(path: Path, language: str) -> str:
 def _collect_ocr_markdown(recipe_id: str, conn, max_pages: int, language: str, cfg: dict) -> tuple[str, str, int, str, str, list[str]]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
     return _collect_ocr_markdown_from_paths(paths, language, cfg)
-
-
-def _ocr_cleanup_prompt(language: str = "en") -> str:
-    if (language or "").lower().startswith("no"):
-        return (
-            "Du får strukturert OCR-bevis fra en strikkeoppskrift. Lag ferdig Markdown-oppskrift fra beviset. "
-            "Bruk hovedsakelig linjer under Header/title, Sizes/counts/material og Instruction/body. "
-            "Lav-konfidenslinjer kan brukes bare når de tydelig passer med konteksten. Ignorer rejected/noise. "
-            "Behold originalspråk, tall, forkortelser, masker, pinner, parenteser og rad-/omgangstekst nøyaktig. "
-            "Ikke finn på manglende tekst; skriv [uklart] for uleselige små deler. Behold diagramblokker som faktadata. "
-            "Returner kun ferdig Markdown. /no_think"
-        )
-    return (
-        "You receive structured OCR evidence from a knitting pattern. Reconstruct the finished Markdown pattern from it. "
-        "Prefer lines under Header/title, Sizes/counts/material, and Instruction/body. Use low-confidence lines only when "
-        "they clearly fit the surrounding context. Ignore rejected/noise summaries. Preserve the original language, numbers, "
-        "abbreviations, stitch counts, needles, parentheses, and row/round wording exactly. Do not invent missing text; use "
-        "[unclear] for small unreadable fragments. Preserve diagram blocks as factual extracted data. Return only Markdown. /no_think"
-    )
-
-
-def _ocr_review_page_cleanup_prompt(language: str = "en") -> str:
-    if (language or "").lower().startswith("no"):
-        return (
-            "Du rydder OCR fra nøyaktig én side i en strikkeoppskrift. Returner kun Markdown for denne ene siden. "
-            "Behold all synlig tekst fra OCR så langt det er mulig: overskrifter, forkortelser, tabeller, størrelser, garn, "
-            "pinneinfo, rad-/omgangstekst og korte linjer. Ikke oppsummer, ikke forkort, ikke flytt tekst til andre sider, "
-            "og ikke legg til tekst som ikke finnes i OCR. Rydd bare åpenbare OCR-feil og linjebrudd. "
-            "Ikke parafraser eller forbedre språk. Behold tall, parenteser, norske strikkeforkortelser og rekkefølge nøyaktig. "
-            "Hvis du er usikker, behold OCR-ordet og marker bare små uleselige deler som [uklart]. "
-            "Ikke bruk kodeblokker eller ```markdown. /no_think"
-        )
-    return (
-        "Clean OCR from exactly one page of a knitting pattern. Return only Markdown for this page. Preserve all visible "
-        "OCR text as far as possible: headings, abbreviations, tables, sizes, yarn, needle details, row/round instructions, "
-        "and short lines. Do not summarize, shorten, merge with other pages, or add text that is not in the OCR. Only fix "
-        "obvious OCR artifacts and line breaks. Do not paraphrase or improve wording. Preserve numbers, parentheses, knitting abbreviations, and order exactly. Mark small "
-        "uncertain fragments as [unclear]. Do not use code fences or ```markdown. /no_think"
-    )
-
-
-async def _call_ai_text_cleanup(cfg: dict, content: str, language: str, timeout: int) -> tuple[str, dict]:
-    base_url = cfg.get("ai_base_url", "").rstrip("/")
-    model = cfg.get("ai_model", "").strip()
-    if not base_url or not model:
-        raise HTTPException(status_code=400, detail="AI base URL and model are required")
-    messages = [{
-        "role": "user",
-        "content": f"{_ocr_cleanup_prompt(language)}\n\nOCR input:\n\n{content}",
-    }]
-    headers = {"Content-Type": "application/json"}
-    if cfg.get("ai_api_key"):
-        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        res = await client.post(
-            f"{base_url}/chat/completions",
-            headers=headers,
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": 0.05,
-                "stream": False,
-                "max_tokens": AI_MAX_OUTPUT_TOKENS,
-            },
-        )
-        res.raise_for_status()
-        data = res.json()
-    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}
-
-
-async def _call_ai_review_page_cleanup(cfg: dict, content: str, language: str, timeout: int) -> tuple[str, dict]:
-    base_url = cfg.get("ai_base_url", "").rstrip("/")
-    model = cfg.get("ai_model", "").strip()
-    if not base_url or not model:
-        raise HTTPException(status_code=400, detail="AI base URL and model are required")
-    messages = [{
-        "role": "user",
-        "content": f"{_ocr_review_page_cleanup_prompt(language)}\n\nPage OCR:\n\n{content}",
-    }]
-    headers = {"Content-Type": "application/json"}
-    if cfg.get("ai_api_key"):
-        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        res = await client.post(
-            f"{base_url}/chat/completions",
-            headers=headers,
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": 0.02,
-                "stream": False,
-                "max_tokens": AI_MAX_OUTPUT_TOKENS,
-            },
-        )
-        res.raise_for_status()
-        data = res.json()
-    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}
 
 
 async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn, timeout: int, max_pages: int, job_id: str = "") -> dict:
