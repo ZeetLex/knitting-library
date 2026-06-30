@@ -449,7 +449,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   );
 
   return (
-    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
+    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${viewMode === 'review' && reviewSession?.exists ? 'viewer--review-active' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>

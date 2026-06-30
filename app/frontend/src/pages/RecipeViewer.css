@@ -2212,7 +2212,7 @@ a.viewer-action-btn { text-decoration: none; }
     overflow: hidden;
   }
 
-  .viewer--review-mode {
+  .viewer--review-active {
     --mobile-recipe-viewer-height: calc(100dvh - var(--review-mobile-footer-space));
   }
 
@@ -2226,7 +2226,7 @@ a.viewer-action-btn { text-decoration: none; }
 
   .viewer-topbar { display: none; }
 
-  .viewer--review-mode .viewer-mode-tabs {
+  .viewer--review-active .viewer-mode-tabs {
     display: none;
   }
 
@@ -2320,14 +2320,14 @@ a.viewer-action-btn { text-decoration: none; }
    */
   .viewer-body { padding-bottom: 0; }
 
-  .viewer--review-mode .viewer-body,
-  .viewer--review-mode .viewer-content {
+  .viewer--review-active .viewer-body,
+  .viewer--review-active .viewer-content {
     height: var(--mobile-recipe-viewer-height);
     flex-basis: var(--mobile-recipe-viewer-height);
     overflow: hidden;
   }
 
-  .viewer--review-mode .review-panel {
+  .viewer--review-active .review-panel {
     position: relative;
     height: var(--mobile-recipe-viewer-height);
     min-height: 0;
@@ -2335,11 +2335,11 @@ a.viewer-action-btn { text-decoration: none; }
     background: var(--card-bg);
   }
 
-  .viewer--review-mode .review-topbar {
+  .viewer--review-active .review-topbar {
     display: none;
   }
 
-  .viewer--review-mode .review-panel > .status-error {
+  .viewer--review-active .review-panel > .status-error {
     position: absolute;
     left: 12px;
     right: 12px;
@@ -2349,7 +2349,7 @@ a.viewer-action-btn { text-decoration: none; }
     box-shadow: var(--shadow-sm);
   }
 
-  .viewer--review-mode .review-body {
+  .viewer--review-active .review-body {
     height: 100%;
     min-height: 0;
     display: flex;
@@ -2358,7 +2358,7 @@ a.viewer-action-btn { text-decoration: none; }
     background: var(--card-bg);
   }
 
-  .viewer--review-mode .review-page-side {
+  .viewer--review-active .review-page-side {
     flex: 0 0 var(--review-mobile-image-size, 50%);
     min-height: 0;
     max-height: 100%;
@@ -2371,12 +2371,12 @@ a.viewer-action-btn { text-decoration: none; }
     background: #111;
   }
 
-  .viewer--review-mode .review-page-image-label {
+  .viewer--review-active .review-page-image-label {
     align-self: flex-start;
     margin-bottom: 8px;
   }
 
-  .viewer--review-mode .review-page-side img {
+  .viewer--review-active .review-page-side img {
     width: calc(100% * var(--review-mobile-image-zoom, 1));
     max-width: none;
     max-height: none;
@@ -2384,7 +2384,7 @@ a.viewer-action-btn { text-decoration: none; }
     background: white;
   }
 
-  .viewer--review-mode .review-mobile-zoom-controls {
+  .viewer--review-active .review-mobile-zoom-controls {
     position: sticky;
     top: 0;
     right: 0;
@@ -2403,7 +2403,7 @@ a.viewer-action-btn { text-decoration: none; }
     -webkit-backdrop-filter: blur(14px);
   }
 
-  .viewer--review-mode .review-mobile-zoom-controls button {
+  .viewer--review-active .review-mobile-zoom-controls button {
     width: 32px;
     height: 32px;
     display: flex;
@@ -2416,12 +2416,12 @@ a.viewer-action-btn { text-decoration: none; }
     cursor: pointer;
   }
 
-  .viewer--review-mode .review-mobile-zoom-controls button:disabled {
+  .viewer--review-active .review-mobile-zoom-controls button:disabled {
     opacity: 0.36;
     cursor: default;
   }
 
-  .viewer--review-mode .review-mobile-zoom-controls span {
+  .viewer--review-active .review-mobile-zoom-controls span {
     min-width: 42px;
     color: var(--text-secondary);
     text-align: center;
@@ -2429,7 +2429,7 @@ a.viewer-action-btn { text-decoration: none; }
     font-weight: 900;
   }
 
-  .viewer--review-mode .review-mobile-splitter {
+  .viewer--review-active .review-mobile-splitter {
     position: relative;
     z-index: 6;
     display: flex;
@@ -2444,7 +2444,7 @@ a.viewer-action-btn { text-decoration: none; }
     touch-action: none;
   }
 
-  .viewer--review-mode .review-mobile-splitter::before {
+  .viewer--review-active .review-mobile-splitter::before {
     content: "";
     position: absolute;
     left: 0;
@@ -2456,7 +2456,7 @@ a.viewer-action-btn { text-decoration: none; }
     transform: translateY(-50%);
   }
 
-  .viewer--review-mode .review-mobile-splitter span {
+  .viewer--review-active .review-mobile-splitter span {
     position: relative;
     z-index: 1;
     width: 38px;
@@ -2468,7 +2468,7 @@ a.viewer-action-btn { text-decoration: none; }
     pointer-events: none;
   }
 
-  .viewer--review-mode .review-text-side {
+  .viewer--review-active .review-text-side {
     flex: 1 1 auto;
     min-height: 0;
     gap: 9px;
@@ -2479,46 +2479,46 @@ a.viewer-action-btn { text-decoration: none; }
     -webkit-overflow-scrolling: touch;
   }
 
-  .viewer--review-mode .review-page-nav {
+  .viewer--review-active .review-page-nav {
     display: none;
   }
 
-  .viewer--review-mode .review-source-pair {
+  .viewer--review-active .review-source-pair {
     gap: 7px;
   }
 
-  .viewer--review-mode .review-raw-ocr pre {
+  .viewer--review-active .review-raw-ocr pre {
     max-height: 110px;
   }
 
-  .viewer--review-mode .review-suggestion-head {
+  .viewer--review-active .review-suggestion-head {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;
   }
 
-  .viewer--review-mode .review-suggestion-head .btn-secondary {
+  .viewer--review-active .review-suggestion-head .btn-secondary {
     min-height: 32px;
     width: 100%;
     justify-content: center;
   }
 
-  .viewer--review-mode .review-textarea {
+  .viewer--review-active .review-textarea {
     flex: 0 0 auto;
     min-height: max(260px, 42dvh);
     padding-bottom: 24px;
     resize: vertical;
   }
 
-  .viewer--review-mode .review-assets {
+  .viewer--review-active .review-assets {
     padding-bottom: 18px;
   }
 
-  .viewer--review-mode .review-bottom-actions {
+  .viewer--review-active .review-bottom-actions {
     display: none;
   }
 
-  .viewer--review-mode .review-mobile-diagram-btn {
+  .viewer--review-active .review-mobile-diagram-btn {
     position: fixed;
     top: calc(10px + env(safe-area-inset-top, 0px));
     right: max(10px, env(safe-area-inset-right, 10px));
@@ -2540,19 +2540,19 @@ a.viewer-action-btn { text-decoration: none; }
     cursor: pointer;
   }
 
-  .viewer--review-mode .review-mobile-diagram-btn span {
+  .viewer--review-active .review-mobile-diagram-btn span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .viewer--review-mode .review-mobile-diagram-btn:disabled {
+  .viewer--review-active .review-mobile-diagram-btn:disabled {
     opacity: 0.48;
     cursor: default;
   }
 
-  .viewer--review-mode .review-mobile-page-nav {
+  .viewer--review-active .review-mobile-page-nav {
     position: fixed;
     left: max(16px, env(safe-area-inset-left, 16px));
     right: max(16px, env(safe-area-inset-right, 16px));
@@ -2571,7 +2571,7 @@ a.viewer-action-btn { text-decoration: none; }
     overflow: hidden;
   }
 
-  .viewer--review-mode .review-mobile-page-nav button {
+  .viewer--review-active .review-mobile-page-nav button {
     width: 42px;
     height: 100%;
     display: flex;
@@ -2583,12 +2583,12 @@ a.viewer-action-btn { text-decoration: none; }
     cursor: pointer;
   }
 
-  .viewer--review-mode .review-mobile-page-nav button:disabled {
+  .viewer--review-active .review-mobile-page-nav button:disabled {
     opacity: 0.32;
     cursor: default;
   }
 
-  .viewer--review-mode .review-mobile-page-nav span {
+  .viewer--review-active .review-mobile-page-nav span {
     min-width: 0;
     overflow: hidden;
     text-align: center;
@@ -3030,4 +3030,5 @@ a.viewer-action-btn { text-decoration: none; }
     border-color: rgba(217, 76, 76, 0.28) !important;
   }
 }
+
 
