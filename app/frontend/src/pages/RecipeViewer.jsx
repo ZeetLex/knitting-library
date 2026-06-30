@@ -69,7 +69,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       setPanelDragY(0);
       setMobileImageEditing(false);
       setMobileImagesVisible(false);
-      setMobilePanel('info');
+      setMobilePanel(panel => panel === 'info' ? null : 'info');
     };
     const handleImageToggle = () => {
       if (recipe?.file_type !== 'images' || (recipe.images || []).length <= 1) return;
