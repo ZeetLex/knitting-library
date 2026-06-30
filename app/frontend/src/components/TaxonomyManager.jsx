@@ -89,9 +89,17 @@ export function TaxonomyManagerModal({
 
   useEffect(() => { load(); }, [type]);
 
-  const filtered = items.filter(item =>
-    item.name.toLowerCase().includes(query.trim().toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return items
+      .filter(item => item.name.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        const aSelected = selectedSet.has(a.name.toLowerCase());
+        const bSelected = selectedSet.has(b.name.toLowerCase());
+        if (aSelected !== bSelected) return aSelected ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [items, query, selectedSet]);
 
   const toggleSelected = (name) => {
     if (!selectionEnabled || !onChange) return;
