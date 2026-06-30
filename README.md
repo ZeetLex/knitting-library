@@ -99,7 +99,7 @@ Recipe pages can have a shared editable text version generated from scanned reci
 
 > **Early beta:** the AI scan review and diagram tools are new, experimental, and expected to change a lot. The current UI for this feature is **not final**, especially the diagram editor and mobile layout. Treat AI output as a draft only.
 
-Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The beta workflow uses a vision-capable OpenAI-compatible model and sends each recipe image or PDF page directly to AI for plain text transcription, one page at a time, then stores each page result beside the matching original image for review. An optional second AI cleanup step can then send the raw page text back to AI for Markdown cleanup after all page scans are complete. Admins can tune max output tokens and scan/cleanup temperatures in the AI settings. For knitting diagrams and legends, the current beta workflow is manual/user-guided: crop the diagram or legend from the original page and review it visually.
+Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The beta workflow uses a vision-capable OpenAI-compatible model and sends each recipe image or PDF page directly to AI for plain text transcription, one page at a time, then stores each page result beside the matching original image for review. An optional second AI cleanup step can then send the raw page text back to AI for Markdown cleanup after all page scans are complete; this cleanup step is off unless an admin enables it. Admins can preview/edit scan and cleanup prompts, tune max output tokens plus scan/cleanup temperatures, and fetch model names from the configured OpenAI-compatible endpoint. Model fetching only lists models; generation settings are sent with each chat completion request. For knitting diagrams and legends, the current beta workflow is manual/user-guided: crop the diagram or legend from the original page and review it visually.
 
 The app uses OpenAI-compatible chat completion endpoints, so it can work with:
 
@@ -114,9 +114,10 @@ The current beta workflow is user-guided instead of fully automatic:
 - Optional AI cleanup can format each page's raw scan after the page scan pass completes and before it reaches review.
 - The Review view shows the original page beside the editable draft text.
 - You can accept pages, pause and resume later, cancel the draft, insert a diagram crop, or crop a legend image.
+- The diagram tool can move, resize, rotate and deskew the selected diagram crop, adjust the overlay grid, blur the background preview for visibility, and change overlay/generated grid line thickness.
 - Completing review publishes one shared Markdown text version with reviewed text and any saved diagram/legend image inserts.
 
-The diagram editor is an early beta crop overlay. It can move, resize, rotate, and size a grid over a diagram, but it does not yet parse knitting symbols into a final machine-readable chart. Legend crops are saved as images, not interpreted text.
+The diagram editor is an early beta visual crop tool. It saves diagram and legend inserts as images inside the reviewed Markdown text version; it does not parse knitting symbols into a final machine-readable chart or full written instructions. Generation audit details, including provider tokens and estimated image input, are shown below the text version for review.
 
 Generated text is persistent for the whole server, not private per user. AI output should always be reviewed, especially for old scans, Norwegian/English knitting abbreviations, stitch counts, unclear page photos, and diagram symbols. Do not rely on generated instructions until a human has checked them against the original recipe.
 
