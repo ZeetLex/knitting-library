@@ -104,7 +104,6 @@ YARN_DIR.mkdir(parents=True, exist_ok=True)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
 AI_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_MAX_OUTPUT_TOKENS", "32768"))
-AI_PAGE_SCAN_WORKERS = max(1, min(8, int(os.environ.get("AI_PAGE_SCAN_WORKERS", "2"))))
 AI_SETTING_KEYS = {
     "ai_enabled",
     "ai_provider",
@@ -113,6 +112,9 @@ AI_SETTING_KEYS = {
     "ai_api_key",
     "ai_timeout",
     "ai_max_pages",
+    "ai_max_output_tokens",
+    "ai_scan_temperature",
+    "ai_cleanup_temperature",
     "ai_prompt_mode",
     "ai_custom_prompt",
     "ai_cleanup_enabled",
@@ -1717,6 +1719,9 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_api_key": "",
         "ai_timeout": "600",
         "ai_max_pages": "8",
+        "ai_max_output_tokens": str(AI_MAX_OUTPUT_TOKENS),
+        "ai_scan_temperature": "0.02",
+        "ai_cleanup_temperature": "0.05",
         "ai_prompt_mode": "default",
         "ai_custom_prompt": "",
         "ai_cleanup_enabled": "false",
@@ -1820,6 +1825,14 @@ def _require_ai_vision_config(cfg: dict) -> tuple[str, str]:
     return base_url, model
 
 
+def _ai_max_output_tokens(cfg: dict) -> int:
+    return int(_clamped_float(cfg.get("ai_max_output_tokens"), AI_MAX_OUTPUT_TOKENS, 64, 131072))
+
+
+def _ai_temperature(cfg: dict, key: str, default: float) -> float:
+    return round(_clamped_float(cfg.get(key), default, 0, 2), 3)
+
+
 async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, language: str, cfg: dict, timeout: int) -> tuple[str, dict, str]:
     base_url, model = _require_ai_vision_config(cfg)
     prompt = _ai_scan_prompt(language, cfg)
@@ -1846,9 +1859,9 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
             json={
                 "model": model,
                 "messages": messages,
-                "temperature": 0.02,
+                "temperature": _ai_temperature(cfg, "ai_scan_temperature", 0.02),
                 "stream": False,
-                "max_tokens": AI_MAX_OUTPUT_TOKENS,
+                "max_tokens": _ai_max_output_tokens(cfg),
             },
         )
         res.raise_for_status()
@@ -1873,9 +1886,9 @@ async def _call_ai_page_cleanup(text: str, page_no: int, page_count: int, langua
             json={
                 "model": model,
                 "messages": messages,
-                "temperature": 0.05,
+                "temperature": _ai_temperature(cfg, "ai_cleanup_temperature", 0.05),
                 "stream": False,
-                "max_tokens": AI_MAX_OUTPUT_TOKENS,
+                "max_tokens": _ai_max_output_tokens(cfg),
             },
         )
         res.raise_for_status()
@@ -1898,44 +1911,47 @@ async def _scan_recipe_pages_with_ai(
     prompt = _ai_scan_prompt(language, cfg)
     cleanup_enabled = _is_truthy(cfg.get("ai_cleanup_enabled"), False)
     cleanup_prompt = _ai_cleanup_prompt(language, cfg) if cleanup_enabled else ""
-    completed = 0
-    progress_lock = asyncio.Lock()
-    usage_lock = asyncio.Lock()
-    semaphore = asyncio.Semaphore(AI_PAGE_SCAN_WORKERS)
+    results: list[dict] = []
 
-    async def scan_page(idx: int, path: Path) -> dict:
-        nonlocal completed
-        async with semaphore:
-            if job_id:
-                _update_ai_job(job_id, pages_sent=completed, progress_stage=f"ai_page_{idx}_of_{page_count}")
-            text, usage, _prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
-            cleanup_usage = {}
-            reviewed_text = _clean_ai_transcription(text)
-            if cleanup_enabled and reviewed_text.strip():
-                try:
-                    cleaned, cleanup_usage, _cleanup_prompt = await _call_ai_page_cleanup(reviewed_text, idx, page_count, language, cfg, timeout)
-                    if cleaned.strip():
-                        reviewed_text = cleaned.strip()
-                except Exception:
-                    cleanup_usage = {}
-        async with usage_lock:
-            for key, value in {**(usage or {}), **{f"cleanup_{k}": v for k, v in (cleanup_usage or {}).items()}}.items():
-                if isinstance(value, (int, float)):
-                    usage_totals[key] = usage_totals.get(key, 0) + int(value)
+    def add_usage(usage: dict, prefix: str = "") -> None:
+        for key, value in (usage or {}).items():
+            if isinstance(value, (int, float)):
+                usage_totals[f"{prefix}{key}"] = usage_totals.get(f"{prefix}{key}", 0) + int(value)
+
+    for idx, path in enumerate(paths, start=1):
+        if job_id:
+            _update_ai_job(job_id, pages_sent=idx - 1, progress_stage=f"ai_scan_page_{idx}_of_{page_count}")
+        text, usage, _prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
+        add_usage(usage)
         source_text = text.strip() or "_No useful text was detected on this page._"
-        async with progress_lock:
-            completed += 1
-            if job_id:
-                _update_ai_job(job_id, pages_sent=completed, progress_stage=f"ai_pages_{completed}_of_{page_count}")
-        return {
+        reviewed_text = _clean_ai_transcription(text) or source_text
+        results.append({
             "page_order": idx,
             "page_key": path.name,
             "source_text": source_text,
-            "reviewed_text": reviewed_text or source_text,
+            "reviewed_text": reviewed_text,
             "path": path,
-        }
+        })
+        if job_id:
+            _update_ai_job(job_id, pages_sent=idx, progress_stage=f"ai_scanned_{idx}_of_{page_count}")
 
-    results = await asyncio.gather(*(scan_page(idx, path) for idx, path in enumerate(paths, start=1)))
+    if cleanup_enabled:
+        for idx, page in enumerate(results, start=1):
+            reviewed_text = _clean_ai_transcription(page["reviewed_text"])
+            if not reviewed_text.strip():
+                continue
+            if job_id:
+                _update_ai_job(job_id, pages_sent=page_count, progress_stage=f"ai_cleanup_page_{idx}_of_{page_count}")
+            try:
+                cleaned, cleanup_usage, _cleanup_prompt = await _call_ai_page_cleanup(reviewed_text, idx, page_count, language, cfg, timeout)
+                add_usage(cleanup_usage, "cleanup_")
+                if cleaned.strip():
+                    page["reviewed_text"] = cleaned.strip()
+            except Exception:
+                pass
+        if job_id:
+            _update_ai_job(job_id, pages_sent=page_count, progress_stage=f"ai_cleanup_done_{page_count}_of_{page_count}")
+
     workflow_prompt = prompt if not cleanup_enabled else f"{prompt}\n\n--- Cleanup prompt ---\n\n{cleanup_prompt}"
     return sorted(results, key=lambda page: page["page_order"]), usage_totals, workflow_prompt
 

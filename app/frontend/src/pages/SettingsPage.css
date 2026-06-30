@@ -1571,6 +1571,10 @@
   gap: 12px;
 }
 
+.ai-generation-grid {
+  grid-template-columns: repeat(3, minmax(0, 180px));
+}
+
 .ai-checkbox-stack {
   display: flex;
   flex-direction: column;

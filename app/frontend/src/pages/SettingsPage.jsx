@@ -916,6 +916,9 @@ function AISection() {
     ai_api_key: '',
     ai_timeout: '600',
     ai_max_pages: '8',
+    ai_max_output_tokens: '32768',
+    ai_scan_temperature: '0.02',
+    ai_cleanup_temperature: '0.05',
     ai_prompt_mode: 'default',
     ai_custom_prompt: '',
     ai_cleanup_enabled: 'false',
@@ -1102,6 +1105,30 @@ function AISection() {
         </div>
 
         <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('aiGenerationSettings')}</h4>
+              <p>{t('aiGenerationSettingsSub')}</p>
+            </div>
+          </div>
+          <div className="ai-number-grid ai-generation-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiMaxOutputTokens')}</label>
+              <input className="form-input" type="number" min="64" max="131072" step="64" value={cfg.ai_max_output_tokens} onChange={e => f('ai_max_output_tokens', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiScanTemperature')}</label>
+              <input className="form-input" type="number" min="0" max="2" step="0.01" value={cfg.ai_scan_temperature} onChange={e => f('ai_scan_temperature', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiCleanupTemperature')}</label>
+              <input className="form-input" type="number" min="0" max="2" step="0.01" value={cfg.ai_cleanup_temperature} onChange={e => f('ai_cleanup_temperature', e.target.value)} />
+            </div>
+          </div>
+          <p className="settings-row-sub ai-inline-help">{t('aiGenerationSettingsHint')}</p>
+        </div>
+
+        <div className="ai-settings-card">
           <div className="ai-card-heading ai-card-heading-row">
             <div>
               <h4>{t('aiPrompt')}</h4>
@@ -1142,13 +1169,14 @@ function AISection() {
             <label className="form-label">{t('aiCleanupPrompt')}</label>
             <textarea
               className="form-input form-textarea ai-prompt-textarea"
-              value={cfg.ai_cleanup_custom_prompt}
+              value={cfg.ai_cleanup_enabled === 'true' ? cfg.ai_cleanup_custom_prompt : t('defaultAiCleanupPrompt')}
               onChange={e => f('ai_cleanup_custom_prompt', e.target.value)}
               placeholder={t('defaultAiCleanupPrompt')}
+              readOnly={cfg.ai_cleanup_enabled !== 'true'}
               rows={7}
             />
             <p className="settings-row-sub ai-inline-help">
-              {t('aiCleanupPromptHint')}
+              {cfg.ai_cleanup_enabled === 'true' ? t('aiCleanupPromptHint') : t('aiCleanupDisabledHint')}
             </p>
           </div>
         </div>
