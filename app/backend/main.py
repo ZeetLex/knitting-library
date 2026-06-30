@@ -103,6 +103,7 @@ YARN_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
+AI_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_MAX_OUTPUT_TOKENS", "32768"))
 AI_SETTING_KEYS = {
     "ai_enabled",
     "ai_provider",
@@ -1789,7 +1790,7 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
                 "messages": messages,
                 "temperature": 0.02,
                 "stream": False,
-                "max_tokens": 4096,
+                "max_tokens": AI_MAX_OUTPUT_TOKENS,
             },
         )
         res.raise_for_status()
@@ -2907,7 +2908,7 @@ async def _call_ai_text_cleanup(cfg: dict, content: str, language: str, timeout:
                 "messages": messages,
                 "temperature": 0.05,
                 "stream": False,
-                "max_tokens": 4096,
+                "max_tokens": AI_MAX_OUTPUT_TOKENS,
             },
         )
         res.raise_for_status()
@@ -2936,7 +2937,7 @@ async def _call_ai_review_page_cleanup(cfg: dict, content: str, language: str, t
                 "messages": messages,
                 "temperature": 0.02,
                 "stream": False,
-                "max_tokens": 4096,
+                "max_tokens": AI_MAX_OUTPUT_TOKENS,
             },
         )
         res.raise_for_status()
