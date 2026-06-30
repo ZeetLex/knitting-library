@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
@@ -1571,34 +1571,47 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
     typeof window !== 'undefined' ? window.innerWidth > 640 : true
   );
   const [natural, setNatural] = useState({ w: 1, h: 1 });
-  const [box, setBox] = useState({ x: 20, y: 20, w: 55, h: 38 });
+  const [points, setPoints] = useState({
+    tl: { x: 20, y: 20 },
+    tr: { x: 75, y: 20 },
+    br: { x: 75, y: 58 },
+    bl: { x: 20, y: 58 },
+  });
   const [title, setTitle] = useState(mode === 'legend' ? t('legendDefaultTitle') : t('diagramDefaultTitle'));
   const [cols, setCols] = useState(10);
   const [rows, setRows] = useState(10);
-  const [rotation, setRotation] = useState(0);
   const [opacity, setOpacity] = useState(0.85);
   const [backgroundBlur, setBackgroundBlur] = useState(0);
   const [gridLineWidth, setGridLineWidth] = useState(1);
 
-  const clampBox = (next) => {
-    const x = Math.max(0, Math.min(95, Number(next.x)));
-    const y = Math.max(0, Math.min(95, Number(next.y)));
-    const w = Math.max(5, Math.min(100 - x, Number(next.w)));
-    const h = Math.max(5, Math.min(100 - y, Number(next.h)));
-    return { x, y, w, h };
+  const clampPoint = (point) => ({
+    x: Math.max(0, Math.min(100, Number(point.x))),
+    y: Math.max(0, Math.min(100, Number(point.y))),
+  });
+
+  const pointOrder = ['tl', 'tr', 'br', 'bl'];
+  const bounds = pointOrder.reduce((acc, key) => ({
+    minX: Math.min(acc.minX, points[key].x),
+    maxX: Math.max(acc.maxX, points[key].x),
+    minY: Math.min(acc.minY, points[key].y),
+    maxY: Math.max(acc.maxY, points[key].y),
+  }), { minX: 100, maxX: 0, minY: 100, maxY: 0 });
+
+  const movePoints = (startPoints, dx, dy) => {
+    const minX = Math.min(...pointOrder.map(key => startPoints[key].x));
+    const maxX = Math.max(...pointOrder.map(key => startPoints[key].x));
+    const minY = Math.min(...pointOrder.map(key => startPoints[key].y));
+    const maxY = Math.max(...pointOrder.map(key => startPoints[key].y));
+    const safeDx = Math.max(-minX, Math.min(100 - maxX, dx));
+    const safeDy = Math.max(-minY, Math.min(100 - maxY, dy));
+    setPoints(Object.fromEntries(pointOrder.map(key => [
+      key,
+      { x: startPoints[key].x + safeDx, y: startPoints[key].y + safeDy },
+    ])));
   };
 
-  const updateBox = (next) => setBox(clampBox(next));
-
-  const moveBox = (next) => {
-    const w = Math.max(5, Math.min(100, Number(next.w)));
-    const h = Math.max(5, Math.min(100, Number(next.h)));
-    setBox({
-      x: Math.max(0, Math.min(100 - w, Number(next.x))),
-      y: Math.max(0, Math.min(100 - h, Number(next.y))),
-      w,
-      h,
-    });
+  const updatePoint = (key, point) => {
+    setPoints(prev => ({ ...prev, [key]: clampPoint(point) }));
   };
 
   const pointToPercent = (event) => {
@@ -1610,37 +1623,12 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
     };
   };
 
-  const resizeBox = (start, handle, dx, dy) => {
-    let { x, y, w, h } = start;
-    const right = x + w;
-    const bottom = y + h;
-    const min = 5;
-    if (handle.includes('w')) {
-      x = Math.min(right - min, Math.max(0, x + dx));
-      w = right - x;
-    }
-    if (handle.includes('e')) {
-      w = Math.max(min, Math.min(100 - x, w + dx));
-    }
-    if (handle.includes('n')) {
-      y = Math.min(bottom - min, Math.max(0, y + dy));
-      h = bottom - y;
-    }
-    if (handle.includes('s')) {
-      h = Math.max(min, Math.min(100 - y, h + dy));
-    }
-    return clampBox({ x, y, w, h });
-  };
-
   const startInteraction = (event, type, handle = '') => {
     event.preventDefault();
     event.stopPropagation();
     const startPoint = pointToPercent(event);
-    const startBox = box;
-    const startRotation = rotation;
-    const center = { x: startBox.x + startBox.w / 2, y: startBox.y + startBox.h / 2 };
-    const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
-    interactionRef.current = { type, handle, startPoint, startBox, startRotation, startAngle };
+    const startPoints = JSON.parse(JSON.stringify(points));
+    interactionRef.current = { type, handle, startPoint, startPoints };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -1652,22 +1640,12 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
     const dx = point.x - active.startPoint.x;
     const dy = point.y - active.startPoint.y;
     if (active.type === 'move') {
-      moveBox({
-        ...active.startBox,
-        x: active.startBox.x + dx,
-        y: active.startBox.y + dy,
+      movePoints(active.startPoints, dx, dy);
+    } else if (active.type === 'corner') {
+      updatePoint(active.handle, {
+        x: active.startPoints[active.handle].x + dx,
+        y: active.startPoints[active.handle].y + dy,
       });
-    } else if (active.type === 'resize') {
-      setBox(resizeBox(active.startBox, active.handle, dx, dy));
-    } else if (active.type === 'rotate') {
-      const center = {
-        x: active.startBox.x + active.startBox.w / 2,
-        y: active.startBox.y + active.startBox.h / 2,
-      };
-      const angle = Math.atan2(point.y - center.y, point.x - center.x);
-      const delta = (angle - active.startAngle) * (180 / Math.PI);
-      const next = Math.max(-45, Math.min(45, active.startRotation + delta));
-      setRotation(Math.round(next * 10) / 10);
     }
   };
 
@@ -1677,18 +1655,36 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   };
 
   const resetSelection = () => {
-    setBox({ x: 20, y: 20, w: 55, h: 38 });
-    setRotation(0);
+    setPoints({
+      tl: { x: 20, y: 20 },
+      tr: { x: 75, y: 20 },
+      br: { x: 75, y: 58 },
+      bl: { x: 20, y: 58 },
+    });
     setOpacity(0.85);
     setBackgroundBlur(0);
     setGridLineWidth(1);
   };
 
+  const adjustCols = (delta) => setCols(value => Math.max(1, Math.min(200, value + delta)));
+  const adjustRows = (delta) => setRows(value => Math.max(1, Math.min(200, value + delta)));
+
+  const interpolate = (a, b, t) => ({
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  });
+
+  const pointToPixel = (point) => ({
+    x: Math.round(natural.w * point.x / 100),
+    y: Math.round(natural.h * point.y / 100),
+  });
+
   const crop = {
-    x: Math.round(natural.w * box.x / 100),
-    y: Math.round(natural.h * box.y / 100),
-    width: Math.round(natural.w * box.w / 100),
-    height: Math.round(natural.h * box.h / 100),
+    x: Math.round(natural.w * bounds.minX / 100),
+    y: Math.round(natural.h * bounds.minY / 100),
+    width: Math.round(natural.w * (bounds.maxX - bounds.minX) / 100),
+    height: Math.round(natural.h * (bounds.maxY - bounds.minY) / 100),
+    points: pointOrder.map(key => pointToPixel(points[key])),
   };
 
   const save = () => {
@@ -1697,7 +1693,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
       crop,
       grid_columns: mode === 'diagram' ? cols : 0,
       grid_rows: mode === 'diagram' ? rows : 0,
-      rotation: mode === 'diagram' ? rotation : 0,
+      rotation: 0,
       grid_line_width: mode === 'diagram' ? gridLineWidth : 1,
     });
   };
@@ -1734,47 +1730,58 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
                 style={{ filter: mode === 'diagram' && backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : undefined }}
               />
               <div
-                className={`review-crop-box ${mode === 'diagram' ? 'review-crop-box--grid' : ''}`}
+                className="review-crop-freeform"
                 onPointerDown={e => startInteraction(e, 'move')}
                 onPointerMove={moveInteraction}
                 onPointerUp={endInteraction}
                 onPointerCancel={endInteraction}
                 style={{
-                  left: `${box.x}%`,
-                  top: `${box.y}%`,
-                  width: `${box.w}%`,
-                  height: `${box.h}%`,
                   opacity,
-                  '--review-grid-cols': cols,
-                  '--review-grid-rows': rows,
-                  '--review-grid-line-width': `${gridLineWidth}px`,
-                  transform: `rotate(${rotation}deg)`,
                 }}
               >
-                {mode === 'diagram' && (
-                  <button
-                    type="button"
-                    className="review-crop-rotate"
-                    aria-label={t('diagramRotation')}
-                    onPointerDown={e => startInteraction(e, 'rotate')}
-                    onPointerMove={moveInteraction}
-                    onPointerUp={endInteraction}
-                    onPointerCancel={endInteraction}
+                <svg className="review-crop-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <polygon
+                    className={mode === 'diagram' ? 'review-crop-polygon review-crop-polygon--grid' : 'review-crop-polygon'}
+                    points={pointOrder.map(key => `${points[key].x},${points[key].y}`).join(' ')}
                   />
-                )}
-                {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => (
+                  {mode === 'diagram' && Array.from({ length: Math.max(0, cols - 1) }).map((_, index) => {
+                    const tValue = (index + 1) / cols;
+                    const top = interpolate(points.tl, points.tr, tValue);
+                    const bottom = interpolate(points.bl, points.br, tValue);
+                    return <line key={`col-${index}`} x1={top.x} y1={top.y} x2={bottom.x} y2={bottom.y} />;
+                  })}
+                  {mode === 'diagram' && Array.from({ length: Math.max(0, rows - 1) }).map((_, index) => {
+                    const tValue = (index + 1) / rows;
+                    const left = interpolate(points.tl, points.bl, tValue);
+                    const right = interpolate(points.tr, points.br, tValue);
+                    return <line key={`row-${index}`} x1={left.x} y1={left.y} x2={right.x} y2={right.y} />;
+                  })}
+                </svg>
+                {pointOrder.map(handle => (
                   <button
                     type="button"
                     key={handle}
-                    className={`review-crop-handle review-crop-handle--${handle}`}
+                    className="review-crop-point"
                     aria-label={`${t('cropResize')} ${handle}`}
-                    onPointerDown={e => startInteraction(e, 'resize', handle)}
+                    onPointerDown={e => startInteraction(e, 'corner', handle)}
                     onPointerMove={moveInteraction}
                     onPointerUp={endInteraction}
                     onPointerCancel={endInteraction}
+                    style={{
+                      left: `${points[handle].x}%`,
+                      top: `${points[handle].y}%`,
+                    }}
                   />
                 ))}
               </div>
+              {mode === 'diagram' && (
+                <div className="review-grid-quickbar" aria-label={t('diagramGridControls') || 'Grid controls'}>
+                  <button type="button" onClick={() => adjustRows(-1)} disabled={rows <= 1} title={t('diagramRows')}><Minus size={13} /><span>{t('diagramRows')}</span></button>
+                  <button type="button" onClick={() => adjustRows(1)} title={t('diagramRows')}><Plus size={13} /><span>{t('diagramRows')}</span></button>
+                  <button type="button" onClick={() => adjustCols(-1)} disabled={cols <= 1} title={t('diagramColumns')}><Minus size={13} /><span>{t('diagramColumns')}</span></button>
+                  <button type="button" onClick={() => adjustCols(1)} title={t('diagramColumns')}><Plus size={13} /><span>{t('diagramColumns')}</span></button>
+                </div>
+              )}
             </div>
           </div>
           <div className="review-asset-controls">
@@ -1790,19 +1797,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
                 <label>{t('diagramLineWidth')}<input type="range" min="1" max="8" step="1" value={gridLineWidth} onChange={e => setGridLineWidth(Number(e.target.value))} /></label>
               </>
             )}
-            <div className="review-control-grid review-control-grid--crop">
-              {[
-                ['x', t('cropX')],
-                ['y', t('cropY')],
-                ['w', t('cropWidth')],
-                ['h', t('cropHeight')],
-              ].map(([key, label]) => (
-                <label key={key}>{label}<input type="number" min="0" max="100" step="0.1" value={Math.round(box[key] * 10) / 10} onChange={e => updateBox({ ...box, [key]: e.target.value })} /></label>
-              ))}
-            </div>
-            {mode === 'diagram' && (
-              <p className="review-control-note">{t('diagramRotationValue')}: {rotation}°</p>
-            )}
+            <p className="review-control-note">{t('cropResize')}: {t('diagramDragCorners') || 'Drag the four corners to fit the skewed diagram.'}</p>
             <button className="btn-secondary" type="button" onClick={resetSelection}>{t('resetSelection')}</button>
           </div>
         </div>

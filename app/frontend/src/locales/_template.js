@@ -58,6 +58,8 @@ const xx = {
   cropResize: "Resize",
   resetSelection: "Reset selection",
   diagramRotationValue: "Rotation",
+  diagramDragCorners: "Drag the four corners to fit a skewed diagram.",
+  diagramGridControls: "Diagram grid controls",
   aiJob_ready_to_review: "Ready to review",
 };
 

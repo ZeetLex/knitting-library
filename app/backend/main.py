@@ -3309,6 +3309,75 @@ def _review_crop_box(crop: dict, image_size: tuple[int, int]) -> tuple[int, int,
     return x, y, min(width, x + w), min(height, y + h)
 
 
+def _review_crop_points(crop: dict, image_size: tuple[int, int]) -> list[tuple[float, float]] | None:
+    raw = crop.get("points") if isinstance(crop, dict) else None
+    if not isinstance(raw, list) or len(raw) != 4:
+        return None
+    width, height = image_size
+    points = []
+    for point in raw:
+        if not isinstance(point, dict):
+            return None
+        points.append((
+            _clamped_float(point.get("x"), 0, 0, width),
+            _clamped_float(point.get("y"), 0, 0, height),
+        ))
+    return points
+
+
+def _perspective_coefficients(source: list[tuple[float, float]], target: list[tuple[float, float]]) -> list[float]:
+    matrix = []
+    for (sx, sy), (tx, ty) in zip(source, target):
+        matrix.append([sx, sy, 1, 0, 0, 0, -tx * sx, -tx * sy, tx])
+        matrix.append([0, 0, 0, sx, sy, 1, -ty * sx, -ty * sy, ty])
+
+    # Small Gaussian elimination solver for the 8 perspective coefficients.
+    for col in range(8):
+        pivot = max(range(col, 8), key=lambda row: abs(matrix[row][col]))
+        if abs(matrix[pivot][col]) < 1e-9:
+            raise ValueError("Invalid perspective crop")
+        matrix[col], matrix[pivot] = matrix[pivot], matrix[col]
+        factor = matrix[col][col]
+        matrix[col] = [value / factor for value in matrix[col]]
+        for row in range(8):
+            if row == col:
+                continue
+            factor = matrix[row][col]
+            matrix[row] = [
+                value - factor * pivot_value
+                for value, pivot_value in zip(matrix[row], matrix[col])
+            ]
+    return [matrix[row][8] for row in range(8)]
+
+
+def _perspective_crop(img, crop: dict):
+    from PIL import Image
+    import math
+
+    points = _review_crop_points(crop, img.size)
+    if not points:
+        return None
+    tl, tr, br, bl = points
+    width_top = math.dist(tl, tr)
+    width_bottom = math.dist(bl, br)
+    height_left = math.dist(tl, bl)
+    height_right = math.dist(tr, br)
+    out_w = max(1, int(round(max(width_top, width_bottom))))
+    out_h = max(1, int(round(max(height_left, height_right))))
+    target = [(0, 0), (out_w, 0), (out_w, out_h), (0, out_h)]
+    try:
+        coeffs = _perspective_coefficients(target, points)
+    except ValueError:
+        return None
+    return img.transform(
+        (out_w, out_h),
+        Image.Transform.PERSPECTIVE,
+        coeffs,
+        Image.Resampling.BICUBIC,
+        fillcolor=(246, 246, 242),
+    )
+
+
 def _make_review_asset(
     recipe_id: str,
     session_id: str,
@@ -3325,7 +3394,10 @@ def _make_review_asset(
 
     img = ImageOps.exif_transpose(Image.open(page_path)).convert("RGB")
     box = _review_crop_box(crop, img.size)
-    if kind == "diagram" and rotation:
+    perspective_img = _perspective_crop(img, crop)
+    if perspective_img is not None:
+        crop_img = perspective_img
+    elif kind == "diagram" and rotation:
         center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
         deskewed = img.rotate(
             float(rotation),
