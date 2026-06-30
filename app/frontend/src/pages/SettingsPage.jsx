@@ -918,12 +918,6 @@ function AISection() {
     ai_max_pages: '8',
     ai_prompt_mode: 'default',
     ai_custom_prompt: '',
-    ai_recognition_mode: 'ocr_first',
-    ocr_enabled: 'true',
-    ocr_engine: 'tesseract',
-    ocr_languages: '',
-    ocr_cleanup_enabled: 'true',
-    ocr_diagram_enabled: 'true',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -941,23 +935,6 @@ function AISection() {
   }, []);
 
   const f = (key, value) => setCfg(prev => ({ ...prev, [key]: value }));
-
-  const recognitionCards = [
-    { id: 'ocr_first_paddle', mode: 'ocr_first', engine: 'paddleocr', title: t('recognitionOCRFirstPaddle'), description: t('recognitionOCRFirstPaddleSub') },
-    { id: 'ocr_first_tesseract', mode: 'ocr_first', engine: 'tesseract', title: t('recognitionOCRFirstTesseract'), description: t('recognitionOCRFirstTesseractSub') },
-    { id: 'ocr_only', mode: 'ocr_only', engine: cfg.ocr_engine || 'tesseract', title: t('recognitionOCROnly'), description: t('recognitionOCROnlySub') },
-    { id: 'ai_vision_only', mode: 'ai_vision_only', engine: cfg.ocr_engine || 'tesseract', title: t('recognitionAIVision'), description: t('recognitionAIVisionSub') },
-  ];
-  const activeRecognitionId = cfg.ai_recognition_mode === 'ocr_first'
-    ? `ocr_first_${cfg.ocr_engine === 'paddleocr' ? 'paddle' : 'tesseract'}`
-    : cfg.ai_recognition_mode;
-  const applyRecognitionMode = (card) => {
-    setCfg(prev => ({
-      ...prev,
-      ai_recognition_mode: card.mode,
-      ocr_engine: card.mode === 'ocr_first' ? card.engine : prev.ocr_engine,
-    }));
-  };
 
   const applyProviderPreset = (preset) => {
     setCfg(prev => ({
@@ -1040,31 +1017,9 @@ function AISection() {
             </div>
           </div>
           <div className="ai-provider-grid">
-            {recognitionCards.map(mode => (
-              <button
-                key={mode.id}
-                type="button"
-                className={`ai-provider-card ${activeRecognitionId === mode.id ? 'active' : ''}`}
-                onClick={() => applyRecognitionMode(mode)}
-              >
-                <span>{mode.title}</span>
-                <small>{mode.description}</small>
-              </button>
-            ))}
-          </div>
-          <div className="ai-number-grid">
-            <div className="form-field">
-              <label className="form-label">{t('ocrLanguages')}</label>
-              <input className="form-input" value={cfg.ocr_languages} onChange={e => f('ocr_languages', e.target.value)} placeholder={language === 'no' ? 'nor+eng' : 'eng+nor'} />
-              <p className="settings-row-sub ai-inline-help">{t('ocrLanguagesHint')}</p>
-            </div>
-            <div className="form-field">
-              <label className="form-label">{t('ocrOptions')}</label>
-              <div className="ai-checkbox-stack">
-                <label><input type="checkbox" checked={cfg.ocr_enabled === 'true'} onChange={e => f('ocr_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrEnableLocal')}</label>
-                <label><input type="checkbox" checked={cfg.ocr_cleanup_enabled === 'true'} onChange={e => f('ocr_cleanup_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrCleanup')}</label>
-                <label><input type="checkbox" checked={cfg.ocr_diagram_enabled === 'true'} onChange={e => f('ocr_diagram_enabled', e.target.checked ? 'true' : 'false')} /> {t('ocrDiagrams')}</label>
-              </div>
+            <div className="ai-provider-card active" aria-current="true">
+              <span>{t('recognitionAIVision')}</span>
+              <small>{t('recognitionAIVisionSub')}</small>
             </div>
           </div>
         </div>

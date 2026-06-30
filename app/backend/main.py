@@ -24,7 +24,7 @@ from email.mime.text import MIMEText
 import ipaddress
 import socket
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -113,14 +113,6 @@ AI_SETTING_KEYS = {
     "ai_max_pages",
     "ai_prompt_mode",
     "ai_custom_prompt",
-    "ai_recognition_mode",
-    "ocr_enabled",
-    "ocr_engine",
-    "ocr_languages",
-    "ocr_cleanup_enabled",
-    "ocr_diagram_enabled",
-    "ocr_max_variants",
-    "ocr_page_workers",
 }
 
 SESSION_COOKIE = "knitting_session"
@@ -1665,7 +1657,7 @@ def _audit_dict(row: Optional[sqlite3.Row]) -> Optional[dict]:
 
 
 def _ai_settings(conn, reveal_secret: bool = False) -> dict:
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%' OR key LIKE 'ocr_%'").fetchall()
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
     cfg = {r["key"]: r["value"] for r in rows}
     defaults = {
         "ai_enabled": "false",
@@ -1677,14 +1669,6 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_max_pages": "8",
         "ai_prompt_mode": "default",
         "ai_custom_prompt": "",
-        "ai_recognition_mode": "ocr_first",
-        "ocr_enabled": "true",
-        "ocr_engine": "tesseract",
-        "ocr_languages": "",
-        "ocr_cleanup_enabled": "true",
-        "ocr_diagram_enabled": "true",
-        "ocr_max_variants": os.environ.get("OCR_MAX_VARIANTS", "4"),
-        "ocr_page_workers": os.environ.get("OCR_PAGE_WORKERS", "2"),
     }
     defaults.update(cfg)
     if defaults.get("ai_api_key") and not reveal_secret:
@@ -1692,30 +1676,30 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
     return defaults
 
 
-def _default_ocr_prompt(language: str = "en") -> str:
+def _default_ai_scan_prompt(language: str = "en") -> str:
     prompts = {
         "no": (
-            "Svar kun med den ferdige transkripsjonen i Markdown. Ikke inkluder analyse, tankegang, forklaring, kommentarer eller interne kanaler. "
-            "Du transkriberer strikkeoppskrifter fra bilder. Behold originalspråket i oppskriften. "
-            "Skriv resultatet som ryddig Markdown med overskrifter og punktlister der det passer. "
+            "Svar kun med transkripsjonen for dette ene bildet i Markdown. Ikke inkluder analyse, tankegang, forklaring, kommentarer eller interne kanaler. "
+            "Du transkriberer nøyaktig én side fra en strikkeoppskrift. Behold originalspråket i oppskriften. "
+            "Bevar linjeskift, tabeller, kolonner og punktlister så langt det er praktisk i Markdown. "
             "Bevar størrelser, masketall, parenteser, forkortelser, pinne-/garninformasjon og omgang-/radtekst nøyaktig. "
-            "Ikke finn på manglende tekst. Marker usikker tekst som [uklart]. "
+            "Ikke omskriv, forkort, forbedre eller finn på manglende tekst. Marker usikker tekst som [uklart]. "
             "Hopp over rene foto-/forsider uten nyttig oppskriftstekst."
         ),
         "hu": (
-            "Csak a kész Markdown átírást add vissza. Ne írj elemzést, gondolatmenetet, magyarázatot, kommentárt vagy belső csatornákat. "
-            "Kötésmintákat írsz át képekről. Őrizd meg a minta eredeti nyelvét. "
-            "Az eredményt tiszta Markdown formában add vissza címsorokkal és listákkal, ahol hasznos. "
+            "Csak ennek az egy képnek a Markdown átírását add vissza. Ne írj elemzést, gondolatmenetet, magyarázatot, kommentárt vagy belső csatornákat. "
+            "Pontosan egy kötésminta-oldalt írsz át. Őrizd meg a minta eredeti nyelvét. "
+            "A sortöréseket, táblázatokat, oszlopokat és listákat őrizd meg, amennyire Markdownban lehetséges. "
             "Pontosan őrizd meg a méreteket, szemszámokat, zárójeleket, rövidítéseket, tű-/fonaladatokat és sor/kör utasításokat. "
-            "Ne találj ki hiányzó szöveget. A bizonytalan részeket jelöld így: [unclear]. "
+            "Ne fogalmazd át, ne rövidítsd, ne javítsd át stílusosan, és ne találj ki hiányzó szöveget. A bizonytalan részeket jelöld így: [unclear]. "
             "Hagyd ki a pusztán dekoratív fotókat vagy borítóoldalakat, ha nincs rajtuk hasznos mintaszöveg."
         ),
     }
     return prompts.get(language, (
-        "Return only the final Markdown transcription. Do not include analysis, chain of thought, commentary, explanations, or internal channel markers. "
-        "You transcribe knitting patterns from recipe images. Preserve the original recipe language. "
-        "Return clean Markdown with headings and lists where helpful. Preserve sizes, stitch counts, parentheses, abbreviations, needle/yarn information, and row/round wording exactly. "
-        "Do not invent missing text. Mark uncertain words as [unclear]. Skip purely decorative cover/photo-only pages unless they contain useful pattern text."
+        "Return only the Markdown transcription for this one image. Do not include analysis, chain of thought, commentary, explanations, or internal channel markers. "
+        "You transcribe exactly one page of a knitting pattern. Preserve the original recipe language. "
+        "Preserve line breaks, tables, columns, and lists as well as practical in Markdown. Preserve sizes, stitch counts, parentheses, abbreviations, needle/yarn information, and row/round wording exactly. "
+        "Do not paraphrase, shorten, improve wording, or invent missing text. Mark uncertain words as [unclear]. Skip purely decorative cover/photo-only pages unless they contain useful pattern text."
     ))
 
 
@@ -1750,33 +1734,113 @@ def _collect_recipe_image_paths(recipe_id: str, conn, max_pages: int) -> list[Pa
 
 def _collect_recipe_image_payloads(recipe_id: str, conn, max_pages: int) -> list[dict]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-    payloads = []
-    for path in paths:
-        with open(path, "rb") as f:
-            data = base64.b64encode(f.read()).decode("ascii")
-        mime = "image/png" if path.suffix.lower() == ".png" else "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
-        payloads.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{data}"},
+    return [_image_payload_for_path(path) for path in paths]
+
+
+def _image_payload_for_path(path: Path) -> dict:
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("ascii")
+    mime = "image/png" if path.suffix.lower() == ".png" else "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:{mime};base64,{data}"},
+    }
+
+
+def _ai_scan_prompt(language: str, cfg: dict) -> str:
+    return cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ai_scan_prompt(language)
+
+
+def _require_ai_vision_config(cfg: dict) -> tuple[str, str]:
+    base_url = cfg.get("ai_base_url", "").rstrip("/")
+    model = cfg.get("ai_model", "").strip()
+    if not base_url or not model:
+        raise HTTPException(status_code=400, detail="AI base URL and model are required")
+    return base_url, model
+
+
+async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, language: str, cfg: dict, timeout: int) -> tuple[str, dict, str]:
+    base_url, model = _require_ai_vision_config(cfg)
+    prompt = _ai_scan_prompt(language, cfg)
+    messages = [{
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": (
+                    f"{prompt}\n\n"
+                    f"This is page {page_no} of {page_count}. Transcribe only this image. "
+                    "Return only Markdown. Do not merge with other pages. Do not output reasoning, thoughts, or channel markers. "
+                    "If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"
+                ),
+            },
+            _image_payload_for_path(path),
+        ],
+    }]
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.02,
+                "stream": False,
+                "max_tokens": 4096,
+            },
+        )
+        res.raise_for_status()
+        data = res.json()
+    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, prompt
+
+
+async def _scan_recipe_pages_with_ai(
+    recipe_id: str,
+    language: str,
+    cfg: dict,
+    conn,
+    max_pages: int,
+    timeout: int,
+    job_id: str = "",
+) -> tuple[list[dict], dict, str]:
+    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
+    page_count = len(paths)
+    usage_totals: dict[str, int] = {}
+    prompt = _ai_scan_prompt(language, cfg)
+    results: list[dict] = []
+    for idx, path in enumerate(paths, start=1):
+        if job_id:
+            _update_ai_job(job_id, pages_sent=idx - 1, progress_stage=f"ai_page_{idx}_of_{page_count}")
+        text, usage, prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
+        for key, value in (usage or {}).items():
+            if isinstance(value, (int, float)):
+                usage_totals[key] = usage_totals.get(key, 0) + int(value)
+        source_text = text.strip() or "_No useful text was detected on this page._"
+        results.append({
+            "page_order": idx,
+            "page_key": path.name,
+            "source_text": source_text,
+            "reviewed_text": _clean_ai_transcription(source_text),
+            "path": path,
         })
-    return payloads
+        if job_id:
+            _update_ai_job(job_id, pages_sent=idx, progress_stage=f"ai_page_{idx}_of_{page_count}")
+    return results, usage_totals, prompt
 
 
 def _normalise_recognition_mode(value: str) -> str:
-    value = (value or "ocr_first").strip().lower()
-    return value if value in {"ocr_first", "ocr_only", "ai_vision_only"} else "ocr_first"
+    return "ai_vision_only"
 
 
 def _ocr_languages_for(language: str, cfg: dict) -> str:
-    configured = (cfg.get("ocr_languages") or "").strip()
-    if configured:
-        return re.sub(r"[^A-Za-z0-9_+.-]", "", configured) or "eng"
-    return "nor+eng" if (language or "").lower().startswith("no") else "eng+nor"
+    return "ai_vision"
 
 
 def _ocr_engine_for(cfg: dict) -> str:
-    engine = (cfg.get("ocr_engine") or "tesseract").strip().lower()
-    return engine if engine in {"tesseract", "paddleocr"} else "tesseract"
+    return "ai_vision"
 
 
 def _is_truthy(value: str, default: bool = False) -> bool:
@@ -2127,13 +2191,21 @@ def _normalise_for_loss_check(text: str) -> set[str]:
 def _ai_cleanup_looks_lossy(source: str, cleaned: str) -> bool:
     source_words = re.findall(r"\S+", _strip_page_marker(source))
     cleaned_words = re.findall(r"\S+", _strip_page_marker(cleaned))
-    if len(source_words) >= 35 and len(cleaned_words) < max(18, int(len(source_words) * 0.62)):
+    if len(source_words) >= 20 and len(cleaned_words) < max(14, int(len(source_words) * 0.82)):
         return True
     source_terms = _normalise_for_loss_check(source)
     cleaned_terms = _normalise_for_loss_check(cleaned)
-    if len(source_terms) >= 24:
+    if len(source_terms) >= 12:
         retained = len(source_terms & cleaned_terms) / max(1, len(source_terms))
-        if retained < 0.50:
+        if retained < 0.74:
+            return True
+    source_numbers = re.findall(r"\d+(?:[.,:/-]\d+)*", _strip_page_marker(source))
+    cleaned_numbers = re.findall(r"\d+(?:[.,:/-]\d+)*", _strip_page_marker(cleaned))
+    if source_numbers:
+        source_number_counts = Counter(source_numbers)
+        cleaned_number_counts = Counter(cleaned_numbers)
+        missing = sum(max(0, count - cleaned_number_counts.get(number, 0)) for number, count in source_number_counts.items())
+        if missing > max(1, int(len(source_numbers) * 0.12)):
             return True
     return False
 
@@ -2801,14 +2873,15 @@ def _ocr_review_page_cleanup_prompt(language: str = "en") -> str:
             "Behold all synlig tekst fra OCR så langt det er mulig: overskrifter, forkortelser, tabeller, størrelser, garn, "
             "pinneinfo, rad-/omgangstekst og korte linjer. Ikke oppsummer, ikke forkort, ikke flytt tekst til andre sider, "
             "og ikke legg til tekst som ikke finnes i OCR. Rydd bare åpenbare OCR-feil og linjebrudd. "
-            "Behold tall, parenteser, norske strikkeforkortelser og rekkefølge. Marker usikre små deler som [uklart]. "
+            "Ikke parafraser eller forbedre språk. Behold tall, parenteser, norske strikkeforkortelser og rekkefølge nøyaktig. "
+            "Hvis du er usikker, behold OCR-ordet og marker bare små uleselige deler som [uklart]. "
             "Ikke bruk kodeblokker eller ```markdown. /no_think"
         )
     return (
         "Clean OCR from exactly one page of a knitting pattern. Return only Markdown for this page. Preserve all visible "
         "OCR text as far as possible: headings, abbreviations, tables, sizes, yarn, needle details, row/round instructions, "
         "and short lines. Do not summarize, shorten, merge with other pages, or add text that is not in the OCR. Only fix "
-        "obvious OCR errors and line breaks. Preserve numbers, parentheses, knitting abbreviations, and order. Mark small "
+        "obvious OCR artifacts and line breaks. Do not paraphrase or improve wording. Preserve numbers, parentheses, knitting abbreviations, and order exactly. Mark small "
         "uncertain fragments as [unclear]. Do not use code fences or ```markdown. /no_think"
     )
 
@@ -2871,201 +2944,29 @@ async def _call_ai_review_page_cleanup(cfg: dict, content: str, language: str, t
     return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}
 
 
-async def _call_ai_vision_transcription(recipe_id: str, language: str, cfg: dict, conn, max_pages: int, timeout: int) -> tuple[str, dict, int, str]:
-    prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
-    image_payloads = _collect_recipe_image_payloads(recipe_id, conn, max_pages)
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": f"{prompt}\n\nImportant: output only the finished Markdown transcription. Do not output reasoning, thoughts, or channel markers. If this is a Qwen/QwQ-style reasoning model, use /no_think and provide only the final answer.\n/no_think"},
-            *image_payloads,
-        ],
-    }]
-    headers = {"Content-Type": "application/json"}
-    if cfg.get("ai_api_key"):
-        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        res = await client.post(
-            f"{cfg.get('ai_base_url', '').rstrip('/')}/chat/completions",
-            headers=headers,
-            json={
-                "model": cfg.get("ai_model", "").strip(),
-                "messages": messages,
-                "temperature": 0.1,
-                "stream": False,
-                "max_tokens": 4096,
-            },
-        )
-        res.raise_for_status()
-        data = res.json()
-    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, len(image_payloads), prompt
-
-
 async def _generate_text_content(recipe_id: str, language: str, cfg: dict, conn, timeout: int, max_pages: int, job_id: str = "") -> dict:
-    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
-    ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
-    prompt = cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ocr_prompt(language)
-    steps = ["load pages"]
-    warnings = []
-    image_paths: list[Path] = []
-    try:
-        image_paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-    except Exception:
-        image_paths = []
-
-    if mode == "ai_vision_only":
-        if not ai_ready:
-            raise HTTPException(status_code=400, detail="AI base URL and model are required")
-        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
-        estimated_image_tokens = _estimate_image_tokens(image_paths)
-        warnings.append("Provider token totals may exclude or approximate image tokens.")
-        return {
-            "content": content,
-            "usage": usage,
-            "pages_sent": pages_sent,
-            "provider": cfg.get("ai_provider", "openai_compatible"),
-            "model": cfg.get("ai_model", "").strip(),
-            "prompt": prompt,
-            "workflow": "AI vision only",
-            "engine": "ai_vision",
-            "steps": [*steps, "AI vision transcription"],
-            "warnings": warnings,
-            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
-            "estimated_image_tokens": estimated_image_tokens,
-            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
-            "ocr_text": "",
-        }
-
-    if not _is_truthy(cfg.get("ocr_enabled"), True):
-        if mode == "ocr_only":
-            raise HTTPException(status_code=400, detail="Local OCR is not enabled")
-        if not ai_ready:
-            raise HTTPException(status_code=400, detail="Local OCR is disabled and AI base URL/model are not configured")
-        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
-        estimated_image_tokens = _estimate_image_tokens(image_paths)
-        warnings.append("Local OCR was disabled; AI vision fallback used.")
-        warnings.append("Provider token totals may exclude or approximate image tokens.")
-        return {
-            "content": content,
-            "usage": usage,
-            "pages_sent": pages_sent,
-            "provider": cfg.get("ai_provider", "openai_compatible"),
-            "model": cfg.get("ai_model", "").strip(),
-            "prompt": prompt,
-            "workflow": "AI vision fallback",
-            "engine": "ai_vision",
-            "steps": [*steps, "AI vision fallback"],
-            "warnings": warnings,
-            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
-            "estimated_image_tokens": estimated_image_tokens,
-            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
-            "ocr_text": "",
-        }
-
-    try:
-        requested_ocr_engine = _ocr_engine_for(cfg)
-        if not image_paths:
-            image_paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-        if job_id:
-            _update_ai_job(job_id, progress_stage="preprocess", pages_sent=0)
-        content, ocr_evidence, pages_sent, ocr_languages, ocr_engine, ocr_warnings = await asyncio.to_thread(
-            _collect_ocr_markdown_from_paths,
-            image_paths,
-            language,
-            cfg,
-            job_id,
-        )
-        warnings.extend(ocr_warnings)
-        if requested_ocr_engine == "paddleocr" and ocr_engine != "paddleocr":
-            warnings.append("PaddleOCR was requested but unavailable or failed; Tesseract fallback was used.")
-        steps.extend(["preprocess images", f"{ocr_engine} OCR", "structured OCR evidence"])
-        if _is_truthy(cfg.get("ocr_diagram_enabled"), True):
-            steps.append("diagram extraction")
-    except Exception as e:
-        if mode == "ocr_first" and ai_ready:
-            content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
-            estimated_image_tokens = _estimate_image_tokens(image_paths)
-            warnings.append(f"Local OCR failed; AI vision fallback used: {e}")
-            warnings.append("Provider token totals may exclude or approximate image tokens.")
-            return {
-                "content": content,
-                "usage": usage,
-                "pages_sent": pages_sent,
-                "provider": cfg.get("ai_provider", "openai_compatible"),
-                "model": cfg.get("ai_model", "").strip(),
-                "prompt": prompt,
-                "workflow": "OCR first -> AI vision fallback",
-                "engine": "ai_vision",
-                "steps": [*steps, "OCR failed", "AI vision fallback"],
-                "warnings": warnings,
-                "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
-                "estimated_image_tokens": estimated_image_tokens,
-                "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
-                "ocr_text": "",
-            }
-        raise
-
-    if not content and mode == "ocr_first" and ai_ready:
-        content, usage, pages_sent, prompt = await _call_ai_vision_transcription(recipe_id, language, cfg, conn, max_pages, timeout)
-        estimated_image_tokens = _estimate_image_tokens(image_paths)
-        warnings.append("Local OCR found no useful text; AI vision fallback used.")
-        warnings.append("Provider token totals may exclude or approximate image tokens.")
-        return {
-            "content": content,
-            "usage": usage,
-            "pages_sent": pages_sent,
-            "provider": cfg.get("ai_provider", "openai_compatible"),
-            "model": cfg.get("ai_model", "").strip(),
-            "prompt": prompt,
-            "workflow": "OCR first -> AI vision fallback",
-            "engine": "ai_vision",
-            "steps": [*steps, "OCR empty", "AI vision fallback"],
-            "warnings": warnings,
-            "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt),
-            "estimated_image_tokens": estimated_image_tokens,
-            "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
-            "ocr_text": "",
-        }
-    if not content:
-        content = "_No text was detected by local OCR. Review the original recipe images._"
-        warnings.append("Local OCR did not detect useful text.")
-
-    usage = {}
-    provider = "local_ocr"
-    model = f"{ocr_engine}:{ocr_languages}"
-    ocr_text = content
-    cleanup_input = ocr_evidence or content
-    estimated_input_tokens = _estimate_text_tokens(content)
-    token_report_note = "No AI provider tokens were used."
-    if mode != "ocr_only" and _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
-        try:
-            cleaned, usage = await _call_ai_text_cleanup(cfg, cleanup_input, language, timeout)
-            if cleaned.strip():
-                content = cleaned
-                provider = "local_ocr+ai_cleanup"
-                model = f"{ocr_engine}:{ocr_languages}+{cfg.get('ai_model', '').strip()}"
-                steps.append("AI cleanup")
-                estimated_input_tokens = _estimate_text_tokens(cleanup_input) + _estimate_text_tokens(_ocr_cleanup_prompt(language))
-                token_report_note = "Provider-reported token totals are from text cleanup only."
-        except Exception as e:
-            # OCR output is still useful and far cheaper than failing the job.
-            warnings.append(f"AI cleanup failed; raw OCR text was saved: {e}")
-
+    _require_ai_vision_config(cfg)
+    if job_id:
+        _update_ai_job(job_id, progress_stage="ai_pages", pages_sent=0)
+    pages, usage, prompt = await _scan_recipe_pages_with_ai(recipe_id, language, cfg, conn, max_pages, timeout, job_id)
+    content = "\n\n".join(page["reviewed_text"] for page in pages if page.get("reviewed_text")).strip()
+    image_paths = [page["path"] for page in pages]
+    estimated_image_tokens = _estimate_image_tokens(image_paths)
     return {
         "content": content,
         "usage": usage,
-        "pages_sent": pages_sent,
-        "provider": provider,
-        "model": model,
-        "prompt": "ocr_first" if mode == "ocr_first" else "ocr_only",
-        "workflow": f"{ocr_engine} OCR" + (" -> AI cleanup" if provider.endswith("ai_cleanup") else ""),
-        "engine": ocr_engine,
-        "steps": steps,
-        "warnings": warnings,
-        "estimated_input_tokens": estimated_input_tokens,
-        "estimated_image_tokens": 0,
-        "token_report_note": token_report_note,
-        "ocr_text": ocr_text,
+        "pages_sent": len(pages),
+        "provider": cfg.get("ai_provider", "openai_compatible"),
+        "model": cfg.get("ai_model", "").strip(),
+        "prompt": prompt,
+        "workflow": "AI vision page scan",
+        "engine": "ai_vision",
+        "steps": ["load pages", "AI vision page scan"],
+        "warnings": ["Provider token totals may exclude or approximate image tokens."],
+        "estimated_input_tokens": estimated_image_tokens + _estimate_text_tokens(prompt) * max(1, len(pages)),
+        "estimated_image_tokens": estimated_image_tokens,
+        "token_report_note": "Provider-reported token totals may not match billing when image inputs are used.",
+        "ocr_text": content,
     }
 
 
@@ -3078,8 +2979,7 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
         raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
     base_url = cfg.get("ai_base_url", "").rstrip("/")
     model = cfg.get("ai_model", "").strip()
-    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
-    if mode == "ai_vision_only" and (not base_url or not model):
+    if not base_url or not model:
         conn.close()
         raise HTTPException(status_code=400, detail="AI base URL and model are required")
     timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
@@ -3454,6 +3354,7 @@ def _review_page_source(recipe_id: str, page_key: str, conn) -> Path:
 
 def _review_page_dict(row: sqlite3.Row, diagrams: list[sqlite3.Row], legends: list[sqlite3.Row]) -> dict:
     page = dict(row)
+    page["source_text"] = page.get("ocr_text", "")
     page["diagrams"] = [_review_diagram_dict(item) for item in diagrams if item["page_id"] == row["id"]]
     page["legends"] = [_review_legend_dict(item) for item in legends if item["page_id"] == row["id"]]
     return page
@@ -3491,7 +3392,7 @@ def _review_session_dict(conn, session_row: sqlite3.Row) -> dict:
     return data
 
 
-async def _create_review_session_from_ocr(
+async def _create_review_session_from_ai_pages(
     recipe_id: str,
     language: str,
     cfg: dict,
@@ -3501,28 +3402,13 @@ async def _create_review_session_from_ocr(
     conn = get_db()
     fingerprint = _source_fingerprint(recipe_id, conn)
     max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
-    paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
-    languages = _ocr_languages_for(language, cfg)
-    max_variants = int(_clamped_float(cfg.get("ocr_max_variants"), 4, 1, 12))
-    ai_ready = bool(cfg.get("ai_base_url", "").rstrip("/") and cfg.get("ai_model", "").strip())
     timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
     timeout = max(300, timeout)
+    _require_ai_vision_config(cfg)
+    if job_id:
+        _update_ai_job(job_id, progress_stage="ai_pages", pages_sent=0)
+    page_results, _usage, _prompt = await _scan_recipe_pages_with_ai(recipe_id, language, cfg, conn, max_pages, timeout, job_id)
     conn.close()
-
-    page_results = []
-    for idx, path in enumerate(paths, start=1):
-        result = await asyncio.to_thread(_ocr_page_to_result, path, languages, False, idx, max_variants)
-        ocr_text = result.get("text", "").strip() or "_No text was detected on this page._"
-        reviewed_text = _clean_ai_transcription(ocr_text)
-        if _is_truthy(cfg.get("ocr_cleanup_enabled"), True) and ai_ready:
-            try:
-                cleaned, _usage = await _call_ai_review_page_cleanup(cfg, ocr_text, language, timeout)
-                cleaned = cleaned.strip()
-                if cleaned and not _ai_cleanup_looks_lossy(ocr_text, cleaned):
-                    reviewed_text = cleaned
-            except Exception:
-                pass
-        page_results.append((idx, path.name, ocr_text, reviewed_text))
 
     now = datetime.utcnow().isoformat()
     session_id = str(uuid.uuid4())
@@ -3536,11 +3422,22 @@ async def _create_review_session_from_ocr(
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (session_id, recipe_id, job_id, "ready_to_review", language, fingerprint, 1, username, now, now)
     )
-    for idx, page_key, ocr_text, reviewed_text in page_results:
+    for page in page_results:
         conn.execute(
             "INSERT INTO recipe_review_pages (id,session_id,recipe_id,page_key,page_order,status,ocr_text,reviewed_text,created_at,updated_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), session_id, recipe_id, page_key, idx, "draft", ocr_text, reviewed_text, now, now)
+            (
+                str(uuid.uuid4()),
+                session_id,
+                recipe_id,
+                page["page_key"],
+                page["page_order"],
+                "draft",
+                page["source_text"],
+                page["reviewed_text"],
+                now,
+                now,
+            )
         )
     conn.commit()
     row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
@@ -3590,7 +3487,7 @@ def _complete_review_session(session_id: str, username: str) -> dict:
         "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(recipe_id) DO UPDATE SET content_markdown=excluded.content_markdown,status=excluded.status,language=excluded.language,prompt=excluded.prompt,provider=excluded.provider,model=excluded.model,source_fingerprint=excluded.source_fingerprint,generated_by=excluded.generated_by,updated_at=excluded.updated_at",
-        (recipe_id, content, "ready", session["language"], "review_session", "reviewed_ocr", "", fingerprint, username, now, now)
+        (recipe_id, content, "ready", session["language"], "review_session", "reviewed_ai_scan", "", fingerprint, username, now, now)
     )
     conn.execute("UPDATE recipe_review_sessions SET status='completed', completed_at=?, updated_at=? WHERE id=?", (now, now, session_id))
     conn.commit()
@@ -3621,26 +3518,24 @@ async def _run_ai_text_job(job_id: str) -> None:
         cfg = _ai_settings(conn, reveal_secret=True)
         if cfg.get("ai_enabled", "false").lower() != "true":
             raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
-        mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
         base_url = cfg.get("ai_base_url", "").rstrip("/")
         model = cfg.get("ai_model", "").strip()
-        provider = "local_ocr" if mode != "ai_vision_only" else cfg.get("ai_provider", "openai_compatible")
-        display_model = "tesseract" if mode != "ai_vision_only" else model
+        provider = cfg.get("ai_provider", "openai_compatible")
+        display_model = model
         _update_ai_job(job_id, provider=provider, model=display_model)
-        if mode == "ai_vision_only" and (not base_url or not model):
+        if not base_url or not model:
             raise HTTPException(status_code=400, detail="AI base URL and model are required")
         timeout = int(_clamped_float(cfg.get("ai_timeout"), 600, 60, 1800))
         timeout = max(300, timeout)
-        max_pages = int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))
         try:
-            result = await _create_review_session_from_ocr(recipe_id, language, cfg, row["generated_by"], job_id=job_id)
+            result = await _create_review_session_from_ai_pages(recipe_id, language, cfg, row["generated_by"], job_id=job_id)
         finally:
             conn.close()
         content = "\n\n".join((page.get("reviewed_text") or page.get("ocr_text") or "") for page in result.get("pages", []))
         usage = {}
         pages_sent = result.get("page_count") or len(result.get("pages", []))
-        provider = "local_ocr_review"
-        model = "tesseract"
+        provider = cfg.get("ai_provider", "openai_compatible")
+        model = cfg.get("ai_model", "").strip()
         _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="ready_to_review")
         duration = time.time() - start_ts
         _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
@@ -4635,7 +4530,6 @@ async def create_recipe_text_job(
     job_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     cfg = _ai_settings(conn, reveal_secret=False)
-    mode = _normalise_recognition_mode(cfg.get("ai_recognition_mode"))
     conn.execute(
         "INSERT INTO ai_text_jobs (id,recipe_id,recipe_title,status,progress_stage,language,provider,model,generated_by,created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -4646,8 +4540,8 @@ async def create_recipe_text_job(
             "queued",
             "queued",
             language,
-            "local_ocr" if mode != "ai_vision_only" else cfg.get("ai_provider", "openai_compatible"),
-            "tesseract" if mode != "ai_vision_only" else cfg.get("ai_model", ""),
+            cfg.get("ai_provider", "openai_compatible"),
+            cfg.get("ai_model", ""),
             current_user["username"],
             now,
         )
@@ -4686,7 +4580,7 @@ async def start_recipe_review_session(recipe_id: str, data: dict = Body(default=
     conn.close()
     if cfg.get("ai_enabled", "false").lower() != "true":
         raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
-    session = await _create_review_session_from_ocr(recipe_id, language, cfg, current_user["username"])
+    session = await _create_review_session_from_ai_pages(recipe_id, language, cfg, current_user["username"])
     session["exists"] = True
     return session
 
@@ -4841,16 +4735,12 @@ def get_recipe_charts(recipe_id: str, current_user: dict = Depends(get_current_u
 
 @app.post("/api/recipes/{recipe_id}/charts/extract")
 def extract_recipe_charts(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
-    language = str(data.get("language", "") or current_user.get("language", "en"))
     conn = get_db()
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
-    cfg = _ai_settings(conn, reveal_secret=True)
     conn.close()
-    max_pages = int(_clamped_float(data.get("max_pages") or cfg.get("ai_max_pages"), 8, 1, 30))
-    charts = _refresh_recipe_charts(recipe_id, language, cfg, current_user, max_pages=max_pages)
-    return {"charts": charts}
+    raise HTTPException(status_code=410, detail="Automatic OCR chart extraction has been removed. Use the guided review image tools instead.")
 
 
 @app.put("/api/recipes/{recipe_id}/charts/{chart_id}")

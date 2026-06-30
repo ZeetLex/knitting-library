@@ -215,7 +215,7 @@ function YarnPickerRow({ yarn, selected, onSelect }) {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function ProjectStatus({ recipe, onUpdated }) {
+export default function ProjectStatus({ recipe, onUpdated, enableExternalControls = false }) {
   const { t, language } = useApp();
   const [loading, setLoading]         = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -239,6 +239,16 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   const activeSession = sessions.find(s => !s.finished_at);
 
   const handleStartClick = () => setShowYarnPicker(true);
+
+  useEffect(() => {
+    if (!enableExternalControls) return undefined;
+    const handleProjectAction = () => {
+      if ((recipe.project_status || 'none') === 'active') return;
+      setShowYarnPicker(true);
+    };
+    window.addEventListener('knitting-recipe-start-project', handleProjectAction);
+    return () => window.removeEventListener('knitting-recipe-start-project', handleProjectAction);
+  }, [enableExternalControls, recipe.project_status]);
 
   // Called when yarn (and optional colour) is chosen in the yarn picker
   const handleYarnSelected = async (yarn, colour) => {

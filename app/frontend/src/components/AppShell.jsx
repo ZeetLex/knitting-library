@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
+  CheckCircle2, CircleHelp, Home, Images, Import, Menu, PackagePlus, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
@@ -112,17 +112,22 @@ function MobileNav({
   activeView,
   collapsed,
   recipeMode,
+  recipeProjectStatus,
+  recipeHasImages,
+  recipeImagesVisible,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
   onInventoryClick,
   onMenuClick,
   onRecipeBack,
-  onRecipeInfo,
   onRecipeActions,
+  onRecipeProjectAction,
+  onRecipeImagesToggle,
 }) {
   const { t } = useApp();
   const isHome = activeView === 'home';
+  const projectStarted = recipeProjectStatus === 'active' || recipeProjectStatus === 'finished';
 
   const items = [
     { key: 'home', icon: <Home size={21} />, label: t('navHome') },
@@ -169,12 +174,22 @@ function MobileNav({
           <span>{t('backToLibrary')}</span>
         </button>
         <button
-          className="mobile-nav-item-main"
-          onClick={onRecipeInfo}
-          aria-label={t('mobileTabInfo') || 'Info'}
+          className={`mobile-nav-recipe-project ${projectStarted ? 'mobile-nav-recipe-project--status' : ''}`}
+          onClick={onRecipeProjectAction}
+          aria-label={projectStarted ? (t('status') || 'Status') : t('startProject')}
         >
-          <Info size={21} />
-          <span>{t('mobileTabInfo') || 'Info'}</span>
+          {projectStarted ? <CheckCircle2 size={21} /> : <Play size={21} />}
+          <span>{projectStarted ? (t('status') || 'Status') : (t('start') || t('startProject'))}</span>
+        </button>
+        <button
+          className={`mobile-nav-item-main ${recipeImagesVisible ? 'active' : ''}`}
+          onClick={onRecipeImagesToggle}
+          disabled={!recipeHasImages}
+          aria-label={recipeImagesVisible ? (t('hideImages') || 'Hide images') : (t('showImages') || t('mobileTabImages') || 'Images')}
+          aria-pressed={recipeImagesVisible}
+        >
+          <Images size={21} />
+          <span>{t('mobileTabImages') || 'Images'}</span>
         </button>
         <button
           className="mobile-nav-item-main"
@@ -328,6 +343,11 @@ export default function AppShell({
   const [addOpen, setAddOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavCollapsed, setMobileNavCollapsed] = useState(false);
+  const [recipeMobileState, setRecipeMobileState] = useState({
+    projectStatus: 'none',
+    hasImages: false,
+    imagesVisible: false,
+  });
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('knitting_desktop_sidebar_collapsed') === 'true';
@@ -365,6 +385,14 @@ export default function AppShell({
     const openMenu = () => setMenuOpen(true);
     window.addEventListener('knitting-open-app-menu', openMenu);
     return () => window.removeEventListener('knitting-open-app-menu', openMenu);
+  }, []);
+
+  useEffect(() => {
+    const updateRecipeMobileState = (event) => {
+      setRecipeMobileState(state => ({ ...state, ...(event.detail || {}) }));
+    };
+    window.addEventListener('knitting-recipe-mobile-state', updateRecipeMobileState);
+    return () => window.removeEventListener('knitting-recipe-mobile-state', updateRecipeMobileState);
   }, []);
 
   useEffect(() => {
@@ -413,14 +441,18 @@ export default function AppShell({
         activeView={activeView}
         collapsed={mobileNavCollapsed}
         recipeMode={recipeMode}
+        recipeProjectStatus={recipeMobileState.projectStatus}
+        recipeHasImages={recipeMobileState.hasImages}
+        recipeImagesVisible={recipeMobileState.imagesVisible}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
         onMenuClick={() => setMenuOpen(true)}
         onRecipeBack={onRecipeBack}
-        onRecipeInfo={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'info' }))}
         onRecipeActions={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'actions' }))}
+        onRecipeProjectAction={() => window.dispatchEvent(new CustomEvent('knitting-recipe-project-action'))}
+        onRecipeImagesToggle={() => window.dispatchEvent(new CustomEvent('knitting-recipe-toggle-images'))}
       />
       <AddActionMenu
         open={addOpen}

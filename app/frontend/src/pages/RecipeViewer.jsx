@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
@@ -45,11 +45,9 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
-  const [mobileStripSide, setMobileStripSide] = useState('left');
+  const [mobileImagesVisible, setMobileImagesVisible] = useState(false);
   const [panelDragY, setPanelDragY] = useState(0);
   const panelDragStartY = useRef(null);
-  const mobileStripDrag = useRef(null);
-  const mobileStripClickGuard = useRef(false);
   const touchStartX = useRef(null);
 
   useEffect(() => {
@@ -61,6 +59,31 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     window.addEventListener('knitting-recipe-mobile-panel', openPanel);
     return () => window.removeEventListener('knitting-recipe-mobile-panel', openPanel);
   }, []);
+
+  useEffect(() => {
+    const handleProjectAction = () => {
+      if ((recipe?.project_status || 'none') === 'none') {
+        window.dispatchEvent(new CustomEvent('knitting-recipe-start-project'));
+        return;
+      }
+      setPanelDragY(0);
+      setMobileImageEditing(false);
+      setMobileImagesVisible(false);
+      setMobilePanel('info');
+    };
+    const handleImageToggle = () => {
+      if (recipe?.file_type !== 'images' || (recipe.images || []).length <= 1) return;
+      setMobileImageEditing(false);
+      setMobilePanel(null);
+      setMobileImagesVisible(visible => !visible);
+    };
+    window.addEventListener('knitting-recipe-project-action', handleProjectAction);
+    window.addEventListener('knitting-recipe-toggle-images', handleImageToggle);
+    return () => {
+      window.removeEventListener('knitting-recipe-project-action', handleProjectAction);
+      window.removeEventListener('knitting-recipe-toggle-images', handleImageToggle);
+    };
+  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length]);
 
   const beginPanelDrag = (event) => {
     panelDragStartY.current = event.clientY;
@@ -192,7 +215,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setLoading(true);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    setMobileStripSide('left');
+    setMobileImagesVisible(false);
     setViewMode(initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
     setTextVersion(null);
     setReviewSession(null);
@@ -260,42 +283,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     touchStartX.current = null;
   };
 
-  const beginMobileStripDrag = (event) => {
-    if (event.button !== undefined && event.button !== 0) return;
-    mobileStripDrag.current = { x: event.clientX, y: event.clientY, dragging: false };
-    mobileStripClickGuard.current = false;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const moveMobileStripDrag = (event) => {
-    const start = mobileStripDrag.current;
-    if (!start) return;
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    if (Math.abs(dx) + Math.abs(dy) > 8) {
-      start.dragging = true;
-      mobileStripClickGuard.current = true;
-    }
-  };
-
-  const endMobileStripDrag = (event) => {
-    const start = mobileStripDrag.current;
-    if (!start) return;
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    if (start.dragging && Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
-      setMobileStripSide(dx > 0 ? 'right' : 'left');
-    }
-    mobileStripDrag.current = null;
-    window.setTimeout(() => { mobileStripClickGuard.current = false; }, 180);
-  };
-
   const handleMobileThumbClick = (index, event) => {
-    if (mobileStripClickGuard.current) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     setImageIndex(index);
   };
 
@@ -311,8 +299,34 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     });
   };
 
+  const formatStartedShortDate = (iso) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(getLanguageLocale(language), {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
   const isRecipeStarted = recipe?.project_status === 'active';
   const startedAtLabel = formatStartedDate(recipe?.active_started_at);
+  const startedAtShortLabel = formatStartedShortDate(recipe?.active_started_at);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+      detail: {
+        projectStatus: recipe?.project_status || 'none',
+        hasImages: recipe?.file_type === 'images' && (recipe.images || []).length > 1,
+        imagesVisible: mobileImagesVisible,
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+        detail: { projectStatus: 'none', hasImages: false, imagesVisible: false },
+      }));
+    };
+  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length, mobileImagesVisible]);
 
   const handleDelete = async () => {
     try { await deleteRecipe(recipeId); onDeleted(); }
@@ -333,7 +347,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   );
 
   return (
-    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
+    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
@@ -394,7 +408,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           <span>{t('textVersion')}</span>
         </button>
         <button
-          className={`viewer-mode-tab ${viewMode === 'review' ? 'active' : ''}`}
+          className={`viewer-mode-tab viewer-mode-tab--review ${viewMode === 'review' ? 'active' : ''}`}
           onClick={() => setViewMode('review')}
           role="tab"
           aria-selected={viewMode === 'review'}
@@ -741,9 +755,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
 
       {isRecipeStarted && (
         <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
-          <CheckCircle2 size={15} />
-          <span className="recipe-started-badge-main">{t('recipeStarted')}</span>
-          {startedAtLabel && <span className="recipe-started-badge-date">{startedAtLabel}</span>}
+          <CheckCircle2 size={14} />
+          {startedAtShortLabel && <span className="recipe-started-badge-date">{startedAtShortLabel}</span>}
         </div>
       )}
 
@@ -772,6 +785,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               thumbSet={thumbSet}
               onUpdated={setRecipe}
               showCover={false}
+              enableExternalProjectControls
             />
           )}
         </div>
@@ -797,6 +811,20 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           <div className="mobile-actions-section">
             <span className="mobile-actions-heading">{t('recipeActions') || 'Actions'}</span>
             <div className="mobile-action-list">
+              <button
+                className="mobile-action-row"
+                onClick={() => { setMobilePanel('info'); }}
+              >
+                <Info size={19} />
+                <span>{t('mobileTabInfo') || 'Info'}</span>
+              </button>
+              <button
+                className="mobile-action-row"
+                onClick={() => { setViewMode('review'); setMobilePanel(null); }}
+              >
+                <CheckCircle2 size={19} />
+                <span>{t('reviewOcrText') || t('reviewText') || 'Review AI scan'}</span>
+              </button>
               <a
                 className="mobile-action-row"
                 href={downloadUrl(recipeId)}
@@ -839,18 +867,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
 
       {recipe.file_type === 'images' && (
         <>
-          {recipe.images.length > 1 && !mobileImageEditing && !fullscreen && (
+          {recipe.images.length > 1 && mobileImagesVisible && !mobileImageEditing && !fullscreen && (
             <div
-              className={`mobile-quick-strip mobile-quick-strip--${mobileStripSide}`}
+              className="mobile-quick-strip mobile-quick-strip--bottom"
               aria-label="Recipe images"
-              onPointerDown={beginMobileStripDrag}
-              onPointerMove={moveMobileStripDrag}
-              onPointerUp={endMobileStripDrag}
-              onPointerCancel={() => { mobileStripDrag.current = null; }}
             >
-              <div className="mobile-quick-grip" aria-hidden="true">
-                <GripVertical size={14} />
-              </div>
               {recipe.images.map((img, i) => (
                 <button
                   key={img}
@@ -1032,13 +1053,15 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
 
   const pages = session?.pages || [];
   const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
+  const sourceText = page?.source_text || page?.ocr_text || '';
 
   useEffect(() => {
     if (!page) { setDraft(''); return; }
-    setDraft(cleanReviewDraftText(page.reviewed_text || page.ocr_text || ''));
+    setDraft(cleanReviewDraftText(page.reviewed_text || page.source_text || page.ocr_text || ''));
   }, [page?.id]);
 
   const pageSrc = page ? reviewPageImageSrc(recipe, recipeId, page.page_key) : '';
+  const resetToRaw = () => setDraft(cleanReviewDraftText(sourceText));
 
   const queueScan = async () => {
     setLoading(true); setError('');
@@ -1163,6 +1186,10 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
       {page && (
         <div className="review-body">
           <div className="review-page-side">
+            <div className="review-page-image-label">
+              <span>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}</span>
+              <strong>{page.page_key}</strong>
+            </div>
             <img src={pageSrc} alt="" />
           </div>
           <div className="review-text-side">
@@ -1174,6 +1201,24 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
               <button className="btn-secondary" onClick={() => setPageIndex(i => Math.min(pages.length - 1, i + 1))} disabled={pageIndex >= pages.length - 1 || saving}>
                 {t('next') || 'Next'}<ChevronRight size={15} />
               </button>
+            </div>
+            <div className="review-source-pair">
+              <details className="review-raw-ocr">
+                <summary>
+                  <span>{t('rawOcr') || 'AI scan'}</span>
+                  <small>{page.page_key}</small>
+                </summary>
+                <pre>{cleanReviewDraftText(sourceText) || t('noTextDetected') || 'No text detected'}</pre>
+              </details>
+              <div className="review-suggestion-head">
+                <div>
+                  <span>{t('aiSuggestion') || 'AI suggestion'}</span>
+                  <small>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length} · ${page.page_key}` : page.page_key}</small>
+                </div>
+                <button className="btn-secondary" onClick={resetToRaw} disabled={saving || !sourceText}>
+                  <RotateCcw size={14} />{t('resetToRawOcr') || 'Reset to AI scan'}
+                </button>
+              </div>
             </div>
             <textarea className="review-textarea" value={draft} onChange={e => setDraft(e.target.value)} />
             {(page.diagrams?.length > 0 || page.legends?.length > 0) && (
@@ -1587,7 +1632,7 @@ function GenerationAuditBar({ audit, t }) {
 }
 
 /* ─── Sidebar info content — shared between desktop sidebar and mobile Info panel ── */
-function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated, showCover = true }) {
+function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated, showCover = true, enableExternalProjectControls = false }) {
   const { t, language } = useApp();
   return (
     <>
@@ -1606,7 +1651,7 @@ function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpda
       <h1 className="viewer-title">{recipe.title}</h1>
       {recipe.description && <p className="viewer-description">{recipe.description}</p>}
 
-      <ProjectStatus recipe={recipe} onUpdated={onUpdated} />
+      <ProjectStatus recipe={recipe} onUpdated={onUpdated} enableExternalControls={enableExternalProjectControls} />
 
       {recipe.categories.length > 0 && (
         <div className="viewer-meta-group">

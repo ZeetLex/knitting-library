@@ -17,7 +17,7 @@ FROM python:3.12-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-library"
 
-# poppler-utils: converts PDF pages to images
+# poppler-utils: converts PDF pages to images for AI vision scanning
 # gcc/musl/zlib/jpeg/libffi: needed to COMPILE Python packages (bcrypt, Pillow, uvloop)
 # After pip install we remove the compiler toolchain (gcc, musl-dev, binutils) since
 # they are only needed at build time. Runtime shared libraries (zlib, libjpeg, libffi)
@@ -25,9 +25,6 @@ LABEL org.opencontainers.image.source="https://github.com/ZeetLex/knitting-libra
 # This eliminates CVE-2025-69649 and CVE-2025-69650 (alpine/binutils) from the image.
 RUN apk add --no-cache \
     poppler-utils \
-    tesseract-ocr \
-    tesseract-ocr-data-eng \
-    tesseract-ocr-data-nor \
     gcc \
     musl-dev \
     zlib-dev \

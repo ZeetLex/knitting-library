@@ -177,7 +177,7 @@ a.viewer-action-btn { text-decoration: none; }
   background: white;
 }
 
-/* ── Guided OCR review ─────────────────────────────────────────────────────── */
+/* ── Guided AI scan review ─────────────────────────────────────────────────── */
 .review-panel {
   height: 100%;
   display: flex;
@@ -258,9 +258,36 @@ a.viewer-action-btn { text-decoration: none; }
   overflow: auto;
   background: #151515;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: flex-start;
   padding: 14px;
+}
+
+.review-page-image-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.9);
+  color: #1a1a2e;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.22);
+}
+
+.review-page-image-label strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f6d3c;
 }
 
 .review-page-side img {
@@ -292,6 +319,79 @@ a.viewer-action-btn { text-decoration: none; }
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.review-source-pair {
+  display: grid;
+  gap: 8px;
+}
+
+.review-raw-ocr {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.review-raw-ocr summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.review-raw-ocr summary small,
+.review-suggestion-head small {
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.review-raw-ocr pre {
+  max-height: 170px;
+  overflow: auto;
+  margin: 0;
+  padding: 11px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font: 12px/1.5 'DM Mono', 'Consolas', monospace;
+  white-space: pre-wrap;
+}
+
+.review-suggestion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-suggestion-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-suggestion-head span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.review-suggestion-head .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .review-textarea {
@@ -565,6 +665,15 @@ a.viewer-action-btn { text-decoration: none; }
   .review-text-side {
     border-left: 0;
     border-top: 1px solid var(--border);
+  }
+
+  .review-suggestion-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-suggestion-head .btn-secondary {
+    justify-content: center;
   }
 }
 
@@ -2096,19 +2205,49 @@ a.viewer-action-btn { text-decoration: none; }
     --mobile-recipe-viewer-height: calc(100dvh - var(--app-mobile-nav-space, 0px) - 148px);
   }
 
+  .viewer--mobile-images-visible {
+    --mobile-recipe-viewer-height: calc(100dvh - var(--app-mobile-nav-space, 0px) - 88px);
+  }
+
   .viewer-topbar { display: none; }
+
+  .viewer-mode-tabs {
+    justify-content: stretch;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+    position: relative;
+    z-index: 126;
+  }
+
+  .viewer-mode-tab {
+    min-width: 0;
+    min-height: 42px;
+    border-radius: 14px;
+  }
+
+  .viewer-mode-tab--review {
+    display: none;
+  }
 
   .recipe-started-badge--mobile {
     position: fixed;
-    top: max(14px, env(safe-area-inset-top, 14px));
+    top: calc(58px + env(safe-area-inset-top, 0px));
     right: max(12px, env(safe-area-inset-right, 12px));
     z-index: 137;
     display: inline-flex;
-    max-width: min(58vw, 260px);
-    padding: 7px 9px;
+    max-width: min(34vw, 112px);
+    min-height: 30px;
+    padding: 6px 9px;
+    gap: 5px;
+    font-size: 11px;
     box-shadow: 0 10px 28px rgba(47, 109, 60, 0.16);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+  }
+
+  .recipe-started-badge--mobile .recipe-started-badge-date {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .viewer-body {
@@ -2376,35 +2515,36 @@ a.viewer-action-btn { text-decoration: none; }
 
   .mobile-quick-strip {
     position: fixed;
-    top: max(88px, calc(env(safe-area-inset-top, 0px) + 78px));
+    left: max(12px, env(safe-area-inset-left, 12px));
+    right: max(12px, env(safe-area-inset-right, 12px));
+    bottom: calc(var(--app-mobile-nav-space, 0px) + 10px);
     z-index: 138;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 6px;
-    width: 48px;
-    max-height: min(50dvh, 360px);
-    padding: 7px 6px;
-    overflow-x: hidden;
-    overflow-y: auto;
+    gap: 8px;
+    min-height: 70px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid rgba(255,255,255,0.56);
-    border-radius: 16px;
+    border-radius: 18px;
     background: color-mix(in srgb, var(--card-bg) 94%, transparent);
     box-shadow: 0 12px 34px rgba(26, 26, 46, 0.22);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     scrollbar-width: none;
-    touch-action: pan-y;
+    touch-action: pan-x;
     user-select: none;
     animation: mobileQuickStripIn 0.18s ease both;
   }
 
   .mobile-quick-strip--left {
-    left: max(10px, env(safe-area-inset-left, 10px));
+    left: max(12px, env(safe-area-inset-left, 12px));
   }
 
   .mobile-quick-strip--right {
-    right: max(10px, env(safe-area-inset-right, 10px));
+    right: max(12px, env(safe-area-inset-right, 12px));
   }
 
   .viewer--mobile-panel-open .mobile-quick-strip {
@@ -2414,7 +2554,7 @@ a.viewer-action-btn { text-decoration: none; }
   .mobile-quick-strip::-webkit-scrollbar { display: none; }
 
   .mobile-quick-grip {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     width: 30px;
@@ -2433,8 +2573,8 @@ a.viewer-action-btn { text-decoration: none; }
 
   .mobile-quick-thumb {
     flex: 0 0 auto;
-    width: 34px;
-    height: 46px;
+    width: 42px;
+    height: 54px;
     padding: 0;
     overflow: hidden;
     border: 2px solid transparent;
@@ -2456,8 +2596,8 @@ a.viewer-action-btn { text-decoration: none; }
   }
 
   @keyframes mobileQuickStripIn {
-    from { opacity: 0; transform: translateX(-8px); }
-    to { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .mobile-edit-tray {
