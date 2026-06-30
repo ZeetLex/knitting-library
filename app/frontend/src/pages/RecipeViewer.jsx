@@ -1502,6 +1502,8 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   const [rows, setRows] = useState(10);
   const [rotation, setRotation] = useState(0);
   const [opacity, setOpacity] = useState(0.85);
+  const [backgroundBlur, setBackgroundBlur] = useState(0);
+  const [gridLineWidth, setGridLineWidth] = useState(1);
 
   const clampBox = (next) => {
     const x = Math.max(0, Math.min(95, Number(next.x)));
@@ -1603,6 +1605,8 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
     setBox({ x: 20, y: 20, w: 55, h: 38 });
     setRotation(0);
     setOpacity(0.85);
+    setBackgroundBlur(0);
+    setGridLineWidth(1);
   };
 
   const crop = {
@@ -1619,6 +1623,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
       grid_columns: mode === 'diagram' ? cols : 0,
       grid_rows: mode === 'diagram' ? rows : 0,
       rotation: mode === 'diagram' ? rotation : 0,
+      grid_line_width: mode === 'diagram' ? gridLineWidth : 1,
     });
   };
 
@@ -1640,6 +1645,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
                 src={imageSrc}
                 alt=""
                 onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
+                style={{ filter: mode === 'diagram' && backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : undefined }}
               />
               <div
                 className={`review-crop-box ${mode === 'diagram' ? 'review-crop-box--grid' : ''}`}
@@ -1655,6 +1661,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
                   opacity,
                   '--review-grid-cols': cols,
                   '--review-grid-rows': rows,
+                  '--review-grid-line-width': `${gridLineWidth}px`,
                   transform: `rotate(${rotation}deg)`,
                 }}
               >
@@ -1693,6 +1700,8 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
                   <label>{t('diagramRows')}<input type="number" min="1" max="200" value={rows} onChange={e => setRows(Number(e.target.value) || 1)} /></label>
                 </div>
                 <label>{t('diagramOverlay')}<input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={e => setOpacity(Number(e.target.value))} /></label>
+                <label>{t('diagramBackgroundBlur')}<input type="range" min="0" max="8" step="0.5" value={backgroundBlur} onChange={e => setBackgroundBlur(Number(e.target.value))} /></label>
+                <label>{t('diagramLineWidth')}<input type="range" min="1" max="8" step="1" value={gridLineWidth} onChange={e => setGridLineWidth(Number(e.target.value))} /></label>
               </>
             )}
             <div className="review-control-grid review-control-grid--crop">

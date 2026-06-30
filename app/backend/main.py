@@ -3288,15 +3288,25 @@ def _make_review_asset(
     grid_columns: int = 0,
     grid_rows: int = 0,
     rotation: float = 0.0,
+    grid_line_width: int = 1,
     kind: str = "diagram",
 ) -> str:
     from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageDraw, ImageFont
 
     img = ImageOps.exif_transpose(Image.open(page_path)).convert("RGB")
     box = _review_crop_box(crop, img.size)
-    crop_img = img.crop(box)
-    if rotation:
-        crop_img = crop_img.rotate(float(rotation), expand=True, fillcolor=(246, 246, 242), resample=Image.Resampling.BICUBIC)
+    if kind == "diagram" and rotation:
+        center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+        deskewed = img.rotate(
+            float(rotation),
+            center=center,
+            expand=False,
+            fillcolor=(246, 246, 242),
+            resample=Image.Resampling.BICUBIC,
+        )
+        crop_img = deskewed.crop(box)
+    else:
+        crop_img = img.crop(box)
     crop_img = ImageOps.autocontrast(crop_img)
     crop_img = ImageEnhance.Contrast(crop_img).enhance(1.18)
     crop_img = ImageEnhance.Sharpness(crop_img).enhance(1.25)
@@ -3319,12 +3329,13 @@ def _make_review_asset(
         if grid_columns > 0 and grid_rows > 0:
             grid_top = title_h
             line_color = (45, 45, 45)
+            line_width = max(1, int(grid_line_width or 1))
             for col in range(grid_columns + 1):
                 x = round(col * crop_img.width / grid_columns)
-                draw.line((x, grid_top, x, grid_top + crop_img.height), fill=line_color, width=1)
+                draw.line((x, grid_top, x, grid_top + crop_img.height), fill=line_color, width=line_width)
             for row in range(grid_rows + 1):
                 y = grid_top + round(row * crop_img.height / grid_rows)
-                draw.line((0, y, crop_img.width, y), fill=line_color, width=1)
+                draw.line((0, y, crop_img.width, y), fill=line_color, width=line_width)
     else:
         out = crop_img
 
@@ -4739,6 +4750,7 @@ def create_review_diagram(session_id: str, page_id: str, data: dict = Body(...),
     grid_columns = int(_clamped_float(data.get("grid_columns"), 10, 1, 200))
     grid_rows = int(_clamped_float(data.get("grid_rows"), 10, 1, 200))
     rotation = float(_clamped_float(data.get("rotation"), 0, -45, 45))
+    grid_line_width = int(_clamped_float(data.get("grid_line_width"), 1, 1, 8))
     now = datetime.utcnow().isoformat()
     conn = get_db()
     session = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
@@ -4747,7 +4759,7 @@ def create_review_diagram(session_id: str, page_id: str, data: dict = Body(...),
         conn.close()
         raise HTTPException(status_code=404, detail="Review session/page not found")
     page_path = _review_page_source(session["recipe_id"], page["page_key"], conn)
-    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, grid_columns, grid_rows, rotation, "diagram")
+    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, grid_columns, grid_rows, rotation, grid_line_width, "diagram")
     diagram_id = str(uuid.uuid4())
     conn.execute(
         "INSERT INTO recipe_review_diagrams (id,session_id,page_id,recipe_id,page_key,title,image_path,crop_json,grid_columns,grid_rows,rotation,created_at,updated_at) "
@@ -4775,7 +4787,7 @@ def create_review_legend(session_id: str, page_id: str, data: dict = Body(...), 
         conn.close()
         raise HTTPException(status_code=404, detail="Review session/page not found")
     page_path = _review_page_source(session["recipe_id"], page["page_key"], conn)
-    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, 0, 0, 0, "legend")
+    rel_path = _make_review_asset(session["recipe_id"], session_id, page_path, crop, title, 0, 0, 0, 1, "legend")
     legend_id = str(uuid.uuid4())
     conn.execute(
         "INSERT INTO recipe_review_legends (id,session_id,page_id,recipe_id,page_key,title,image_path,crop_json,created_at,updated_at) "
