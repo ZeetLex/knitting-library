@@ -262,9 +262,7 @@
 .collection-sort-btn .rotated { transform: rotate(180deg); }
 
 .collection-sort-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   min-width: 190px;
   padding: 5px;
   display: flex;
@@ -274,7 +272,7 @@
   border: 1.5px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
-  z-index: 45;
+  z-index: 260;
 }
 
 .collection-sort-option {

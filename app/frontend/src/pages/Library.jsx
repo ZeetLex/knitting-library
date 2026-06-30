@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2,
@@ -58,6 +59,9 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   });
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef(null);
+  const sortButtonRef = useRef(null);
+  const sortMenuRef = useRef(null);
+  const [sortMenuPosition, setSortMenuPosition] = useState({ top: 0, left: 0, width: 190 });
   const activeSortOption = SORT_OPTIONS.find(option => option.key === sortBy) || SORT_OPTIONS[0];
 
   // ── UI state ──────────────────────────────────────────────────────────────
@@ -88,11 +92,42 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   useEffect(() => {
     const close = (event) => {
-      if (sortRef.current && !sortRef.current.contains(event.target)) setSortOpen(false);
+      if (
+        sortRef.current &&
+        !sortRef.current.contains(event.target) &&
+        sortMenuRef.current &&
+        !sortMenuRef.current.contains(event.target)
+      ) {
+        setSortOpen(false);
+      }
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, []);
+
+  const updateSortMenuPosition = useCallback(() => {
+    const button = sortButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const width = Math.max(190, rect.width);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    setSortMenuPosition({
+      top: rect.bottom + 8,
+      left,
+      width,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!sortOpen) return undefined;
+    updateSortMenuPosition();
+    window.addEventListener('resize', updateSortMenuPosition);
+    window.addEventListener('scroll', updateSortMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateSortMenuPosition);
+      window.removeEventListener('scroll', updateSortMenuPosition, true);
+    };
+  }, [sortOpen, updateSortMenuPosition]);
 
   const handleGridSizeChange = (nextSize) => {
     setGridSize(nextSize);
@@ -333,9 +368,13 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
         middleControls={(
           <div className="collection-sort" ref={sortRef}>
             <button
+              ref={sortButtonRef}
               type="button"
               className={`collection-sort-btn ${sortOpen || sortBy !== 'default' ? 'active' : ''}`}
-              onClick={() => setSortOpen(open => !open)}
+              onClick={() => {
+                updateSortMenuPosition();
+                setSortOpen(open => !open);
+              }}
               aria-expanded={sortOpen}
               aria-haspopup="menu"
               title={`${t('sortBy')}: ${activeSortOption.label}`}
@@ -344,8 +383,17 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               <span>{activeSortOption.label}</span>
               <ChevronDown size={13} className={sortOpen ? 'rotated' : ''} />
             </button>
-            {sortOpen && (
-              <div className="collection-sort-menu" role="menu">
+            {sortOpen && createPortal(
+              <div
+                ref={sortMenuRef}
+                className="collection-sort-menu"
+                role="menu"
+                style={{
+                  top: sortMenuPosition.top,
+                  left: sortMenuPosition.left,
+                  minWidth: sortMenuPosition.width,
+                }}
+              >
                 {SORT_OPTIONS.map(option => (
                   <button
                     type="button"
@@ -358,7 +406,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                     {option.label}
                   </button>
                 ))}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         )}
