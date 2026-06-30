@@ -1060,6 +1060,7 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
   const [error, setError] = useState('');
   const [assetMode, setAssetMode] = useState(null);
   const [mobileSplit, setMobileSplit] = useState(50);
+  const [mobileImageZoom, setMobileImageZoom] = useState(1);
   const reviewBodyRef = useRef(null);
 
   const pages = session?.pages || [];
@@ -1082,7 +1083,7 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
     if (!body) return;
     const rect = body.getBoundingClientRect();
     const raw = ((clientY - rect.top) / rect.height) * 100;
-    setMobileSplit(Math.min(70, Math.max(25, raw)));
+    setMobileSplit(Math.min(100, Math.max(0, raw)));
   };
 
   const startMobileSplitDrag = (event) => {
@@ -1275,7 +1276,30 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
               <span>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}</span>
               <strong>{page.page_key}</strong>
             </div>
-            <img src={pageSrc} alt="" />
+            <div className="review-mobile-zoom-controls" aria-label={t('zoom') || 'Zoom'}>
+              <button
+                type="button"
+                onClick={() => setMobileImageZoom(z => Math.max(0.5, Math.round((z - 0.15) * 100) / 100))}
+                disabled={mobileImageZoom <= 0.5}
+                aria-label={t('zoomOut') || 'Zoom out'}
+              >
+                <ZoomOut size={16} />
+              </button>
+              <span>{Math.round(mobileImageZoom * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => setMobileImageZoom(z => Math.min(3, Math.round((z + 0.15) * 100) / 100))}
+                disabled={mobileImageZoom >= 3}
+                aria-label={t('zoomIn') || 'Zoom in'}
+              >
+                <ZoomIn size={16} />
+              </button>
+            </div>
+            <img
+              src={pageSrc}
+              alt=""
+              style={{ '--review-mobile-image-zoom': mobileImageZoom }}
+            />
           </div>
           <div
             className="review-mobile-splitter"
