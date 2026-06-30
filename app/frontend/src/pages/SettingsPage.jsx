@@ -918,6 +918,8 @@ function AISection() {
     ai_max_pages: '8',
     ai_prompt_mode: 'default',
     ai_custom_prompt: '',
+    ai_cleanup_enabled: 'false',
+    ai_cleanup_custom_prompt: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1121,6 +1123,32 @@ function AISection() {
             />
             <p className="settings-row-sub ai-inline-help">
               {cfg.ai_prompt_mode === 'custom' ? t('aiCustomPromptHint') : t('aiDefaultPromptHint').replace('{LANGUAGE}', language)}
+            </p>
+          </div>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading ai-card-heading-row">
+            <div>
+              <h4>{t('aiCleanupWorkflow')}</h4>
+              <p>{t('aiCleanupWorkflowSub')}</p>
+            </div>
+            <button className={`theme-toggle ${cfg.ai_cleanup_enabled === 'true' ? 'dark' : ''}`}
+              onClick={() => f('ai_cleanup_enabled', cfg.ai_cleanup_enabled === 'true' ? 'false' : 'true')}>
+              <span className="theme-toggle-knob" />
+            </button>
+          </div>
+          <div className="form-field">
+            <label className="form-label">{t('aiCleanupPrompt')}</label>
+            <textarea
+              className="form-input form-textarea ai-prompt-textarea"
+              value={cfg.ai_cleanup_custom_prompt}
+              onChange={e => f('ai_cleanup_custom_prompt', e.target.value)}
+              placeholder={t('defaultAiCleanupPrompt')}
+              rows={7}
+            />
+            <p className="settings-row-sub ai-inline-help">
+              {t('aiCleanupPromptHint')}
             </p>
           </div>
         </div>

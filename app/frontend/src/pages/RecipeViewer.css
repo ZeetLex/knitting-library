@@ -497,7 +497,12 @@ a.viewer-action-btn { text-decoration: none; }
   touch-action: none;
 }
 
-.review-asset-preview img {
+.review-asset-canvas {
+  position: relative;
+  width: 100%;
+}
+
+.review-asset-canvas img {
   display: block;
   width: 100%;
   height: auto;

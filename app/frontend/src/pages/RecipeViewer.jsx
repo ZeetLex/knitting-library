@@ -760,6 +760,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </div>
       )}
 
+      {mobilePanel !== 'info' && (
+        <ProjectStatus
+          recipe={recipe}
+          onUpdated={setRecipe}
+          enableExternalControls
+          controlsOnly
+        />
+      )}
+
       {/* ── Mobile Info panel ── */}
       <div
         className={`mobile-panel mobile-panel--info ${mobilePanel === 'info' ? 'mobile-panel--open' : ''}`}
@@ -1399,52 +1408,54 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
         </div>
         <div className="review-asset-body">
           <div className="review-asset-preview">
-            <img
-              ref={imgRef}
-              src={imageSrc}
-              alt=""
-              onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
-            />
-            <div
-              className={`review-crop-box ${mode === 'diagram' ? 'review-crop-box--grid' : ''}`}
-              onPointerDown={e => startInteraction(e, 'move')}
-              onPointerMove={moveInteraction}
-              onPointerUp={endInteraction}
-              onPointerCancel={endInteraction}
-              style={{
-                left: `${box.x}%`,
-                top: `${box.y}%`,
-                width: `${box.w}%`,
-                height: `${box.h}%`,
-                opacity,
-                '--review-grid-cols': cols,
-                '--review-grid-rows': rows,
-                transform: `rotate(${rotation}deg)`,
-              }}
-            >
-              {mode === 'diagram' && (
-                <button
-                  type="button"
-                  className="review-crop-rotate"
-                  aria-label={t('diagramRotation')}
-                  onPointerDown={e => startInteraction(e, 'rotate')}
-                  onPointerMove={moveInteraction}
-                  onPointerUp={endInteraction}
-                  onPointerCancel={endInteraction}
-                />
-              )}
-              {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => (
-                <button
-                  type="button"
-                  key={handle}
-                  className={`review-crop-handle review-crop-handle--${handle}`}
-                  aria-label={`${t('cropResize')} ${handle}`}
-                  onPointerDown={e => startInteraction(e, 'resize', handle)}
-                  onPointerMove={moveInteraction}
-                  onPointerUp={endInteraction}
-                  onPointerCancel={endInteraction}
-                />
-              ))}
+            <div className="review-asset-canvas">
+              <img
+                ref={imgRef}
+                src={imageSrc}
+                alt=""
+                onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
+              />
+              <div
+                className={`review-crop-box ${mode === 'diagram' ? 'review-crop-box--grid' : ''}`}
+                onPointerDown={e => startInteraction(e, 'move')}
+                onPointerMove={moveInteraction}
+                onPointerUp={endInteraction}
+                onPointerCancel={endInteraction}
+                style={{
+                  left: `${box.x}%`,
+                  top: `${box.y}%`,
+                  width: `${box.w}%`,
+                  height: `${box.h}%`,
+                  opacity,
+                  '--review-grid-cols': cols,
+                  '--review-grid-rows': rows,
+                  transform: `rotate(${rotation}deg)`,
+                }}
+              >
+                {mode === 'diagram' && (
+                  <button
+                    type="button"
+                    className="review-crop-rotate"
+                    aria-label={t('diagramRotation')}
+                    onPointerDown={e => startInteraction(e, 'rotate')}
+                    onPointerMove={moveInteraction}
+                    onPointerUp={endInteraction}
+                    onPointerCancel={endInteraction}
+                  />
+                )}
+                {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => (
+                  <button
+                    type="button"
+                    key={handle}
+                    className={`review-crop-handle review-crop-handle--${handle}`}
+                    aria-label={`${t('cropResize')} ${handle}`}
+                    onPointerDown={e => startInteraction(e, 'resize', handle)}
+                    onPointerMove={moveInteraction}
+                    onPointerUp={endInteraction}
+                    onPointerCancel={endInteraction}
+                  />
+                ))}
+              </div>
             </div>
           </div>
           <div className="review-asset-controls">

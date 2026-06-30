@@ -115,6 +115,8 @@ AI_SETTING_KEYS = {
     "ai_max_pages",
     "ai_prompt_mode",
     "ai_custom_prompt",
+    "ai_cleanup_enabled",
+    "ai_cleanup_custom_prompt",
 }
 
 SESSION_COOKIE = "knitting_session"
@@ -1671,6 +1673,8 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_max_pages": "8",
         "ai_prompt_mode": "default",
         "ai_custom_prompt": "",
+        "ai_cleanup_enabled": "false",
+        "ai_cleanup_custom_prompt": "",
     }
     defaults.update(cfg)
     if defaults.get("ai_api_key") and not reveal_secret:
@@ -1692,6 +1696,26 @@ def _default_ai_scan_prompt(language: str = "en") -> str:
     return prompts.get(language, (
         "Transcribe the visible recipe text from the image. Return only the text. "
         "Keep line breaks, numbers, abbreviations, and order. Do not explain, clean up, summarize, or use Markdown unless it is naturally needed."
+    ))
+
+
+def _default_ai_cleanup_prompt(language: str = "en") -> str:
+    prompts = {
+        "no": (
+            "Du får rå tekst fra én side i en strikkeoppskrift. Rydd teksten til lesbar Markdown for denne siden. "
+            "Behold originalspråk, tall, masketall, størrelser, forkortelser, garn, pinner og rad-/omgangstekst. "
+            "Ikke legg til ny informasjon. Returner kun den ryddede teksten."
+        ),
+        "hu": (
+            "Egy kötésminta-oldal nyers szövegét kapod. Tisztítsd olvasható Markdown szöveggé erre az oldalra. "
+            "Őrizd meg az eredeti nyelvet, számokat, szemszámokat, méreteket, rövidítéseket, fonalat, tűket és sor/kör utasításokat. "
+            "Ne adj hozzá új információt. Csak a tisztított szöveget add vissza."
+        ),
+    }
+    return prompts.get(language, (
+        "You receive raw text from one page of a knitting pattern. Clean it into readable Markdown for this page. "
+        "Preserve the original language, numbers, stitch counts, sizes, abbreviations, yarn, needle details, and row/round wording. "
+        "Do not add new information. Return only the cleaned text."
     ))
 
 
@@ -1738,6 +1762,10 @@ def _ai_scan_prompt(language: str, cfg: dict) -> str:
     return cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ai_scan_prompt(language)
 
 
+def _ai_cleanup_prompt(language: str, cfg: dict) -> str:
+    return (cfg.get("ai_cleanup_custom_prompt") or "").strip() or _default_ai_cleanup_prompt(language)
+
+
 def _require_ai_vision_config(cfg: dict) -> tuple[str, str]:
     base_url = cfg.get("ai_base_url", "").rstrip("/")
     model = cfg.get("ai_model", "").strip()
@@ -1782,6 +1810,33 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
     return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, prompt
 
 
+async def _call_ai_page_cleanup(text: str, page_no: int, page_count: int, language: str, cfg: dict, timeout: int) -> tuple[str, dict, str]:
+    base_url, model = _require_ai_vision_config(cfg)
+    prompt = _ai_cleanup_prompt(language, cfg)
+    messages = [{
+        "role": "user",
+        "content": f"{prompt}\n\nPage {page_no}/{page_count} raw text:\n\n{text}",
+    }]
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("ai_api_key"):
+        headers["Authorization"] = f"Bearer {cfg['ai_api_key']}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.05,
+                "stream": False,
+                "max_tokens": AI_MAX_OUTPUT_TOKENS,
+            },
+        )
+        res.raise_for_status()
+        data = res.json()
+    return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, prompt
+
+
 async def _scan_recipe_pages_with_ai(
     recipe_id: str,
     language: str,
@@ -1795,6 +1850,8 @@ async def _scan_recipe_pages_with_ai(
     page_count = len(paths)
     usage_totals: dict[str, int] = {}
     prompt = _ai_scan_prompt(language, cfg)
+    cleanup_enabled = _is_truthy(cfg.get("ai_cleanup_enabled"), False)
+    cleanup_prompt = _ai_cleanup_prompt(language, cfg) if cleanup_enabled else ""
     completed = 0
     progress_lock = asyncio.Lock()
     usage_lock = asyncio.Lock()
@@ -1806,8 +1863,17 @@ async def _scan_recipe_pages_with_ai(
             if job_id:
                 _update_ai_job(job_id, pages_sent=completed, progress_stage=f"ai_page_{idx}_of_{page_count}")
             text, usage, _prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
+            cleanup_usage = {}
+            reviewed_text = _clean_ai_transcription(text)
+            if cleanup_enabled and reviewed_text.strip():
+                try:
+                    cleaned, cleanup_usage, _cleanup_prompt = await _call_ai_page_cleanup(reviewed_text, idx, page_count, language, cfg, timeout)
+                    if cleaned.strip():
+                        reviewed_text = cleaned.strip()
+                except Exception:
+                    cleanup_usage = {}
         async with usage_lock:
-            for key, value in (usage or {}).items():
+            for key, value in {**(usage or {}), **{f"cleanup_{k}": v for k, v in (cleanup_usage or {}).items()}}.items():
                 if isinstance(value, (int, float)):
                     usage_totals[key] = usage_totals.get(key, 0) + int(value)
         source_text = text.strip() or "_No useful text was detected on this page._"
@@ -1819,12 +1885,13 @@ async def _scan_recipe_pages_with_ai(
             "page_order": idx,
             "page_key": path.name,
             "source_text": source_text,
-            "reviewed_text": _clean_ai_transcription(source_text),
+            "reviewed_text": reviewed_text or source_text,
             "path": path,
         }
 
     results = await asyncio.gather(*(scan_page(idx, path) for idx, path in enumerate(paths, start=1)))
-    return sorted(results, key=lambda page: page["page_order"]), usage_totals, prompt
+    workflow_prompt = prompt if not cleanup_enabled else f"{prompt}\n\n--- Cleanup prompt ---\n\n{cleanup_prompt}"
+    return sorted(results, key=lambda page: page["page_order"]), usage_totals, workflow_prompt
 
 
 def _normalise_recognition_mode(value: str) -> str:

@@ -215,7 +215,7 @@ function YarnPickerRow({ yarn, selected, onSelect }) {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function ProjectStatus({ recipe, onUpdated, enableExternalControls = false }) {
+export default function ProjectStatus({ recipe, onUpdated, enableExternalControls = false, controlsOnly = false }) {
   const { t, language } = useApp();
   const [loading, setLoading]         = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -357,6 +357,95 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
     finally { setLoading(false); }
   };
 
+  const modals = (
+    <>
+      {showYarnPicker && (
+        <YarnPickerModal
+          t={t}
+          onSelect={handleYarnSelected}
+          onSkip={() => handleYarnSelected(null, null)}
+          onClose={() => setShowYarnPicker(false)}
+        />
+      )}
+
+      {showInventoryPicker && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleInventorySkip()}>
+          <div className="inv-use-modal">
+            <div className="inv-use-header">
+              <h3>{t('useFromInventory')}</h3>
+              <button className="inv-modal-close" onClick={handleInventorySkip}><X size={18} /></button>
+            </div>
+            <p className="inv-use-sub">
+              {pendingYarn?.yarn
+                ? `${pendingYarn.yarn.name}${pendingYarn.colour ? ` — ${pendingYarn.colour.name}` : ''}`
+                : ''}
+            </p>
+
+            <div className="inv-use-items">
+              <button
+                className={`inv-use-item ${!selectedInvItem ? 'inv-use-item--selected' : ''}`}
+                onClick={() => setSelectedInvItem(null)}
+              >
+                <span className="inv-use-item-name">{t('noInventoryItem')}</span>
+              </button>
+
+              {inventoryItems.map(item => (
+                <button
+                  key={item.id}
+                  className={`inv-use-item ${selectedInvItem?.id === item.id ? 'inv-use-item--selected' : ''}`}
+                  onClick={() => setSelectedInvItem(item)}
+                >
+                  <div className="inv-use-item-info">
+                    <span className="inv-use-item-name">{item.name}</span>
+                    <span className="inv-use-item-stock">{t('currentStock')}: <strong>{item.quantity}</strong> {t('skeinCount')}</span>
+                    {item.purchase_price && <span className="inv-use-item-price">💰 {item.purchase_price}</span>}
+                  </div>
+                  {selectedInvItem?.id === item.id && <span className="inv-use-check">✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {selectedInvItem && (
+              <div className="inv-use-skeins">
+                <span className="inv-use-skeins-label">{t('skeinsToUse')}</span>
+                <div className="inv-qty-row">
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.max(1, s - 1))}><Minus size={14} /></button>
+                  <span className="inv-qty-value">{skeinsToUse}<span className="inv-qty-unit">{t('skeinCount')}</span></span>
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.min(selectedInvItem.quantity, s + 1))}><Plus size={14} /></button>
+                </div>
+                {skeinsToUse > 0 && (
+                  <p className="inv-use-remaining">
+                    → {Math.max(0, selectedInvItem.quantity - skeinsToUse)} {t('skeinCount')} {t('currentStock').toLowerCase()}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="inv-use-footer">
+              <button className="inv-modal-cancel" onClick={handleInventorySkip}>{t('noInventoryItem')}</button>
+              <button className="inv-modal-save" onClick={handleInventoryConfirm}>
+                {t('startProject')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedbackMode && (
+        <FeedbackModal
+          mode={feedbackMode}
+          feedbackList={feedbackMode === 'view' ? (feedbackSession?.feedback || []) : []}
+          onSubmit={handleFeedbackSubmit}
+          onSkip={handleFeedbackSkip}
+          onClose={() => { setFeedbackMode(null); setFeedbackSession(null); }}
+          loading={loading}
+        />
+      )}
+    </>
+  );
+
+  if (controlsOnly) return modals;
+
   return (
     <div className="project-status">
 
@@ -493,93 +582,7 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
         </div>
       )}
 
-      {/* ── Yarn picker modal ──────────────────────────────────────── */}
-      {showYarnPicker && (
-        <YarnPickerModal
-          t={t}
-          onSelect={handleYarnSelected}
-          onSkip={() => handleYarnSelected(null, null)}
-          onClose={() => setShowYarnPicker(false)}
-        />
-      )}
-
-      {/* ── Inventory deduction step ── */}
-      {showInventoryPicker && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleInventorySkip()}>
-          <div className="inv-use-modal">
-            <div className="inv-use-header">
-              <h3>{t('useFromInventory')}</h3>
-              <button className="inv-modal-close" onClick={handleInventorySkip}><X size={18} /></button>
-            </div>
-            <p className="inv-use-sub">
-              {pendingYarn?.yarn
-                ? `${pendingYarn.yarn.name}${pendingYarn.colour ? ` — ${pendingYarn.colour.name}` : ''}`
-                : ''}
-            </p>
-
-            <div className="inv-use-items">
-              {/* "Don't use inventory" option */}
-              <button
-                className={`inv-use-item ${!selectedInvItem ? 'inv-use-item--selected' : ''}`}
-                onClick={() => setSelectedInvItem(null)}
-              >
-                <span className="inv-use-item-name">{t('noInventoryItem')}</span>
-              </button>
-
-              {inventoryItems.map(item => (
-                <button
-                  key={item.id}
-                  className={`inv-use-item ${selectedInvItem?.id === item.id ? 'inv-use-item--selected' : ''}`}
-                  onClick={() => setSelectedInvItem(item)}
-                >
-                  <div className="inv-use-item-info">
-                    <span className="inv-use-item-name">{item.name}</span>
-                    <span className="inv-use-item-stock">{t('currentStock')}: <strong>{item.quantity}</strong> {t('skeinCount')}</span>
-                    {item.purchase_price && <span className="inv-use-item-price">💰 {item.purchase_price}</span>}
-                  </div>
-                  {selectedInvItem?.id === item.id && <span className="inv-use-check">✓</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Skein count — only when an inventory item is picked */}
-            {selectedInvItem && (
-              <div className="inv-use-skeins">
-                <span className="inv-use-skeins-label">{t('skeinsToUse')}</span>
-                <div className="inv-qty-row">
-                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.max(1, s - 1))}><Minus size={14} /></button>
-                  <span className="inv-qty-value">{skeinsToUse}<span className="inv-qty-unit">{t('skeinCount')}</span></span>
-                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.min(selectedInvItem.quantity, s + 1))}><Plus size={14} /></button>
-                </div>
-                {skeinsToUse > 0 && (
-                  <p className="inv-use-remaining">
-                    → {Math.max(0, selectedInvItem.quantity - skeinsToUse)} {t('skeinCount')} {t('currentStock').toLowerCase()}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="inv-use-footer">
-              <button className="inv-modal-cancel" onClick={handleInventorySkip}>{t('noInventoryItem')}</button>
-              <button className="inv-modal-save" onClick={handleInventoryConfirm}>
-                {t('startProject')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Feedback modal ──────────────────────────────────────────── */}
-      {feedbackMode && (
-        <FeedbackModal
-          mode={feedbackMode}
-          feedbackList={feedbackMode === 'view' ? (feedbackSession?.feedback || []) : []}
-          onSubmit={handleFeedbackSubmit}
-          onSkip={handleFeedbackSkip}
-          onClose={() => { setFeedbackMode(null); setFeedbackSession(null); }}
-          loading={loading}
-        />
-      )}
+      {modals}
     </div>
   );
 }

@@ -99,7 +99,7 @@ Recipe pages can have a shared editable text version generated from scanned reci
 
 > **Early beta:** the AI scan review and diagram tools are new, experimental, and expected to change a lot. The current UI for this feature is **not final**, especially the diagram editor and mobile layout. Treat AI output as a draft only.
 
-Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The beta workflow uses a vision-capable OpenAI-compatible model and sends each recipe image or PDF page directly to AI for plain text transcription, then stores each page result beside the matching original image for review. By default it can scan two pages at a time; set `AI_PAGE_SCAN_WORKERS` to tune that for your hardware. For knitting diagrams and legends, the current beta workflow is manual/user-guided: crop the diagram or legend from the original page and review it visually.
+Text recognition is configured by an admin under **Settings -> Admin -> AI / Text recognition**. The beta workflow uses a vision-capable OpenAI-compatible model and sends each recipe image or PDF page directly to AI for plain text transcription, then stores each page result beside the matching original image for review. An optional second AI cleanup step can then send the raw page text back to AI for Markdown cleanup before review. By default it can scan two pages at a time; set `AI_PAGE_SCAN_WORKERS` to tune that for your hardware. For knitting diagrams and legends, the current beta workflow is manual/user-guided: crop the diagram or legend from the original page and review it visually.
 
 The app uses OpenAI-compatible chat completion endpoints, so it can work with:
 
@@ -111,6 +111,7 @@ The app uses OpenAI-compatible chat completion endpoints, so it can work with:
 The current beta workflow is user-guided instead of fully automatic:
 
 - AI vision sends each page image directly to the model and marks the job as ready for review.
+- Optional AI cleanup can format each page's raw scan before it reaches review.
 - The Review view shows the original page beside the editable draft text.
 - You can accept pages, pause and resume later, cancel the draft, insert a diagram crop, or crop a legend image.
 - Completing review publishes one shared Markdown text version with reviewed text and any saved diagram/legend image inserts.
