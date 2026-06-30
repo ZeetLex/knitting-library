@@ -255,6 +255,23 @@ export async function fetchTextVersion(recipeId) {
   return res.json();
 }
 
+export async function fetchViewerProgress(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/viewer-progress`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load viewer progress');
+  return res.json();
+}
+
+export async function saveViewerProgress(recipeId, progress) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/viewer-progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(progress),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save viewer progress');
+  return data;
+}
+
 export async function saveTextVersion(recipeId, contentMarkdown, language) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, {
     method: 'PUT',

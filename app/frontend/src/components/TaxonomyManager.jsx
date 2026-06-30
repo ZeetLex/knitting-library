@@ -67,12 +67,13 @@ export function TaxonomyManagerModal({
   const Icon = cfg.icon;
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState('');
-  const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const selectedSet = useMemo(() => new Set(selected.map(v => v.toLowerCase())), [selected]);
+  const trimmedQuery = query.trim();
+  const canAdd = trimmedQuery && !items.some(item => item.name.toLowerCase() === trimmedQuery.toLowerCase());
 
   const load = async () => {
     setLoading(true);
@@ -109,7 +110,7 @@ export function TaxonomyManagerModal({
 
   const addItem = async (e) => {
     e?.preventDefault();
-    const name = newName.trim();
+    const name = trimmedQuery;
     if (!name) return;
     if (items.some(item => item.name.toLowerCase() === name.toLowerCase())) {
       setError(t(cfg.existsKey));
@@ -118,7 +119,6 @@ export function TaxonomyManagerModal({
     setSaving(true);
     try {
       await cfg.add(name);
-      setNewName('');
       setQuery('');
       setError('');
       if (selectionEnabled && onChange) onChange(dedupe([...selected, name]));
@@ -167,28 +167,24 @@ export function TaxonomyManagerModal({
           </button>
         </div>
 
-        <div className="taxonomy-search-row">
+        <form className="taxonomy-search-row" onSubmit={addItem}>
           <Search size={16} />
           <input
             value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder={t(cfg.searchKey)}
+            onChange={e => { setQuery(e.target.value); setError(''); }}
+            placeholder={`${t(cfg.searchKey)} / ${t(cfg.placeholderKey)}`}
             className="taxonomy-search"
-          />
-        </div>
-
-        <form className="taxonomy-add-row" onSubmit={addItem}>
-          <input
-            value={newName}
-            onChange={e => { setNewName(e.target.value); setError(''); }}
-            placeholder={t(cfg.placeholderKey)}
-            className="taxonomy-add-input"
             maxLength={60}
             disabled={saving}
           />
-          <button type="submit" className="taxonomy-add-btn" disabled={saving || !newName.trim()}>
+          <button
+            type="submit"
+            className={`taxonomy-add-btn ${canAdd ? 'taxonomy-add-btn--ready' : ''}`}
+            disabled={saving || !canAdd}
+            title={t(cfg.addKey)}
+            aria-label={t(cfg.addKey)}
+          >
             <Plus size={16} />
-            <span>{t(cfg.addKey)}</span>
           </button>
         </form>
 
@@ -202,15 +198,15 @@ export function TaxonomyManagerModal({
           ) : filtered.map(item => {
             const active = selectedSet.has(item.name.toLowerCase());
             return (
-              <div key={item.name} className={`taxonomy-card ${active ? 'selected' : ''}`}>
+              <div key={item.name} className={`taxonomy-chip ${active ? 'selected' : ''}`}>
                 <button
                   type="button"
-                  className="taxonomy-card-main"
+                  className="taxonomy-chip-main"
                   onClick={() => toggleSelected(item.name)}
                   disabled={!selectionEnabled}
+                  title={usageLabel(t, item.usage_count)}
                 >
                   <span className="taxonomy-card-name">{item.name}</span>
-                  <span className="taxonomy-card-count">{usageLabel(t, item.usage_count)}</span>
                   {active && <span className="taxonomy-card-check"><Check size={14} /></span>}
                 </button>
                 <button

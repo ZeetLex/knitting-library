@@ -439,6 +439,23 @@ def get_db() -> sqlite3.Connection:
             )
             conn.execute("DROP TABLE annotations_legacy_user_migration")
             conn.commit()
+    if "recipe_viewer_progress" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_viewer_progress (
+                recipe_id             TEXT NOT NULL,
+                user_id               TEXT NOT NULL,
+                view_mode             TEXT NOT NULL DEFAULT 'original',
+                image_index           INTEGER NOT NULL DEFAULT 0,
+                zoom                  REAL NOT NULL DEFAULT 1,
+                scroll_y              INTEGER NOT NULL DEFAULT 0,
+                mobile_images_visible INTEGER NOT NULL DEFAULT 0,
+                updated_at            TEXT NOT NULL,
+                PRIMARY KEY (recipe_id, user_id),
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id),
+                FOREIGN KEY (user_id)   REFERENCES users(id)
+            )
+        """)
+        conn.commit()
     if "recipe_text_versions" not in tables:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS recipe_text_versions (
@@ -696,6 +713,19 @@ def init_db():
             data      TEXT NOT NULL DEFAULT '[]',
             updated   TEXT NOT NULL,
             PRIMARY KEY (recipe_id, page_key, user_id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_viewer_progress (
+            recipe_id             TEXT NOT NULL,
+            user_id               TEXT NOT NULL,
+            view_mode             TEXT NOT NULL DEFAULT 'original',
+            image_index           INTEGER NOT NULL DEFAULT 0,
+            zoom                  REAL NOT NULL DEFAULT 1,
+            scroll_y              INTEGER NOT NULL DEFAULT 0,
+            mobile_images_visible INTEGER NOT NULL DEFAULT 0,
+            updated_at            TEXT NOT NULL,
+            PRIMARY KEY (recipe_id, user_id),
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id),
+            FOREIGN KEY (user_id)   REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id              TEXT PRIMARY KEY,
@@ -3851,6 +3881,83 @@ def get_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)):
     return recipe
 
 
+def _viewer_progress_dict(row) -> dict:
+    if not row:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "recipeId": row["recipe_id"],
+        "viewMode": row["view_mode"],
+        "imageIndex": row["image_index"],
+        "zoom": row["zoom"],
+        "scrollY": row["scroll_y"],
+        "mobileImagesVisible": bool(row["mobile_images_visible"]),
+        "updatedAt": row["updated_at"],
+    }
+
+
+@app.get("/api/recipes/{recipe_id}/viewer-progress")
+def get_recipe_viewer_progress(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    row = conn.execute(
+        "SELECT * FROM recipe_viewer_progress WHERE recipe_id=? AND user_id=?",
+        (recipe_id, current_user["id"])
+    ).fetchone()
+    conn.close()
+    return _viewer_progress_dict(row)
+
+
+@app.put("/api/recipes/{recipe_id}/viewer-progress")
+def save_recipe_viewer_progress(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    view_mode = str(data.get("viewMode") or data.get("view_mode") or "original")
+    if view_mode not in {"original", "text", "review", "charts"}:
+        view_mode = "original"
+    try:
+        image_index = max(0, int(data.get("imageIndex", data.get("image_index", 0)) or 0))
+    except (TypeError, ValueError):
+        image_index = 0
+    try:
+        zoom = float(data.get("zoom", 1) or 1)
+    except (TypeError, ValueError):
+        zoom = 1
+    zoom = max(0.5, min(4, zoom))
+    try:
+        scroll_y = max(0, int(float(data.get("scrollY", data.get("scroll_y", 0)) or 0)))
+    except (TypeError, ValueError):
+        scroll_y = 0
+    mobile_images_visible = 1 if data.get("mobileImagesVisible", data.get("mobile_images_visible", False)) else 0
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    conn.execute(
+        """
+        INSERT INTO recipe_viewer_progress
+            (recipe_id,user_id,view_mode,image_index,zoom,scroll_y,mobile_images_visible,updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(recipe_id,user_id) DO UPDATE SET
+            view_mode=excluded.view_mode,
+            image_index=excluded.image_index,
+            zoom=excluded.zoom,
+            scroll_y=excluded.scroll_y,
+            mobile_images_visible=excluded.mobile_images_visible,
+            updated_at=excluded.updated_at
+        """,
+        (recipe_id, current_user["id"], view_mode, image_index, zoom, scroll_y, mobile_images_visible, now)
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM recipe_viewer_progress WHERE recipe_id=? AND user_id=?",
+        (recipe_id, current_user["id"])
+    ).fetchone()
+    conn.close()
+    return _viewer_progress_dict(row)
+
+
 @app.post("/api/recipes/check-duplicate")
 async def check_duplicate(
     files: List[UploadFile] = File(...),
@@ -4016,6 +4123,7 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
     conn.execute("DELETE FROM project_feedback  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM annotations       WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_viewer_progress WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_charts WHERE recipe_id=?", (recipe_id,))

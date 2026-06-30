@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -32,17 +32,39 @@ function clampIndex(value, max) {
   return Math.max(0, Math.min(parsed, Math.max(0, max)));
 }
 
+function normalizeViewMode(value) {
+  return value === 'charts' ? 'review' : (value || 'original');
+}
+
+function requestedViewTakesPrecedence(value) {
+  const mode = normalizeViewMode(value);
+  return mode === 'review' || mode === 'text';
+}
+
+function resolveResumeView(saved, requested) {
+  if (requestedViewTakesPrecedence(requested)) return normalizeViewMode(requested);
+  return normalizeViewMode(saved?.viewMode || requested);
+}
+
+function normalizeResume(saved, requested = 'original') {
+  return {
+    viewMode: resolveResumeView(saved, requested),
+    imageIndex: clampIndex(saved?.imageIndex, 9999),
+    zoom: Number.isFinite(Number(saved?.zoom)) ? Math.max(0.5, Math.min(Number(saved.zoom), 4)) : 1,
+    scrollY: Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null,
+    mobileImagesVisible: Boolean(saved?.mobileImagesVisible),
+  };
+}
+
 export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
   const { t, language, user } = useApp();
   const initialResume = readViewerResume(user, recipeId);
+  const initialState = normalizeResume(initialResume, initialViewMode);
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
-  const [imageIndex, setImageIndex] = useState(() => clampIndex(initialResume?.imageIndex, 9999));
-  const [zoom, setZoom]             = useState(() => {
-    const savedZoom = Number(initialResume?.zoom);
-    return Number.isFinite(savedZoom) ? Math.max(0.5, Math.min(savedZoom, 4)) : 1;
-  });
+  const [imageIndex, setImageIndex] = useState(() => initialState.imageIndex);
+  const [zoom, setZoom]             = useState(() => initialState.zoom);
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -58,7 +80,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [cropOpen, setCropOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
-  const [viewMode, setViewMode] = useState(initialResume?.viewMode || (initialViewMode === 'charts' ? 'review' : initialViewMode));
+  const [viewMode, setViewMode] = useState(initialState.viewMode);
   const [textVersion, setTextVersion] = useState(null);
   const [textLoading, setTextLoading] = useState(false);
   const [reviewSession, setReviewSession] = useState(null);
@@ -72,12 +94,14 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
-  const [mobileImagesVisible, setMobileImagesVisible] = useState(Boolean(initialResume?.mobileImagesVisible));
+  const [mobileImagesVisible, setMobileImagesVisible] = useState(initialState.mobileImagesVisible);
   const [panelDragY, setPanelDragY] = useState(0);
   const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
-  const pendingScrollY = useRef(Number.isFinite(Number(initialResume?.scrollY)) ? Number(initialResume.scrollY) : null);
+  const pendingScrollY = useRef(initialState.scrollY);
   const restoredScrollRef = useRef(false);
+  const serverSaveTimerRef = useRef(null);
+  const lastServerSaveRef = useRef(0);
 
   useEffect(() => {
     const openPanel = (event) => {
@@ -241,23 +265,38 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   };
 
   useEffect(() => {
-    const saved = readViewerResume(user, recipeId);
-    const nextViewMode = saved?.viewMode || (initialViewMode === 'charts' ? 'review' : (initialViewMode || 'original'));
-    pendingScrollY.current = Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null;
+    let cancelled = false;
+    const localSaved = readViewerResume(user, recipeId);
+    const fallbackResume = normalizeResume(localSaved, initialViewMode);
+    pendingScrollY.current = fallbackResume.scrollY;
     restoredScrollRef.current = false;
     setLoading(true);
+    setError(null);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    setMobileImagesVisible(Boolean(saved?.mobileImagesVisible));
-    setViewMode(nextViewMode);
-    setImageIndex(clampIndex(saved?.imageIndex, 9999));
-    const savedZoom = Number(saved?.zoom);
-    setZoom(Number.isFinite(savedZoom) ? Math.max(0.5, Math.min(savedZoom, 4)) : 1);
+    setMobileImagesVisible(fallbackResume.mobileImagesVisible);
+    setViewMode(fallbackResume.viewMode);
+    setImageIndex(fallbackResume.imageIndex);
+    setZoom(fallbackResume.zoom);
     setFullscreen(false);
     setTextVersion(null);
     setReviewSession(null);
-    fetchRecipe(recipeId)
-      .then(r => {
+
+    const load = async () => {
+      try {
+        const [r, serverSaved] = await Promise.all([
+          fetchRecipe(recipeId),
+          fetchViewerProgress(recipeId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const saved = serverSaved?.exists ? serverSaved : localSaved;
+        const resume = normalizeResume(saved, initialViewMode);
+        pendingScrollY.current = resume.scrollY;
+        restoredScrollRef.current = false;
+        setMobileImagesVisible(resume.mobileImagesVisible);
+        setViewMode(resume.viewMode);
+        setImageIndex(resume.imageIndex);
+        setZoom(resume.zoom);
         setRecipe(r);
         if (r.file_type === 'images') {
           setImageIndex(index => clampIndex(index, (r.images || []).length - 1));
@@ -277,9 +316,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
             }
           });
         }
-      })
-      .catch(() => setError('Could not load this recipe.'))
-      .finally(() => setLoading(false));
+      } catch (_) {
+        if (!cancelled) setError('Could not load this recipe.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
   }, [recipeId, initialViewMode, user]);
 
   useEffect(() => {
@@ -300,25 +345,48 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       .finally(() => setReviewLoading(false));
   }, [recipeId, viewMode]);
 
-  const saveViewerResume = useCallback(() => {
+  const saveViewerResume = useCallback((flushServer = false) => {
+    const progress = {
+      recipeId,
+      viewMode,
+      imageIndex,
+      zoom,
+      scrollY: window.scrollY || 0,
+      mobileImagesVisible,
+      updatedAt: Date.now(),
+    };
     try {
-      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify({
-        recipeId,
-        viewMode,
-        imageIndex,
-        zoom,
-        scrollY: window.scrollY || 0,
-        mobileImagesVisible,
-        updatedAt: Date.now(),
-      }));
+      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify(progress));
     } catch (_) {}
+    if (!user || !recipeId) return;
+    const saveServer = () => {
+      lastServerSaveRef.current = Date.now();
+      saveViewerProgressApi(recipeId, progress).catch(() => {});
+    };
+    if (flushServer) {
+      if (serverSaveTimerRef.current) {
+        clearTimeout(serverSaveTimerRef.current);
+        serverSaveTimerRef.current = null;
+      }
+      saveServer();
+      return;
+    }
+    const elapsed = Date.now() - lastServerSaveRef.current;
+    if (elapsed >= 1500) {
+      saveServer();
+    } else if (!serverSaveTimerRef.current) {
+      serverSaveTimerRef.current = setTimeout(() => {
+        serverSaveTimerRef.current = null;
+        saveServer();
+      }, 1500 - elapsed);
+    }
   }, [user, recipeId, viewMode, imageIndex, zoom, mobileImagesVisible]);
 
   useEffect(() => {
     if (!recipeId) return undefined;
-    const saveOnPageHide = () => saveViewerResume();
+    const saveOnPageHide = () => saveViewerResume(true);
     const saveOnVisibility = () => {
-      if (document.visibilityState === 'hidden') saveViewerResume();
+      if (document.visibilityState === 'hidden') saveViewerResume(true);
     };
     let scrollFrame = null;
     const saveOnScroll = () => {
@@ -333,8 +401,12 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     document.addEventListener('visibilitychange', saveOnVisibility);
     window.addEventListener('scroll', saveOnScroll, { passive: true });
     return () => {
-      saveViewerResume();
+      saveViewerResume(true);
       if (scrollFrame != null) cancelAnimationFrame(scrollFrame);
+      if (serverSaveTimerRef.current) {
+        clearTimeout(serverSaveTimerRef.current);
+        serverSaveTimerRef.current = null;
+      }
       window.removeEventListener('pagehide', saveOnPageHide);
       document.removeEventListener('visibilitychange', saveOnVisibility);
       window.removeEventListener('scroll', saveOnScroll);
@@ -1495,6 +1567,9 @@ function reviewPageImageSrc(recipe, recipeId, pageKey) {
 function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   const imgRef = useRef(null);
   const interactionRef = useRef(null);
+  const [controlsOpen, setControlsOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 640 : true
+  );
   const [natural, setNatural] = useState({ w: 1, h: 1 });
   const [box, setBox] = useState({ x: 20, y: 20, w: 55, h: 38 });
   const [title, setTitle] = useState(mode === 'legend' ? t('legendDefaultTitle') : t('diagramDefaultTitle'));
@@ -1635,9 +1710,20 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
             <h3>{mode === 'legend' ? t('cropLegend') : t('insertDiagram')}</h3>
             <p>{mode === 'legend' ? t('cropLegendHint') : t('insertDiagramHint')}</p>
           </div>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+          <div className="review-asset-head-actions">
+            <button
+              type="button"
+              className={`review-asset-settings-toggle ${controlsOpen ? 'active' : ''}`}
+              onClick={() => setControlsOpen(open => !open)}
+              aria-label={t('settings')}
+              title={t('settings')}
+            >
+              <SlidersHorizontal size={18} />
+            </button>
+            <button className="modal-close" onClick={onClose}><X size={20} /></button>
+          </div>
         </div>
-        <div className="review-asset-body">
+        <div className={`review-asset-body ${controlsOpen ? 'controls-open' : 'controls-closed'}`}>
           <div className="review-asset-preview">
             <div className="review-asset-canvas">
               <img

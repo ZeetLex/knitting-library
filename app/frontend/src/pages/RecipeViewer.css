@@ -449,6 +449,7 @@ a.viewer-action-btn { text-decoration: none; }
 }
 
 .review-asset-modal {
+  position: relative;
   width: min(1180px, 96vw);
   max-height: 92dvh;
   display: flex;
@@ -480,6 +481,33 @@ a.viewer-action-btn { text-decoration: none; }
   color: var(--text-primary);
 }
 
+.review-asset-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.review-asset-settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.review-asset-settings-toggle:hover,
+.review-asset-settings-toggle.active {
+  border-color: var(--terracotta);
+  color: var(--terracotta);
+  background: rgba(196, 113, 74, 0.08);
+}
+
 .review-asset-head p {
   margin: 0;
   color: var(--text-secondary);
@@ -493,6 +521,14 @@ a.viewer-action-btn { text-decoration: none; }
   min-height: 0;
   overflow: auto;
   padding: 0;
+}
+
+.review-asset-body.controls-closed {
+  grid-template-columns: 1fr;
+}
+
+.review-asset-body.controls-closed .review-asset-controls {
+  display: none;
 }
 
 .review-asset-preview {
@@ -686,6 +722,95 @@ a.viewer-action-btn { text-decoration: none; }
 
   .review-suggestion-head .btn-secondary {
     justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .review-asset-overlay {
+    align-items: stretch;
+    justify-items: stretch;
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .review-asset-modal {
+    width: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .review-asset-head {
+    align-items: center;
+    padding: 10px 12px;
+  }
+
+  .review-asset-head h3 {
+    font-size: 17px;
+    line-height: 1.15;
+  }
+
+  .review-asset-head p {
+    display: none;
+  }
+
+  .review-asset-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .review-asset-preview {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .review-asset-controls {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 61px;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: min(42dvh, 280px);
+    overflow-y: auto;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+  }
+
+  .review-asset-controls label {
+    font-size: 11px;
+  }
+
+  .review-control-field,
+  .review-control-grid--crop,
+  .review-asset-controls > .btn-secondary,
+  .review-control-note {
+    grid-column: 1 / -1;
+  }
+
+  .review-control-grid {
+    gap: 8px;
+  }
+
+  .review-asset-body.controls-closed .review-asset-controls {
+    display: none;
+  }
+
+  .review-asset-footer {
+    padding: 10px 12px;
+  }
+
+  .review-asset-footer > button {
+    flex: 1 1 0;
   }
 }
 
