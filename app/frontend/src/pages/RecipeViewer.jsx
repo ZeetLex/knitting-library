@@ -347,7 +347,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   );
 
   return (
-    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
+    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
@@ -1059,6 +1059,8 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [assetMode, setAssetMode] = useState(null);
+  const [mobileSplit, setMobileSplit] = useState(50);
+  const reviewBodyRef = useRef(null);
 
   const pages = session?.pages || [];
   const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
@@ -1071,6 +1073,27 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
 
   const pageSrc = page ? reviewPageImageSrc(recipe, recipeId, page.page_key) : '';
   const resetToRaw = () => setDraft(cleanReviewDraftText(sourceText));
+
+  const goPreviousPage = () => setPageIndex(i => Math.max(0, i - 1));
+  const goNextPage = () => setPageIndex(i => Math.min(pages.length - 1, i + 1));
+
+  const updateMobileSplit = (clientY) => {
+    const body = reviewBodyRef.current;
+    if (!body) return;
+    const rect = body.getBoundingClientRect();
+    const raw = ((clientY - rect.top) / rect.height) * 100;
+    setMobileSplit(Math.min(70, Math.max(25, raw)));
+  };
+
+  const startMobileSplitDrag = (event) => {
+    updateMobileSplit(event.clientY);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveMobileSplitDrag = (event) => {
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
+    updateMobileSplit(event.clientY);
+  };
 
   const queueScan = async () => {
     setLoading(true); setError('');
@@ -1137,6 +1160,15 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
     }
   };
 
+  const approveCurrentPage = async () => {
+    if (!session?.id || !page?.id || saving) return;
+    if (pageIndex >= pages.length - 1) {
+      await complete();
+      return;
+    }
+    await savePage('accepted', true);
+  };
+
   const saveAsset = async (payload) => {
     if (!session?.id || !page?.id) return;
     setSaving(true); setError('');
@@ -1152,6 +1184,35 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    const reviewMode = !!session?.exists;
+    window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+      detail: { reviewMode, reviewSaving: saving },
+    }));
+  }, [session?.exists, saving]);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+        detail: { reviewMode: false, reviewSaving: false },
+      }));
+    };
+  }, []);
+
+  useEffect(() => {
+    const approve = () => approveCurrentPage();
+    const pauseReview = () => pause();
+    const cancelReview = () => cancel();
+    window.addEventListener('knitting-review-mobile-approve', approve);
+    window.addEventListener('knitting-review-mobile-pause', pauseReview);
+    window.addEventListener('knitting-review-mobile-cancel', cancelReview);
+    return () => {
+      window.removeEventListener('knitting-review-mobile-approve', approve);
+      window.removeEventListener('knitting-review-mobile-pause', pauseReview);
+      window.removeEventListener('knitting-review-mobile-cancel', cancelReview);
+    };
+  }, [session?.id, page?.id, draft, pageIndex, pages.length, saving]);
 
   if (loading) {
     return <div className="review-panel review-panel--empty"><div className="spinner" /><p>{t('loading')}</p></div>;
@@ -1193,7 +1254,22 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
       </div>
       {error && <p className="status-error">{error}</p>}
       {page && (
-        <div className="review-body">
+        <button
+          className="review-mobile-diagram-btn"
+          onClick={() => setAssetMode('diagram')}
+          disabled={!page || saving}
+          aria-label={t('insertDiagram')}
+        >
+          <Grid3X3 size={16} />
+          <span>{t('insertDiagram')}</span>
+        </button>
+      )}
+      {page && (
+        <div
+          className="review-body"
+          ref={reviewBodyRef}
+          style={{ '--review-mobile-image-size': `${mobileSplit}%` }}
+        >
           <div className="review-page-side">
             <div className="review-page-image-label">
               <span>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}</span>
@@ -1201,13 +1277,23 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
             </div>
             <img src={pageSrc} alt="" />
           </div>
+          <div
+            className="review-mobile-splitter"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('resize') || 'Resize panes'}
+            onPointerDown={startMobileSplitDrag}
+            onPointerMove={moveMobileSplitDrag}
+          >
+            <span />
+          </div>
           <div className="review-text-side">
             <div className="review-page-nav">
-              <button className="btn-secondary" onClick={() => setPageIndex(i => Math.max(0, i - 1))} disabled={pageIndex === 0 || saving}>
+              <button className="btn-secondary" onClick={goPreviousPage} disabled={pageIndex === 0 || saving}>
                 <ChevronLeft size={15} />{t('previous') || 'Previous'}
               </button>
               <span>{page.page_key}</span>
-              <button className="btn-secondary" onClick={() => setPageIndex(i => Math.min(pages.length - 1, i + 1))} disabled={pageIndex >= pages.length - 1 || saving}>
+              <button className="btn-secondary" onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving}>
                 {t('next') || 'Next'}<ChevronRight size={15} />
               </button>
             </div>
@@ -1246,6 +1332,20 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {page && (
+        <div className="review-mobile-page-nav" aria-label={t('pageNavigation') || 'Page navigation'}>
+          <button onClick={goPreviousPage} disabled={pageIndex === 0 || saving} aria-label={t('previous') || 'Previous'}>
+            <ChevronLeft size={18} />
+          </button>
+          <span>
+            {pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}
+            {page.page_key ? ` · ${page.page_key}` : ''}
+          </span>
+          <button onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving} aria-label={t('next') || 'Next'}>
+            <ChevronRight size={18} />
+          </button>
         </div>
       )}
       {assetMode && page && (

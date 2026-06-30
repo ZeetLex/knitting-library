@@ -351,6 +351,14 @@
   animation: recipeNavIn 0.22s ease both;
 }
 
+.mobile-nav--review {
+  grid-template-columns: 1fr 1fr 74px 1fr 1fr;
+}
+
+.mobile-nav--review .mobile-nav-collapse {
+  display: none;
+}
+
 @keyframes recipeNavIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -407,6 +415,7 @@
 
 .mobile-nav-item-main,
 .mobile-nav-add,
+.mobile-nav-review-approve,
 .mobile-nav-recipe-project {
   display: flex;
   align-items: center;
@@ -418,6 +427,7 @@
 
 .mobile-nav-item-main:focus-visible,
 .mobile-nav-add:focus-visible,
+.mobile-nav-review-approve:focus-visible,
 .mobile-nav-recipe-project:focus-visible,
 .mobile-nav-collapse:focus-visible,
 .mobile-nav-peek:focus-visible,
@@ -469,6 +479,10 @@
   cursor: default;
 }
 
+.mobile-nav-item-main--danger {
+  color: #c94b4b;
+}
+
 .mobile-nav-add {
   align-self: center;
   justify-self: center;
@@ -503,6 +517,42 @@
   transform: translateY(-11px);
   transition: transform 0.18s ease, background 0.18s ease;
   min-width: 0;
+}
+
+.mobile-nav-review-approve {
+  align-self: center;
+  justify-self: center;
+  flex-direction: column;
+  gap: 2px;
+  width: 70px;
+  height: 70px;
+  border-radius: 22px;
+  background: #3f9a57;
+  color: white;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 12px 30px rgba(63, 154, 87, 0.32);
+  transform: translateY(-13px);
+  transition: transform 0.18s ease, background 0.18s ease;
+  min-width: 0;
+}
+
+.mobile-nav-review-approve span {
+  max-width: 58px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.05;
+}
+
+.mobile-nav-review-approve:active {
+  transform: translateY(-10px) scale(0.96);
+}
+
+.mobile-nav-review-approve:disabled {
+  opacity: 0.58;
+  cursor: default;
 }
 
 .mobile-nav-recipe-project span {

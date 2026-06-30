@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CheckCircle2, CircleHelp, Home, Images, Import, Menu, PackagePlus, Play, Plus, Settings, Wrench, X,
+  CheckCircle2, CircleHelp, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
@@ -115,6 +115,8 @@ function MobileNav({
   recipeProjectStatus,
   recipeHasImages,
   recipeImagesVisible,
+  recipeReviewMode,
+  recipeReviewSaving,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
@@ -124,6 +126,9 @@ function MobileNav({
   onRecipeActions,
   onRecipeProjectAction,
   onRecipeImagesToggle,
+  onReviewApprove,
+  onReviewPause,
+  onReviewCancel,
 }) {
   const { t } = useApp();
   const isHome = activeView === 'home';
@@ -144,6 +149,63 @@ function MobileNav({
       >
         <ChevronUp size={24} />
       </button>
+    );
+  }
+
+  if (recipeMode && recipeReviewMode) {
+    return (
+      <nav className="mobile-nav mobile-nav--recipe mobile-nav--review" aria-label={t('reviewText') || 'Review'}>
+        <button
+          className="mobile-nav-collapse"
+          onClick={onToggleCollapsed}
+          aria-label={t('navHideNavigation')}
+        >
+          <ChevronDown size={18} />
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={() => onNavigate('home')}
+          aria-label={t('navHome')}
+        >
+          <Home size={21} />
+          <span>{t('navHome')}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main active"
+          onClick={onRecipeBack}
+          aria-label={t('backToLibrary')}
+        >
+          <ArrowLeft size={21} />
+          <span>{t('backToLibrary')}</span>
+        </button>
+        <button
+          className="mobile-nav-review-approve"
+          onClick={onReviewApprove}
+          disabled={recipeReviewSaving}
+          aria-label={t('acceptPage') || 'Approve page'}
+        >
+          <CheckCircle2 size={22} />
+          <span>{t('acceptPage') || 'Approve'}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={onReviewPause}
+          disabled={recipeReviewSaving}
+          aria-label={t('doLater') || 'Pause'}
+        >
+          <PauseCircle size={21} />
+          <span>{t('doLater') || 'Pause'}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main mobile-nav-item-main--danger"
+          onClick={onReviewCancel}
+          disabled={recipeReviewSaving}
+          aria-label={t('cancel') || 'Cancel'}
+        >
+          <X size={21} />
+          <span>{t('cancel') || 'Cancel'}</span>
+        </button>
+      </nav>
     );
   }
 
@@ -347,6 +409,8 @@ export default function AppShell({
     projectStatus: 'none',
     hasImages: false,
     imagesVisible: false,
+    reviewMode: false,
+    reviewSaving: false,
   });
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
     try {
@@ -444,6 +508,8 @@ export default function AppShell({
         recipeProjectStatus={recipeMobileState.projectStatus}
         recipeHasImages={recipeMobileState.hasImages}
         recipeImagesVisible={recipeMobileState.imagesVisible}
+        recipeReviewMode={recipeMobileState.reviewMode}
+        recipeReviewSaving={recipeMobileState.reviewSaving}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
@@ -453,6 +519,9 @@ export default function AppShell({
         onRecipeActions={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'actions' }))}
         onRecipeProjectAction={() => window.dispatchEvent(new CustomEvent('knitting-recipe-project-action'))}
         onRecipeImagesToggle={() => window.dispatchEvent(new CustomEvent('knitting-recipe-toggle-images'))}
+        onReviewApprove={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-approve'))}
+        onReviewPause={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-pause'))}
+        onReviewCancel={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-cancel'))}
       />
       <AddActionMenu
         open={addOpen}
