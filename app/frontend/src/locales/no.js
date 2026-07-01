@@ -213,6 +213,8 @@ const no = {
     backgroundSectionSub: "Velg bakgrunn for appen",
     backgroundFloral: "Blomster",
     backgroundFloralSub: "Responsiv blomsterbakgrunn for lys og mørk modus",
+    backgroundRealistic: "Realistisk",
+    backgroundRealisticSub: "Fotorealistisk tekstur for lys og mørk modus",
     backgroundDefault: "Standard",
     backgroundDefaultSub: "Bruk valgt temafarge",
     backgroundPlainWhite: "Enkel",

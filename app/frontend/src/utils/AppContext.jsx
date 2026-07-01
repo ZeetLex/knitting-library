@@ -26,6 +26,9 @@ function normalizeBackground(background) {
   if (!background || background === 'default' || background === 'floral-light' || background === 'floral-dark') {
     return 'floral';
   }
+  if (background === 'realistic-light' || background === 'realistic-dark') {
+    return 'realistic';
+  }
   return background;
 }
 

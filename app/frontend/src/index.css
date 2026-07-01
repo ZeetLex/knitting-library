@@ -433,6 +433,19 @@ body {
   --app-background-image: url('/backgrounds/floral-square-dark.png');
 }
 
+[data-background="realistic"] {
+  --app-background-color: #f3efe8;
+  --app-background-image: url('/backgrounds/realistic-square-light.png');
+  --app-background-size: cover;
+  --app-background-position: center;
+  --app-background-repeat: no-repeat;
+}
+
+[data-theme="dark"][data-background="realistic"] {
+  --app-background-color: #171310;
+  --app-background-image: url('/backgrounds/realistic-square-dark.png');
+}
+
 @media (min-aspect-ratio: 3 / 2) {
   [data-background="default"],
   [data-background="floral"] {
@@ -442,6 +455,14 @@ body {
   [data-theme="dark"][data-background="default"],
   [data-theme="dark"][data-background="floral"] {
     --app-background-image: url('/backgrounds/floral-wide-dark.png');
+  }
+
+  [data-background="realistic"] {
+    --app-background-image: url('/backgrounds/realistic-wide-light.png');
+  }
+
+  [data-theme="dark"][data-background="realistic"] {
+    --app-background-image: url('/backgrounds/realistic-wide-dark.png');
   }
 }
 
@@ -454,6 +475,14 @@ body {
   [data-theme="dark"][data-background="default"],
   [data-theme="dark"][data-background="floral"] {
     --app-background-image: url('/backgrounds/floral-portrait-dark.png');
+  }
+
+  [data-background="realistic"] {
+    --app-background-image: url('/backgrounds/realistic-portrait-light.png');
+  }
+
+  [data-theme="dark"][data-background="realistic"] {
+    --app-background-image: url('/backgrounds/realistic-portrait-dark.png');
   }
 }
 

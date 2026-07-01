@@ -213,6 +213,8 @@ const hu = {
     backgroundSectionSub: "Válassz alkalmazáshátteret",
     backgroundFloral: "Virágos",
     backgroundFloralSub: "Reszponzív virágok világos és sötét módhoz",
+    backgroundRealistic: "Valósághű",
+    backgroundRealisticSub: "Fotószerű textúra világos és sötét módhoz",
     backgroundDefault: "Alapértelmezett",
     backgroundDefaultSub: "A kiválasztott téma színe",
     backgroundPlainWhite: "Egyszerű",
