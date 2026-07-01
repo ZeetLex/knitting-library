@@ -2013,14 +2013,17 @@ function MarkdownView({ content }) {
       code.lines.push(line);
       return;
     }
-    if (/^<!--.*-->$/.test(line.trim())) return;
     if (line.trim() === '---') { elements.push(<hr key={i} />); return; }
     if (!line.trim()) { elements.push(<br key={i} />); return; }
     if (line.startsWith('### ')) { elements.push(<h4 key={i}>{line.slice(4)}</h4>); return; }
     if (line.startsWith('## ')) { elements.push(<h3 key={i}>{line.slice(3)}</h3>); return; }
     if (line.startsWith('# ')) { elements.push(<h2 key={i}>{line.slice(2)}</h2>); return; }
     const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-    if (img) { elements.push(<img key={i} className="markdown-image" src={img[2]} alt={img[1]} />); return; }
+    if (img) {
+      const src = safeMarkdownImageSrc(img[2]);
+      if (src) elements.push(<img key={i} className="markdown-image" src={src} alt={img[1]} />);
+      return;
+    }
     if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>); return; }
     if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{line.trim().slice(1, -1)}</p>); return; }
     elements.push(<p key={i}>{line}</p>);
@@ -2033,6 +2036,18 @@ function MarkdownView({ content }) {
       {elements}
     </div>
   );
+}
+
+function safeMarkdownImageSrc(rawSrc) {
+  if (!rawSrc || /[\u0000-\u001f\u007f\s]/.test(rawSrc)) return '';
+  try {
+    const parsed = new URL(rawSrc, window.location.origin);
+    if (parsed.origin !== window.location.origin) return '';
+    if (!parsed.pathname.startsWith('/api/recipes/')) return '';
+    return parsed.pathname + parsed.search + parsed.hash;
+  } catch (_) {
+    return '';
+  }
 }
 
 function formatAuditNumber(value) {

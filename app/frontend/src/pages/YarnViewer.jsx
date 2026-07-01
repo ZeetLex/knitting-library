@@ -31,6 +31,15 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
   const [colourSaving, setColourSaving]     = useState(false);
   const [colourError, setColourError]       = useState('');
   const fileInputRef = useRef(null);
+  const replaceColourFile = (file) => {
+    if (!file?.type?.startsWith('image/')) {
+      setColourError(t('invalidImageFile'));
+      return;
+    }
+    setNewColourFile(file);
+    setNewColourPreview(file.name || 'image');
+    setColourError('');
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -47,8 +56,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
   const handleFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setNewColourFile(f);
-    setNewColourPreview(URL.createObjectURL(f));
+    replaceColourFile(f);
   };
 
   // Clipboard paste — active while the add-colour form is open
@@ -61,8 +69,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
         if (item.type.startsWith('image/')) {
           const file = item.getAsFile();
           if (file) {
-            setNewColourFile(file);
-            setNewColourPreview(URL.createObjectURL(file));
+            replaceColourFile(file);
             break;
           }
         }
@@ -197,7 +204,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
                 />
                 <div className="yv-colour-photo-drop" onClick={() => fileInputRef.current?.click()}>
                   {newColourPreview
-                    ? <img src={newColourPreview} alt="preview" className="yv-colour-photo-preview" />
+                    ? <span className="yv-colour-photo-hint">{t('colourPhoto')} selected</span>
                     : <span className="yv-colour-photo-hint">📷 {t('colourPhoto')} · paste</span>
                   }
                 </div>

@@ -106,26 +106,11 @@ def login(data: dict, request: Request):
         conn.close()
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
-    stored = user["password_hash"]
-
-    # Migration path: if this user still has the old SHA-256 hash, verify with
-    # the legacy scheme and then silently upgrade to bcrypt.
-    if _is_legacy_hash(stored):
-        if _legacy_hash(password) != stored:
-            _record_failed_attempt(ip)
-            _auth_fail(request, reason="bad_password", username=username)
-            conn.close()
-            raise HTTPException(status_code=401, detail="Incorrect username or password")
-        # Upgrade hash in-place
-        new_hash = _hash_password(password)
-        conn.execute("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user["id"]))
-        conn.commit()
-    else:
-        if not _verify_password(password, stored):
-            _record_failed_attempt(ip)
-            _auth_fail(request, reason="bad_password", username=username)
-            conn.close()
-            raise HTTPException(status_code=401, detail="Incorrect username or password")
+    if not _verify_password(password, user["password_hash"]):
+        _record_failed_attempt(ip)
+        _auth_fail(request, reason="bad_password", username=username)
+        conn.close()
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     _clear_attempts(ip)
 
@@ -253,9 +238,7 @@ def change_password(data: dict, current_user: dict = Depends(get_current_user)):
     conn = get_db()
     row  = conn.execute("SELECT password_hash FROM users WHERE id=?", (current_user["id"],)).fetchone()
     stored = row["password_hash"] if row else ""
-    # Support both legacy and bcrypt hashes during migration window
-    ok = (_legacy_hash(old_pw) == stored) if _is_legacy_hash(stored) else _verify_password(old_pw, stored)
-    if not ok:
+    if not _verify_password(old_pw, stored):
         conn.close()
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash_password(new_pw), current_user["id"]))
@@ -353,8 +336,7 @@ def disable_2fa(data: dict, current_user: dict = Depends(get_current_user)):
     conn = get_db()
     row  = conn.execute("SELECT password_hash FROM users WHERE id=?", (current_user["id"],)).fetchone()
     stored = row["password_hash"] if row else ""
-    ok = (_legacy_hash(password) == stored) if _is_legacy_hash(stored) else _verify_password(password, stored)
-    if not ok:
+    if not _verify_password(password, stored):
         conn.close()
         raise HTTPException(status_code=401, detail="Incorrect password")
     conn.execute("UPDATE users SET totp_secret=NULL, totp_enabled=0 WHERE id=?", (current_user["id"],))

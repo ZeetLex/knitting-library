@@ -120,7 +120,7 @@ def _parse_trusted_proxies() -> list[ipaddress._BaseNetwork]:
         try:
             networks.append(ipaddress.ip_network(item, strict=False))
         except ValueError:
-            print(f"Ignoring invalid TRUSTED_PROXIES entry: {item}")
+            print("Ignoring invalid TRUSTED_PROXIES entry")
     return networks
 
 _TRUSTED_PROXY_NETS = _parse_trusted_proxies()
@@ -341,15 +341,6 @@ async def csrf_cookie_guard(request: Request, call_next):
         if not cookie_token or not secrets.compare_digest(cookie_token, header_token):
             return JSONResponse({"detail": "CSRF token missing or invalid"}, status_code=403)
     return await call_next(request)
-
-
-def _is_legacy_hash(stored: str) -> bool:
-    """SHA-256 hex hash from before bcrypt migration (64 hex chars)."""
-    return bool(re.fullmatch(r"[0-9a-f]{64}", stored))
-
-def _legacy_hash(password: str) -> str:
-    """Legacy SHA-256 hash — used only to verify and then migrate old accounts."""
-    return hashlib.sha256(f"knitting_library_salt_v1{password}".encode()).hexdigest()
 
 
 def _user_dict(u: dict) -> dict:
