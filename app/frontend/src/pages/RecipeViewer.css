@@ -1034,8 +1034,6 @@ a.viewer-action-btn { text-decoration: none; }
 @media (min-width: 641px) and (max-width: 768px) {
   .sidebar-content { padding: 18px 20px 80px; }
 }
-
-
 .viewer-title {
   font-family: 'Playfair Display', serif;
   font-size: 18px;

@@ -479,24 +479,6 @@ async def test_ai_settings(data: dict = Body(default={}), admin: dict = Depends(
         raise HTTPException(status_code=502, detail=f"AI test failed: {e}")
     return {"message": "AI test succeeded", "response": text}
 
-# ── Statistics ───────────────────────────────────────────────────────────────────
-
-
-def reset_ai_stats(data: dict = Body(default={}), admin: dict = Depends(require_admin)):
-    scope = _normalise_ai_stats_range(data.get("range", "all"))
-    now = datetime.utcnow().isoformat()
-    conn = get_db()
-    conn.execute("""
-        INSERT INTO ai_stats_resets (scope, reset_at, reset_by)
-        VALUES (?, ?, ?)
-        ON CONFLICT(scope) DO UPDATE SET reset_at=excluded.reset_at, reset_by=excluded.reset_by
-    """, (scope, now, admin["username"]))
-    conn.commit()
-    ai = _ai_usage_stats(conn, scope)
-    conn.close()
-    return {"message": "AI stats reset", "range": scope, "reset_at": now, "ai": ai}
-
-
 # ── Admin: 2FA management ─────────────────────────────────────────────────────
 
 def get_2fa_status(admin: dict = Depends(require_admin)):

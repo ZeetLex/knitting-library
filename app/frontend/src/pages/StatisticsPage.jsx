@@ -77,7 +77,7 @@ function BreakdownBar({ label, value, max, tone = 'accent' }) {
 }
 
 export default function StatisticsPage() {
-  const { t, language, currencySymbol } = useApp();
+  const { t, user, language, currencySymbol } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [aiRange, setAiRange] = useState('all');
@@ -261,16 +261,18 @@ export default function StatisticsPage() {
                   <h2>{t('statsAITextGenerated')}</h2>
                 </div>
                 <div className="stats-ai-actions">
-                  <button
-                    className="stats-icon-btn"
-                    type="button"
-                    onClick={handleResetAIStats}
-                    disabled={aiResetting}
-                    title={t('statsResetAI')}
-                    aria-label={t('statsResetAI')}
-                  >
-                    <RotateCcw size={17} />
-                  </button>
+                  {user?.is_admin && (
+                    <button
+                      className="stats-icon-btn"
+                      type="button"
+                      onClick={handleResetAIStats}
+                      disabled={aiResetting}
+                      title={t('statsResetAI')}
+                      aria-label={t('statsResetAI')}
+                    >
+                      <RotateCcw size={17} />
+                    </button>
+                  )}
                   <Bot size={23} />
                 </div>
               </div>
