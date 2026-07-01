@@ -231,7 +231,7 @@ def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Invalid currency")
     if colour_theme not in ("terracotta", "rose", "lavender", "sage", "berry", "ocean", "willow"):
         raise HTTPException(status_code=400, detail="Invalid colour theme")
-    if background not in ("floral", "default", "plain-white", "cotton", "soft-paper", "warm-linen"):
+    if background not in ("floral", "default", "realistic", "plain-white", "cotton", "soft-paper", "warm-linen"):
         raise HTTPException(status_code=400, detail="Invalid background")
     conn = get_db()
     conn.execute(

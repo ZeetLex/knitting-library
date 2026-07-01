@@ -213,6 +213,8 @@ const en = {
     backgroundSectionSub: "Choose the app background",
     backgroundFloral: "Floral",
     backgroundFloralSub: "Responsive flowers for light and dark mode",
+    backgroundRealistic: "Realistic",
+    backgroundRealisticSub: "Photo-style texture for light and dark mode",
     backgroundDefault: "Default",
     backgroundDefaultSub: "Use the selected theme colour",
     backgroundPlainWhite: "Plain",

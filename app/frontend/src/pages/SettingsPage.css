@@ -1149,6 +1149,16 @@
   background: #1c1410 url('/backgrounds/floral-square-dark.png') center / cover no-repeat;
 }
 
+.background-swatch--realistic .background-swatch-preview,
+.appearance-background-mini.background-swatch--realistic {
+  background: #f3efe8 url('/backgrounds/realistic-square-light.png') center / cover no-repeat;
+}
+
+[data-theme="dark"] .background-swatch--realistic .background-swatch-preview,
+[data-theme="dark"] .appearance-background-mini.background-swatch--realistic {
+  background: #171310 url('/backgrounds/realistic-square-dark.png') center / cover no-repeat;
+}
+
 .background-swatch--plain-white .background-swatch-preview,
 .appearance-background-mini.background-swatch--plain-white {
   background: #fff;
