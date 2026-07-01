@@ -278,6 +278,14 @@
   gap: 6px;
 }
 
+.filter-empty-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--text-light);
+  font-size: 13px;
+}
+
 .pill {
   height: 32px;
   padding: 0 12px;

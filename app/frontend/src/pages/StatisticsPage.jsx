@@ -8,18 +8,22 @@ import {
   Activity,
   Archive,
   BookOpen,
+  Bot,
   CheckCircle2,
   CircleDot,
+  Clock3,
+  FileText,
   FolderKanban,
   Package,
   Palette,
+  RotateCcw,
   Sparkles,
   Tags,
   Users,
   Wrench,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchStats } from '../utils/api';
+import { fetchStats, resetAIStats } from '../utils/api';
 import { getLanguageLocale } from '../utils/translations';
 import './StatisticsPage.css';
 
@@ -73,21 +77,29 @@ function BreakdownBar({ label, value, max, tone = 'accent' }) {
 }
 
 export default function StatisticsPage() {
-  const { t, language, currencySymbol } = useApp();
+  const { t, user, language, currencySymbol } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiRange, setAiRange] = useState('all');
+  const [aiResetting, setAiResetting] = useState(false);
   const locale = getLanguageLocale(language);
+  const aiRanges = useMemo(() => ([
+    { key: '24h', label: t('statsRange24h') || '24h' },
+    { key: '7d', label: t('statsRange7d') || '7 days' },
+    { key: '30d', label: t('statsRange30d') || '30 days' },
+    { key: 'all', label: t('statsRangeAll') || 'All time' },
+  ]), [t]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setStats(await fetchStats());
+      setStats(await fetchStats(aiRange));
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [aiRange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -118,6 +130,28 @@ export default function StatisticsPage() {
   const totalSessions = stats?.total_sessions || 0;
   const activeShare = totalSessions ? Math.round((stats.active_projects / totalSessions) * 100) : 0;
   const finishedShare = totalSessions ? Math.round((stats.finished_projects / totalSessions) * 100) : 0;
+  const ai = stats?.ai || {};
+  const fmtDuration = useCallback((seconds) => {
+    const total = Math.round(Number(seconds) || 0);
+    if (!total) return '0s';
+    if (total < 60) return `${total}s`;
+    return `${Math.floor(total / 60)}m ${total % 60}s`;
+  }, []);
+  const handleResetAIStats = useCallback(async () => {
+    const label = aiRanges.find(item => item.key === aiRange)?.label || aiRange;
+    const message = (t('statsResetAIConfirm') || 'Reset AI/OCR stats for {RANGE}?').replace('{RANGE}', label);
+    if (!window.confirm(message)) return;
+    setAiResetting(true);
+    try {
+      await resetAIStats(aiRange);
+      await load();
+    } catch (e) {
+      console.error('Failed to reset AI stats:', e);
+      window.alert(e.message || t('statsResetAIError') || 'Failed to reset AI stats');
+    } finally {
+      setAiResetting(false);
+    }
+  }, [aiRange, aiRanges, load, t]);
 
   return (
     <div className="stats-page">
@@ -220,6 +254,80 @@ export default function StatisticsPage() {
               </div>
             </article>
 
+            <article className="stats-panel stats-panel--ai">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsAI')}</span>
+                  <h2>{t('statsAITextGenerated')}</h2>
+                </div>
+                <div className="stats-ai-actions">
+                  {user?.is_admin && (
+                    <button
+                      className="stats-icon-btn"
+                      type="button"
+                      onClick={handleResetAIStats}
+                      disabled={aiResetting}
+                      title={t('statsResetAI')}
+                      aria-label={t('statsResetAI')}
+                    >
+                      <RotateCcw size={17} />
+                    </button>
+                  )}
+                  <Bot size={23} />
+                </div>
+              </div>
+              <div className="stats-range-tabs" role="tablist" aria-label={t('statsAIRange')}>
+                {aiRanges.map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={aiRange === item.key}
+                    className={aiRange === item.key ? 'active' : ''}
+                    onClick={() => setAiRange(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {(ai.total_jobs || 0) > 0 ? (
+                <>
+                  <div className="stats-mini-grid">
+                    <div>
+                      <Sparkles size={17} />
+                      <strong>{fmtNum(ai.finished_jobs)}</strong>
+                      <span>{t('aiJob_finished')}</span>
+                    </div>
+                    <div>
+                      <FileText size={17} />
+                      <strong>{fmtNum(ai.generated_words)}</strong>
+                      <span>{t('statsGeneratedWords')}</span>
+                    </div>
+                    <div>
+                      <Tags size={17} />
+                      <strong>{fmtNum(ai.total_tokens)}</strong>
+                      <span>{t('statsTokenUse')}</span>
+                    </div>
+                    <div>
+                      <Clock3 size={17} />
+                      <strong>{fmtDuration(ai.avg_duration_seconds)}</strong>
+                      <span>{t('statsAverageTime')}</span>
+                    </div>
+                  </div>
+                  <div className="stats-ai-detail">
+                    <span>{fmtNum(ai.prompt_tokens)} / {fmtNum(ai.completion_tokens)} {t('statsPromptCompletion')}</span>
+                    <span>{fmtNum(ai.pages_processed)} {t('statsPagesProcessed')}</span>
+                    <span>{ai.success_rate || 0}% {t('statsSuccessRate')}</span>
+                    {(ai.top_model || ai.top_provider) && (
+                      <span>{t('statsTopModel')}: <strong>{[ai.top_provider, ai.top_model].filter(Boolean).join(' · ')}</strong></span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="stats-note">{t('statsNoAIYet')}</p>
+              )}
+            </article>
+
             <article className="stats-panel">
               <div className="stats-panel-heading">
                 <div>
@@ -301,6 +409,31 @@ export default function StatisticsPage() {
                 <Users size={23} />
               </div>
               <p className="stats-note">{t('statsSubUsers')}</p>
+            </article>
+
+            <article className="stats-panel stats-panel--compact">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsPeople')}</span>
+                  <h2>{t('statsMostActiveUsers')}</h2>
+                </div>
+                <Activity size={23} />
+              </div>
+              {stats.most_active_users?.length ? (
+                <div className="stats-user-list">
+                  {stats.most_active_users.map((item, index) => (
+                    <div className="stats-user-row" key={`${item.user_id || item.username}-${index}`}>
+                      <strong>{item.username || t('unknownUser')}</strong>
+                      <span>{fmtNum(item.action_count)} {t('statsUserActions')}</span>
+                      <small>
+                        {fmtNum(item.projects_started)} {t('statsProjectsStarted')} · {fmtNum(item.projects_finished)} {t('statsProjectsFinished')} · {fmtNum(item.recipes_added)} {t('statsRecipesAdded')}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="stats-note">{t('statsNoUserActivity')}</p>
+              )}
             </article>
           </section>
         </>

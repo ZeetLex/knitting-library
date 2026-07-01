@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CircleHelp, Home, Import, Info, Menu, PackagePlus, Plus, Settings, Wrench, X,
+  CheckCircle2, CircleHelp, Github, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import WorkQueueDock from './WorkQueueDock';
 import './AppShell.css';
 
 function BrandMark({ compact = false }) {
@@ -18,7 +19,7 @@ function BrandMark({ compact = false }) {
   );
 }
 
-function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, onAddYarn, onAddTool }) {
+function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAddTool }) {
   const { t } = useApp();
   const ref = useRef(null);
 
@@ -34,8 +35,7 @@ function AddActionMenu({ open, variant, onClose, onAddRecipe, onImportFolder, on
   if (!open) return null;
 
   const actions = [
-    { icon: <BookOpen size={18} />, label: t('addRecipe'), sub: t('pdfOrImages'), onClick: onAddRecipe },
-    { icon: <Import size={18} />, label: t('importFolder'), sub: t('workThroughFolder'), onClick: onImportFolder },
+    { icon: <Import size={18} />, label: t('importRecipe') || t('importWizardTitle'), sub: t('importRecipeHint') || t('workThroughFolder'), onClick: onImportRecipe },
     { icon: <PackagePlus size={18} />, label: t('addYarn'), sub: t('navAddYarnHint'), onClick: onAddYarn },
     { icon: <Wrench size={18} />, label: t('addToolToInventory'), sub: t('navAddToolHint'), onClick: onAddTool },
   ];
@@ -108,21 +108,62 @@ function AppMenu({ open, onClose, onNavigate }) {
   );
 }
 
+function LatestReleaseCard({ release, collapsed = false }) {
+  const { t } = useApp();
+  if (!release) return null;
+  const title = release.title || release.name || release.tag_name || t('githubReleaseNotes');
+  const url = release.html_url || 'https://github.com/ZeetLex/knitting-library/releases';
+
+  if (collapsed) {
+    return (
+      <a
+        className="latest-release-card latest-release-card--collapsed"
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        title={`${t('latestRelease')}: ${title}`}
+      >
+        <Github size={19} />
+      </a>
+    );
+  }
+
+  return (
+    <a className="latest-release-card" href={url} target="_blank" rel="noreferrer">
+      <span className="latest-release-icon"><Github size={16} /></span>
+      <span className="latest-release-copy">
+        <span className="latest-release-label">{release.prerelease ? t('releasePrerelease') : t('latestRelease')}</span>
+        <strong>{title}</strong>
+      </span>
+    </a>
+  );
+}
+
 function MobileNav({
   activeView,
   collapsed,
   recipeMode,
+  recipeProjectStatus,
+  recipeHasImages,
+  recipeImagesVisible,
+  recipeReviewMode,
+  recipeReviewSaving,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
   onInventoryClick,
   onMenuClick,
   onRecipeBack,
-  onRecipeInfo,
   onRecipeActions,
+  onRecipeProjectAction,
+  onRecipeImagesToggle,
+  onReviewApprove,
+  onReviewPause,
+  onReviewCancel,
 }) {
   const { t } = useApp();
   const isHome = activeView === 'home';
+  const projectStarted = recipeProjectStatus === 'active' || recipeProjectStatus === 'finished';
 
   const items = [
     { key: 'home', icon: <Home size={21} />, label: t('navHome') },
@@ -139,6 +180,63 @@ function MobileNav({
       >
         <ChevronUp size={24} />
       </button>
+    );
+  }
+
+  if (recipeMode && recipeReviewMode) {
+    return (
+      <nav className="mobile-nav mobile-nav--recipe mobile-nav--review" aria-label={t('reviewText') || 'Review'}>
+        <button
+          className="mobile-nav-collapse"
+          onClick={onToggleCollapsed}
+          aria-label={t('navHideNavigation')}
+        >
+          <ChevronDown size={18} />
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={() => onNavigate('home')}
+          aria-label={t('navHome')}
+        >
+          <Home size={21} />
+          <span>{t('navHome')}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main active"
+          onClick={onRecipeBack}
+          aria-label={t('backToLibrary')}
+        >
+          <ArrowLeft size={21} />
+          <span>{t('backToLibrary')}</span>
+        </button>
+        <button
+          className="mobile-nav-review-approve"
+          onClick={onReviewApprove}
+          disabled={recipeReviewSaving}
+          aria-label={t('acceptPage') || 'Approve page'}
+        >
+          <CheckCircle2 size={22} />
+          <span>{t('acceptPage') || 'Approve'}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main"
+          onClick={onReviewPause}
+          disabled={recipeReviewSaving}
+          aria-label={t('doLater') || 'Pause'}
+        >
+          <PauseCircle size={21} />
+          <span>{t('doLater') || 'Pause'}</span>
+        </button>
+        <button
+          className="mobile-nav-item-main mobile-nav-item-main--danger"
+          onClick={onReviewCancel}
+          disabled={recipeReviewSaving}
+          aria-label={t('cancel') || 'Cancel'}
+        >
+          <X size={21} />
+          <span>{t('cancel') || 'Cancel'}</span>
+        </button>
+      </nav>
     );
   }
 
@@ -169,12 +267,22 @@ function MobileNav({
           <span>{t('backToLibrary')}</span>
         </button>
         <button
-          className="mobile-nav-item-main"
-          onClick={onRecipeInfo}
-          aria-label={t('mobileTabInfo') || 'Info'}
+          className={`mobile-nav-recipe-project ${projectStarted ? 'mobile-nav-recipe-project--status' : ''}`}
+          onClick={onRecipeProjectAction}
+          aria-label={projectStarted ? (t('status') || 'Status') : t('startProject')}
         >
-          <Info size={21} />
-          <span>{t('mobileTabInfo') || 'Info'}</span>
+          {projectStarted ? <CheckCircle2 size={21} /> : <Play size={21} />}
+          <span>{projectStarted ? (t('status') || 'Status') : (t('start') || t('startProject'))}</span>
+        </button>
+        <button
+          className={`mobile-nav-item-main ${recipeImagesVisible ? 'active' : ''}`}
+          onClick={onRecipeImagesToggle}
+          disabled={!recipeHasImages}
+          aria-label={recipeImagesVisible ? (t('hideImages') || 'Hide images') : (t('showImages') || t('mobileTabImages') || 'Images')}
+          aria-pressed={recipeImagesVisible}
+        >
+          <Images size={21} />
+          <span>{t('mobileTabImages') || 'Images'}</span>
         </button>
         <button
           className="mobile-nav-item-main"
@@ -233,7 +341,7 @@ function MobileNav({
   );
 }
 
-function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick }) {
+function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
   const { t } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
@@ -262,6 +370,7 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </div>
+      <LatestReleaseCard release={latestRelease} collapsed={collapsed} />
       <button className="desktop-add-btn" onClick={onAddClick} title={collapsed ? t('navAddSomething') : undefined}>
         <Plus size={18} />
         <span>{t('navAddSomething')}</span>
@@ -281,6 +390,16 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
           </button>
         ))}
       </div>
+      {!collapsed && (
+        <WorkQueueDock
+          queue={queue}
+          variant="desktop"
+          onOpenImport={onOpenImport}
+          onOpenRecipe={onOpenRecipe}
+          onCancelAI={onCancelAI}
+          onDismissAI={onDismissAI}
+        />
+      )}
       <div className="desktop-nav-group desktop-nav-group--secondary">
         {secondary.map(item => (
           <button
@@ -300,18 +419,32 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
 
 export default function AppShell({
   activeView,
+  latestRelease,
   recipeMode = false,
   onNavigate,
   onAddRecipe,
   onImportFolder,
+  onImportRecipe,
   onAddYarn,
   onAddTool,
   onRecipeBack,
+  queue,
+  onOpenImport,
+  onOpenRecipe,
+  onCancelAI,
+  onDismissAI,
   children,
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavCollapsed, setMobileNavCollapsed] = useState(false);
+  const [recipeMobileState, setRecipeMobileState] = useState({
+    projectStatus: 'none',
+    hasImages: false,
+    imagesVisible: false,
+    reviewMode: false,
+    reviewSaving: false,
+  });
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('knitting_desktop_sidebar_collapsed') === 'true';
@@ -321,10 +454,42 @@ export default function AppShell({
   });
   const isHome = activeView === 'home';
 
+  const handleContentWheel = useCallback((event) => {
+    if (window.matchMedia('(max-width: 899px)').matches) return;
+    if (event.defaultPrevented || event.ctrlKey) return;
+
+    const direction = Math.sign(event.deltaY);
+    let node = event.target instanceof HTMLElement ? event.target : event.target?.parentElement;
+    while (node && node !== event.currentTarget) {
+      const style = window.getComputedStyle(node);
+      const canScrollY = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1;
+      if (canScrollY) {
+        const atTop = node.scrollTop <= 0;
+        const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+        if ((direction < 0 && !atTop) || (direction > 0 && !atBottom)) return;
+      }
+      node = node.parentElement;
+    }
+
+    const maxScroll = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - window.innerHeight;
+    if (maxScroll <= 0) return;
+    const before = window.scrollY;
+    window.scrollBy({ top: event.deltaY, left: event.deltaX, behavior: 'auto' });
+    if (window.scrollY !== before) event.preventDefault();
+  }, []);
+
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
     window.addEventListener('knitting-open-app-menu', openMenu);
     return () => window.removeEventListener('knitting-open-app-menu', openMenu);
+  }, []);
+
+  useEffect(() => {
+    const updateRecipeMobileState = (event) => {
+      setRecipeMobileState(state => ({ ...state, ...(event.detail || {}) }));
+    };
+    window.addEventListener('knitting-recipe-mobile-state', updateRecipeMobileState);
+    return () => window.removeEventListener('knitting-recipe-mobile-state', updateRecipeMobileState);
   }, []);
 
   useEffect(() => {
@@ -356,33 +521,47 @@ export default function AppShell({
       <DesktopSidebar
         activeView={activeView}
         collapsed={desktopSidebarCollapsed}
+        latestRelease={latestRelease}
         onToggleCollapsed={toggleDesktopSidebar}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
+        queue={queue}
+        onOpenImport={onOpenImport}
+        onOpenRecipe={onOpenRecipe}
+        onCancelAI={onCancelAI}
+        onDismissAI={onDismissAI}
       />
-      <main className="app-content">
+      <main className="app-content" onWheel={handleContentWheel}>
         {children}
       </main>
       <MobileNav
         activeView={activeView}
         collapsed={mobileNavCollapsed}
         recipeMode={recipeMode}
+        recipeProjectStatus={recipeMobileState.projectStatus}
+        recipeHasImages={recipeMobileState.hasImages}
+        recipeImagesVisible={recipeMobileState.imagesVisible}
+        recipeReviewMode={recipeMobileState.reviewMode}
+        recipeReviewSaving={recipeMobileState.reviewSaving}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
         onMenuClick={() => setMenuOpen(true)}
         onRecipeBack={onRecipeBack}
-        onRecipeInfo={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'info' }))}
         onRecipeActions={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'actions' }))}
+        onRecipeProjectAction={() => window.dispatchEvent(new CustomEvent('knitting-recipe-project-action'))}
+        onRecipeImagesToggle={() => window.dispatchEvent(new CustomEvent('knitting-recipe-toggle-images'))}
+        onReviewApprove={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-approve'))}
+        onReviewPause={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-pause'))}
+        onReviewCancel={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-cancel'))}
       />
       <AddActionMenu
         open={addOpen}
         variant="responsive"
         onClose={() => setAddOpen(false)}
-        onAddRecipe={onAddRecipe}
-        onImportFolder={onImportFolder}
+        onImportRecipe={onImportRecipe || onImportFolder || onAddRecipe}
         onAddYarn={onAddYarn}
         onAddTool={onAddTool}
       />

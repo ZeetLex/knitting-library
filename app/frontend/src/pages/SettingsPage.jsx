@@ -9,7 +9,7 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign, Palette,
+  Pencil, AtSign, Palette, Bot, ExternalLink, Github,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import { LANGUAGE_OPTIONS } from '../utils/translations';
@@ -17,8 +17,8 @@ import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
   fetch2FAStatus, adminReset2FA, setup2FA, verify2FASetup, disable2FA,
-  createAnnouncement, listAnnouncements,
-  updateUserEmail, sendWelcomeMail,
+  listReleases, syncReleases,
+  updateUserEmail, sendWelcomeMail, fetchAISettings, saveAISettings, fetchAIModels, testAISettings,
 } from '../utils/api';
 import './SettingsPage.css';
 
@@ -35,6 +35,7 @@ export default function SettingsPage({ onBack }) {
       { id: 'users',         icon: <Users size={18} />,       label: t('userManagement'), sub: t('settingsUsersSub'), adminDivider: true },
       { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs'), sub: t('settingsLogsSub') },
       { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail'), sub: t('settingsMailSub') },
+      { id: 'ai',            icon: <Bot size={18} />,         label: t('adminAI'), sub: t('settingsAISub') },
       { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA'), sub: t('settingsTwoFASub') },
       { id: 'announcements', icon: <Megaphone size={18} />,   label: t('updateNotes'), sub: t('settingsAnnouncementsSub') },
     ] : []),
@@ -108,6 +109,7 @@ export default function SettingsPage({ onBack }) {
           {user?.is_admin && activeSection === 'users'         && <UsersSection />}
           {user?.is_admin && activeSection === 'logs'          && <LogsSection />}
           {user?.is_admin && activeSection === 'mail'          && <MailSection />}
+          {user?.is_admin && activeSection === 'ai'            && <AISection />}
           {user?.is_admin && activeSection === 'twofa'         && <TwoFASection />}
           {user?.is_admin && activeSection === 'announcements' && <AnnouncementsSection />}
         </div>
@@ -640,7 +642,7 @@ function LogsSection() {
   const getLineClass = (line) => {
     const l = line.toLowerCase();
     if (l.includes('auth_fail') || l.includes(' 4') || l.includes(' 5') || l.includes('error') || l.includes('failed') || l.includes('exception')) return 'log-line--error';
-    if (l.includes('auth_ok') || l.includes('200') || l.includes('started') || l.includes('success')) return 'log-line--ok';
+    if (l.includes('auth_ok') || l.includes('user_action') || l.includes('200') || l.includes('started') || l.includes('success')) return 'log-line--ok';
     if (l.includes('warn') || l.includes('warning') || l.includes('429')) return 'log-line--warn';
     return '';
   };
@@ -660,9 +662,9 @@ function LogsSection() {
 
       {/* Source tabs */}
       <div className="log-source-tabs">
-        {['all', 'uvicorn', 'supervisord', 'auth'].map(s => (
+        {['all', 'uvicorn', 'supervisord', 'auth', 'ai', 'user_actions'].map(s => (
           <button key={s} className={`log-tab ${source === s ? 'active' : ''}`} onClick={() => setSource(s)}>
-            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : '🔐 Auth'}
+            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : s === 'auth' ? '🔐 Auth' : s === 'ai' ? '✨ AI' : `☑ ${t('userActions')}`}
           </button>
         ))}
       </div>
@@ -830,22 +832,6 @@ function MailSection() {
           </button>
         </div>
 
-        {/* ── Announcement emails ── */}
-        <div className="settings-divider" />
-        <h4 className="section-subheading">{t('notifications')}</h4>
-
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <p className="settings-row-label">{t('emailUpdateNotes')}</p>
-            <p className="settings-row-sub">{t('emailUpdateNotesSub')}</p>
-          </div>
-          <button
-            className={`theme-toggle ${cfg.mail_announcements_enabled === 'true' ? 'dark' : ''}`}
-            onClick={() => f('mail_announcements_enabled', cfg.mail_announcements_enabled === 'true' ? 'false' : 'true')}
-          >
-            <span className="theme-toggle-knob" />
-          </button>
-        </div>
       </div>
 
       {templateModal === 'forgot' && (
@@ -876,6 +862,320 @@ function MailSection() {
           onSave={handleTemplateSave}
         />
       )}
+    </div>
+  );
+}
+
+/* ─── AI Text Recognition Section (Admin) ─────────────────────────────────── */
+function AISection() {
+  const { t, language } = useApp();
+  const providerPresets = [
+    {
+      id: 'openai',
+      title: t('aiPresetOpenAI'),
+      description: t('aiPresetOpenAISub'),
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    },
+    {
+      id: 'ollama',
+      title: t('aiPresetOllama'),
+      description: t('aiPresetOllamaSub'),
+      baseUrl: 'http://host.docker.internal:11434/v1',
+      model: '',
+    },
+    {
+      id: 'lmstudio',
+      title: t('aiPresetLMStudio'),
+      description: t('aiPresetLMStudioSub'),
+      baseUrl: 'http://host.docker.internal:1234/v1',
+      model: '',
+    },
+  ];
+  const [cfg, setCfg] = useState({
+    ai_enabled: 'false',
+    ai_provider: 'openai_compatible',
+    ai_base_url: 'http://host.docker.internal:11434/v1',
+    ai_model: '',
+    ai_api_key: '',
+    ai_timeout: '600',
+    ai_max_pages: '8',
+    ai_max_output_tokens: '32768',
+    ai_scan_temperature: '0.02',
+    ai_cleanup_temperature: '0.05',
+    ai_prompt_mode: 'default',
+    ai_custom_prompt: '',
+    ai_cleanup_enabled: 'false',
+    ai_cleanup_custom_prompt: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [models, setModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelStatus, setModelStatus] = useState('');
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetchAISettings()
+      .then(data => setCfg(prev => ({ ...prev, ...data })))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const f = (key, value) => setCfg(prev => ({ ...prev, [key]: value }));
+
+  const applyProviderPreset = (preset) => {
+    setCfg(prev => ({
+      ...prev,
+      ai_provider: 'openai_compatible',
+      ai_base_url: preset.baseUrl,
+      ai_model: preset.model || prev.ai_model,
+    }));
+    setModels([]);
+    setModelStatus('');
+  };
+
+  const loadModels = useCallback(async (nextCfg) => {
+    if (!nextCfg.ai_base_url) {
+      setModels([]);
+      return;
+    }
+    setModelsLoading(true);
+    setModelStatus('');
+    try {
+      const result = await fetchAIModels(nextCfg);
+      setModels(result.models || []);
+      setModelStatus((result.models || []).length ? 'loaded' : 'empty');
+    } catch (e) {
+      setModels([]);
+      setModelStatus('error:' + e.message);
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading || !cfg.ai_base_url) return;
+    const timer = setTimeout(() => loadModels(cfg), 650);
+    return () => clearTimeout(timer);
+  }, [cfg.ai_base_url, cfg.ai_api_key, loading, loadModels]);
+
+  const handleSave = async () => {
+    setSaving(true); setStatus(null);
+    try {
+      await saveAISettings(cfg);
+      setStatus('saved');
+    } catch (e) { setStatus('error:' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleTest = async () => {
+    setTesting(true); setStatus(null);
+    try {
+      const result = await testAISettings(cfg);
+      setStatus('test_ok:' + (result.response || 'OK'));
+    } catch (e) { setStatus('error:' + e.message); }
+    finally { setTesting(false); }
+  };
+
+  if (loading) return <div className="settings-section"><p className="loading-text">Loading…</p></div>;
+
+  return (
+    <div className="settings-section">
+      <h3 className="section-heading">{t('adminAI')}</h3>
+      <p className="settings-row-sub ai-section-intro">{t('aiDesc')}</p>
+
+      <div className="form-stack ai-settings-form">
+        <div className="ai-settings-card ai-enable-card">
+          <div className="settings-row-info">
+            <p className="settings-row-label">{t('aiEnable')}</p>
+            <p className="settings-row-sub">{t('aiEnableSub')}</p>
+          </div>
+          <button className={`theme-toggle ${cfg.ai_enabled === 'true' ? 'dark' : ''}`}
+            onClick={() => f('ai_enabled', cfg.ai_enabled === 'true' ? 'false' : 'true')}>
+            <span className="theme-toggle-knob" />
+          </button>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('recognitionMode')}</h4>
+              <p>{t('recognitionModeSub')}</p>
+            </div>
+          </div>
+          <div className="ai-provider-grid">
+            <div className="ai-provider-card active" aria-current="true">
+              <span>{t('recognitionAIVision')}</span>
+              <small>{t('recognitionAIVisionSub')}</small>
+            </div>
+          </div>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('aiConnection')}</h4>
+              <p>{t('aiConnectionSub')}</p>
+            </div>
+          </div>
+
+          <div className="ai-provider-grid">
+            {providerPresets.map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`ai-provider-card ${cfg.ai_base_url === preset.baseUrl ? 'active' : ''}`}
+                onClick={() => applyProviderPreset(preset)}
+              >
+                <span>{preset.title}</span>
+                <small>{preset.description}</small>
+              </button>
+            ))}
+          </div>
+
+          <div className="form-field">
+            <label className="form-label">{t('aiProvider')}</label>
+            <select className="form-input" value={cfg.ai_provider} onChange={e => f('ai_provider', e.target.value)}>
+              <option value="openai_compatible">{t('aiProviderOpenAICompatible')}</option>
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label">{t('aiBaseUrl')}</label>
+            <input className="form-input" value={cfg.ai_base_url} onChange={e => f('ai_base_url', e.target.value)} placeholder="https://api.openai.com/v1" />
+            <p className="settings-row-sub ai-inline-help">{t('aiBaseUrlHint')}</p>
+          </div>
+
+          <div className="ai-model-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiModel')}</label>
+              <div className="ai-model-row">
+                {models.length > 0 ? (
+                  <select className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)}>
+                    {!cfg.ai_model && <option value="">{t('selectModel')}</option>}
+                    {cfg.ai_model && !models.includes(cfg.ai_model) && <option value={cfg.ai_model}>{cfg.ai_model}</option>}
+                    {models.map(model => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                ) : (
+                  <input className="form-input" value={cfg.ai_model} onChange={e => f('ai_model', e.target.value)} placeholder="gpt-4o-mini, llava, qwen2.5-vl" />
+                )}
+                <button className="btn-secondary ai-model-refresh" onClick={() => loadModels(cfg)} disabled={modelsLoading || !cfg.ai_base_url} title={t('refreshModels')}>
+                  <RefreshCw size={15} className={modelsLoading ? 'spin-icon' : ''} />
+                </button>
+              </div>
+              {modelStatus === 'loaded' && <p className="settings-row-sub ai-inline-help">{t('modelsLoaded').replace('{COUNT}', String(models.length))}</p>}
+              {modelStatus === 'empty' && <p className="settings-row-sub ai-inline-help">{t('noModelsFound')}</p>}
+              {modelStatus?.startsWith('error:') && <p className="status-error ai-inline-help">{modelStatus.slice(6)}</p>}
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiApiKey')}</label>
+              <input className="form-input" type="password" value={cfg.ai_api_key} onChange={e => f('ai_api_key', e.target.value)} autoComplete="new-password" placeholder={t('optional')} />
+              <p className="settings-row-sub ai-inline-help">{t('aiApiKeyHint')}</p>
+            </div>
+          </div>
+
+          <div className="ai-number-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiTimeout')}</label>
+              <input className="form-input" type="number" min="60" max="1800" value={cfg.ai_timeout} onChange={e => f('ai_timeout', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiMaxPages')}</label>
+              <input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading">
+            <div>
+              <h4>{t('aiGenerationSettings')}</h4>
+              <p>{t('aiGenerationSettingsSub')}</p>
+            </div>
+          </div>
+          <div className="ai-number-grid ai-generation-grid">
+            <div className="form-field">
+              <label className="form-label">{t('aiMaxOutputTokens')}</label>
+              <input className="form-input" type="number" min="64" max="131072" step="64" value={cfg.ai_max_output_tokens} onChange={e => f('ai_max_output_tokens', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiScanTemperature')}</label>
+              <input className="form-input" type="number" min="0" max="2" step="0.01" value={cfg.ai_scan_temperature} onChange={e => f('ai_scan_temperature', e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">{t('aiCleanupTemperature')}</label>
+              <input className="form-input" type="number" min="0" max="2" step="0.01" value={cfg.ai_cleanup_temperature} onChange={e => f('ai_cleanup_temperature', e.target.value)} />
+            </div>
+          </div>
+          <p className="settings-row-sub ai-inline-help">{t('aiGenerationSettingsHint')}</p>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading ai-card-heading-row">
+            <div>
+              <h4>{t('aiPrompt')}</h4>
+              <p>{t('aiPromptModeSub')}</p>
+            </div>
+            <div className="ai-segmented">
+              <button className={cfg.ai_prompt_mode !== 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'default')}>{t('default')}</button>
+              <button className={cfg.ai_prompt_mode === 'custom' ? 'active' : ''} onClick={() => f('ai_prompt_mode', 'custom')}>{t('custom')}</button>
+            </div>
+          </div>
+          <div className="form-field">
+            <label className="form-label">{cfg.ai_prompt_mode === 'custom' ? t('aiCustomPrompt') : t('aiDefaultPromptPreview')}</label>
+            <textarea
+              className="form-input form-textarea ai-prompt-textarea"
+              value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : t('defaultOcrPrompt')}
+              onChange={e => f('ai_custom_prompt', e.target.value)}
+              readOnly={cfg.ai_prompt_mode !== 'custom'}
+              rows={7}
+            />
+            <p className="settings-row-sub ai-inline-help">
+              {cfg.ai_prompt_mode === 'custom' ? t('aiCustomPromptHint') : t('aiDefaultPromptHint').replace('{LANGUAGE}', language)}
+            </p>
+          </div>
+        </div>
+
+        <div className="ai-settings-card">
+          <div className="ai-card-heading ai-card-heading-row">
+            <div>
+              <h4>{t('aiCleanupWorkflow')}</h4>
+              <p>{t('aiCleanupWorkflowSub')}</p>
+            </div>
+            <button className={`theme-toggle ${cfg.ai_cleanup_enabled === 'true' ? 'dark' : ''}`}
+              onClick={() => f('ai_cleanup_enabled', cfg.ai_cleanup_enabled === 'true' ? 'false' : 'true')}>
+              <span className="theme-toggle-knob" />
+            </button>
+          </div>
+          <div className="form-field">
+            <label className="form-label">{t('aiCleanupPrompt')}</label>
+            <textarea
+              className="form-input form-textarea ai-prompt-textarea"
+              value={cfg.ai_cleanup_enabled === 'true' ? cfg.ai_cleanup_custom_prompt : t('defaultAiCleanupPrompt')}
+              onChange={e => f('ai_cleanup_custom_prompt', e.target.value)}
+              placeholder={t('defaultAiCleanupPrompt')}
+              readOnly={cfg.ai_cleanup_enabled !== 'true'}
+              rows={7}
+            />
+            <p className="settings-row-sub ai-inline-help">
+              {cfg.ai_cleanup_enabled === 'true' ? t('aiCleanupPromptHint') : t('aiCleanupDisabledHint')}
+            </p>
+          </div>
+        </div>
+
+        {status === 'saved' && <p className="status-success">{t('saved')}</p>}
+        {status?.startsWith('test_ok:') && <p className="status-success">{t('aiTestOk')} {status.slice(8)}</p>}
+        {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
+
+        <div className="mail-test-row">
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : t('saveSettings')}</button>
+          <button className="btn-secondary" onClick={handleTest} disabled={testing || !cfg.ai_base_url || !cfg.ai_model}>
+            <Send size={15} /> {testing ? t('testing') : t('testConnection')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -937,129 +1237,88 @@ function TwoFASection() {
   );
 }
 
-/* ─── Announcements Section (Admin) ─────────────────────────────────────── */
+/* ─── GitHub Releases Section (Admin) ───────────────────────────────────── */
 function AnnouncementsSection() {
-  const { t } = useApp();
-  const [announcements, setAnnouncements] = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [showPush, setShowPush]           = useState(false);
+  const { t, language } = useApp();
+  const [releaseData, setReleaseData] = useState({ items: [] });
+  const [loading, setLoading]         = useState(true);
+  const [syncing, setSyncing]         = useState(false);
+  const [error, setError]             = useState('');
 
   const load = () => {
     setLoading(true);
-    listAnnouncements()
-      .then(setAnnouncements)
-      .catch(console.error)
+    setError('');
+    listReleases()
+      .then(setReleaseData)
+      .catch(e => setError(e.message || t('releaseLoadError')))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
   const formatDate = (iso) => {
-    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+    try { return new Date(iso).toLocaleDateString(language === 'no' ? 'nb-NO' : undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return iso; }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setError('');
+    try {
+      await syncReleases();
+      await load();
+    } catch (e) {
+      setError(e.message || t('releaseSyncError'));
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
     <div className="settings-section">
       <div className="section-heading-row">
-        <h3 className="section-heading">{t('updateNotes')}</h3>
-        <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          onClick={() => setShowPush(true)}>
-          <Megaphone size={15} />
-          {t('pushUpdateNotes')}
+        <h3 className="section-heading">{t('githubReleaseNotes')}</h3>
+        <button className="btn-primary btn-icon-label" onClick={handleSync} disabled={syncing}>
+          <RefreshCw size={15} className={syncing ? 'spin-icon' : ''} />
+          {syncing ? t('syncingReleases') : t('syncReleases')}
         </button>
       </div>
       <p className="settings-row-sub" style={{ marginBottom: '1.25rem' }}>
-        {t('updateNotesSub')}
+        {t('githubReleaseNotesSub')}
       </p>
+      {releaseData.last_sync_at && (
+        <p className="settings-row-sub" style={{ marginBottom: '0.75rem' }}>
+          {t('lastSynced')}: {formatDate(releaseData.last_sync_at)}
+        </p>
+      )}
+      {(error || releaseData.last_sync_error) && (
+        <p className="status-error">{error || releaseData.last_sync_error}</p>
+      )}
 
       {loading ? (
         <p className="loading-text">Loading…</p>
-      ) : announcements.length === 0 ? (
-        <p className="settings-row-sub">{t('noAnnouncements')}</p>
+      ) : releaseData.items?.length === 0 ? (
+        <p className="settings-row-sub">{t('noGithubReleases')}</p>
       ) : (
         <div className="announcement-history">
-          {announcements.map(a => (
-            <div key={a.id} className="announcement-history-item">
-              <div className="announcement-history-title">{a.title}</div>
-              {a.body && <div className="announcement-history-body">{a.body}</div>}
+          {releaseData.items.map(release => (
+            <div key={release.id} className="announcement-history-item">
+              <div className="announcement-history-title">
+                <Github size={15} />
+                <span>{release.title || release.name || release.tag_name}</span>
+                {release.prerelease && <em>{t('releasePrerelease')}</em>}
+              </div>
+              {release.body && <div className="announcement-history-body">{release.body}</div>}
               <div className="announcement-history-meta">
-                {t('pushedBy')} <strong>{a.created_by}</strong> · {formatDate(a.created_at)}
+                <strong>{release.tag_name}</strong> · {formatDate(release.published_at || release.created_at)}
+                {release.html_url && (
+                  <a href={release.html_url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={13} /> {t('openOnGitHub')}
+                  </a>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
-
-      {showPush && (
-        <PushAnnouncementModal
-          t={t}
-          onClose={() => setShowPush(false)}
-          onPushed={() => { setShowPush(false); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ─── Push Announcement Modal ─────────────────────────────────────────────── */
-function PushAnnouncementModal({ t, onClose, onPushed }) {
-  const [title, setTitle]   = useState('');
-  const [body, setBody]     = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
-
-  const handlePush = async () => {
-    if (!title.trim()) { setError(t('titleRequired')); return; }
-    setSaving(true); setError('');
-    try {
-      await createAnnouncement(title.trim(), body.trim());
-      onPushed();
-    } catch (e) {
-      setError(e.message || t('announcementPushError'));
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-modal announcement-push-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3><Megaphone size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />{t('pushUpdateNotes')}</h3>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="modal-body">
-          <div className="form-field">
-            <label className="form-label">{t('title')}</label>
-            <input
-              className="form-input"
-              placeholder={t('announcementTitlePlaceholder')}
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              autoFocus
-              maxLength={120}
-            />
-          </div>
-          <div className="form-field">
-            <label className="form-label">{t('updateNotes')}</label>
-            <textarea
-              className="form-input announcement-textarea"
-              placeholder={t('announcementBodyPlaceholder')}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              rows={7}
-            />
-          </div>
-          {error && <p className="status-error">{error}</p>}
-          <p className="modal-hint">
-            {t('announcementModalHint')}
-          </p>
-        </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handlePush} disabled={saving || !title.trim()}>
-            {saving ? t('pushing') : <><Send size={14} style={{ marginRight: 6 }} />{t('pushToAllUsers')}</>}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

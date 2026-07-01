@@ -9,7 +9,7 @@ import {
   ChevronLeft, ChevronDown, ChevronRight,
   BookOpen, Search, Eye, PenTool, Activity,
   Package, Upload, Scissors, Settings,
-  ArrowRight, Info, ExternalLink,
+  ArrowRight, Info, ExternalLink, FileText,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './HelpPage.css';
@@ -128,6 +128,19 @@ function useSections(t) {
     },
     {
       id: 's10',
+      icon: <FileText size={20} />,
+      titleKey: 'helpS10TextTitle',
+      items: [
+        { key: 'helpS10TextIntro' },
+        { labelKey: 'helpLabelTextVersionOpen', key: 'helpS10TextOpen' },
+        { labelKey: 'helpLabelTextVersionCreate', key: 'helpS10TextCreate' },
+        { labelKey: 'helpLabelTextVersionReview', key: 'helpS10TextReview' },
+        { labelKey: 'helpLabelAISetup', key: 'helpS10TextAISetup' },
+        { labelKey: 'helpLabelPromptLanguage', key: 'helpS10TextPrompt' },
+      ],
+    },
+    {
+      id: 's11',
       icon: <Settings size={20} />,
       titleKey: 'helpS10Title',
       items: [

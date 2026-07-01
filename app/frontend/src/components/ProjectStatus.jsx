@@ -4,9 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search, Minus, Plus } from 'lucide-react';
+import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search, Minus, Plus, Settings, Save } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { startProject, finishProject, clearSessions, fetchYarns, yarnImageUrl, yarnColourImageUrl, fetchInventory, saveFeedback } from '../utils/api';
+import {
+  startProject,
+  finishProject,
+  clearSessions,
+  fetchYarns,
+  yarnImageUrl,
+  yarnColourImageUrl,
+  fetchInventory,
+  saveFeedback,
+  updateProjectSession,
+  reopenProjectSession,
+  deleteProjectSession,
+} from '../utils/api';
 import FeedbackModal from './FeedbackModal';
 import './ProjectStatus.css';
 
@@ -38,6 +50,20 @@ function totalSeconds(sessions) {
   }, 0);
 }
 
+function isoToLocalInput(iso) {
+  if (!iso) return '';
+  if (!/[zZ]|[+-]\d\d:\d\d$/.test(iso)) return iso.slice(0, 16);
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function localInputToIso(value) {
+  if (!value) return '';
+  return value.length === 16 ? `${value}:00` : value;
+}
+
 // ── Yarn Pill — small display of name + colour ───────────────────────────────
 function YarnPill({ name, colour, imageId, colourId }) {
   const [imgErr, setImgErr] = useState(false);
@@ -65,7 +91,7 @@ function YarnPill({ name, colour, imageId, colourId }) {
 }
 
 // ── Yarn Picker Modal ────────────────────────────────────────────────────────
-function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
+function YarnPickerModal({ onSelect, onSkip, onClose, t, confirmLabel, skipLabel }) {
   const [yarns, setYarns]         = useState([]);
   const [search, setSearch]       = useState('');
   const [loading, setLoading]     = useState(true);
@@ -150,7 +176,7 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
 
         <div className="yp-footer">
           <button className="yp-btn-skip" onClick={onSkip}>
-            {t('continueWithoutYarn')}
+            {skipLabel || t('continueWithoutYarn')}
           </button>
           <button
             className="yp-btn-confirm"
@@ -158,7 +184,7 @@ function YarnPickerModal({ onSelect, onSkip, onClose, t }) {
             disabled={!selectedYarn}
           >
             <Play size={15} />
-            {t('startProject')}
+            {confirmLabel || t('startProject')}
           </button>
         </div>
       </div>
@@ -214,9 +240,154 @@ function YarnPickerRow({ yarn, selected, onSelect }) {
   );
 }
 
+function ProjectSessionEditor({ recipeId, session, t, onClose, onUpdated }) {
+  const [startedAt, setStartedAt] = useState(() => isoToLocalInput(session.started_at));
+  const [selectedYarn, setSelectedYarn] = useState(() => (
+    session.yarn_id ? { id: session.yarn_id, name: session.yarn_name || t('unknownYarn') } : null
+  ));
+  const [selectedColour, setSelectedColour] = useState(() => (
+    session.yarn_colour_id ? { id: session.yarn_colour_id, name: session.yarn_colour || '' } : null
+  ));
+  const [showYarnPicker, setShowYarnPicker] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const updated = await updateProjectSession(recipeId, session.id, {
+        started_at: localInputToIso(startedAt),
+        yarn_id: selectedYarn?.id || null,
+        yarn_colour_id: selectedColour?.id || null,
+      });
+      onUpdated(updated);
+      onClose();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const reopen = async () => {
+    setBusy(true);
+    try {
+      const updated = await reopenProjectSession(recipeId, session.id);
+      onUpdated(updated);
+      onClose();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const deleteSession = async () => {
+    setBusy(true);
+    try {
+      const updated = await deleteProjectSession(recipeId, session.id);
+      onUpdated(updated);
+      onClose();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="ps-edit-modal">
+          <div className="ps-edit-header">
+            <div>
+              <h3>{t('editProjectSession')}</h3>
+              <p>{t('editProjectSessionHint')}</p>
+            </div>
+            <button className="ps-edit-close" onClick={onClose} disabled={busy} aria-label={t('close')}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="ps-edit-body">
+            <label className="ps-edit-field">
+              <span>{t('startedAt')}</span>
+              <input
+                type="datetime-local"
+                value={startedAt}
+                onChange={e => setStartedAt(e.target.value)}
+              />
+            </label>
+
+            <div className="ps-edit-field">
+              <span>{t('yarnForProject')}</span>
+              <div className="ps-edit-yarn-row">
+                {selectedYarn ? (
+                  <YarnPill
+                    name={selectedYarn.name}
+                    colour={selectedColour?.name}
+                    imageId={selectedYarn.id}
+                    colourId={selectedColour?.id}
+                  />
+                ) : (
+                  <span className="ps-edit-empty-yarn">{t('noYarnSelected')}</span>
+                )}
+              </div>
+              <div className="ps-edit-inline-actions">
+                <button type="button" onClick={() => setShowYarnPicker(true)} disabled={busy}>
+                  {t('changeYarn')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedYarn(null); setSelectedColour(null); }}
+                  disabled={busy || !selectedYarn}
+                >
+                  {t('clearYarn')}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="ps-edit-actions">
+            {session.finished_at && (
+              <button className="ps-edit-secondary" onClick={reopen} disabled={busy}>
+                <Play size={14} /> {t('reopenProjectSession')}
+              </button>
+            )}
+            {confirmDelete ? (
+              <div className="ps-edit-delete-confirm">
+                <span>{t('deleteProjectSessionConfirm')}</span>
+                <button className="ps-edit-danger" onClick={deleteSession} disabled={busy}>{t('clearSessionsYes')}</button>
+                <button className="ps-edit-secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>{t('clearSessionsNo')}</button>
+              </div>
+            ) : (
+              <button className="ps-edit-danger" onClick={() => setConfirmDelete(true)} disabled={busy}>
+                <Trash2 size={14} /> {t('deleteProjectSession')}
+              </button>
+            )}
+            <button className="ps-edit-save" onClick={save} disabled={busy || !startedAt}>
+              <Save size={14} /> {t('saveChanges')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showYarnPicker && (
+        <YarnPickerModal
+          t={t}
+          confirmLabel={t('useSelectedYarn')}
+          skipLabel={t('clearYarn')}
+          onSelect={(yarn, colour) => {
+            setSelectedYarn(yarn);
+            setSelectedColour(colour || null);
+            setShowYarnPicker(false);
+          }}
+          onSkip={() => {
+            setSelectedYarn(null);
+            setSelectedColour(null);
+            setShowYarnPicker(false);
+          }}
+          onClose={() => setShowYarnPicker(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
-export default function ProjectStatus({ recipe, onUpdated }) {
-  const { t, language } = useApp();
+export default function ProjectStatus({ recipe, onUpdated, enableExternalControls = false, controlsOnly = false }) {
+  const { t, language, user } = useApp();
   const [loading, setLoading]         = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [showYarnPicker, setShowYarnPicker] = useState(false);
@@ -230,15 +401,28 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   const [feedbackMode, setFeedbackMode] = useState(null);      // 'submit' | 'view' | null
   const [feedbackSession, setFeedbackSession] = useState(null); // session object for view mode
   const [pendingFinishSessionId, setPendingFinishSessionId] = useState(null);
+  const [editingSession, setEditingSession] = useState(null);
 
   const status   = recipe.project_status || 'none';
   const sessions = recipe.sessions || [];
   const total    = totalSeconds(sessions);
+  const isAdmin = !!user?.is_admin;
 
-  // Find the active session's yarn data
-  const activeSession = sessions.find(s => !s.finished_at);
+  // Find the active session selected by the backend; admins can see several.
+  const activeSession = sessions.find(s => s.id === recipe.active_session_id)
+    || [...sessions].reverse().find(s => !s.finished_at);
 
   const handleStartClick = () => setShowYarnPicker(true);
+
+  useEffect(() => {
+    if (!enableExternalControls) return undefined;
+    const handleProjectAction = () => {
+      if ((recipe.project_status || 'none') === 'active') return;
+      setShowYarnPicker(true);
+    };
+    window.addEventListener('knitting-recipe-start-project', handleProjectAction);
+    return () => window.removeEventListener('knitting-recipe-start-project', handleProjectAction);
+  }, [enableExternalControls, recipe.project_status]);
 
   // Called when yarn (and optional colour) is chosen in the yarn picker
   const handleYarnSelected = async (yarn, colour) => {
@@ -297,7 +481,6 @@ export default function ProjectStatus({ recipe, onUpdated }) {
 
   // Finish button clicked → find the active session ID, show feedback modal first
   const handleFinish = () => {
-    const activeSession = sessions.find(s => !s.finished_at);
     setPendingFinishSessionId(activeSession?.id || null);
     setFeedbackMode('submit');
   };
@@ -328,7 +511,7 @@ export default function ProjectStatus({ recipe, onUpdated }) {
   const handleFeedbackSkip = async () => {
     setFeedbackMode(null);
     setLoading(true);
-    try { onUpdated(await finishProject(recipe.id)); }
+    try { onUpdated(await finishProject(recipe.id, pendingFinishSessionId)); }
     catch (e) { alert(e.message); }
     finally { setLoading(false); setPendingFinishSessionId(null); }
   };
@@ -346,6 +529,105 @@ export default function ProjectStatus({ recipe, onUpdated }) {
     catch (e) { alert(e.message); }
     finally { setLoading(false); }
   };
+
+  const modals = (
+    <>
+      {showYarnPicker && (
+        <YarnPickerModal
+          t={t}
+          onSelect={handleYarnSelected}
+          onSkip={() => handleYarnSelected(null, null)}
+          onClose={() => setShowYarnPicker(false)}
+        />
+      )}
+
+      {showInventoryPicker && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleInventorySkip()}>
+          <div className="inv-use-modal">
+            <div className="inv-use-header">
+              <h3>{t('useFromInventory')}</h3>
+              <button className="inv-modal-close" onClick={handleInventorySkip}><X size={18} /></button>
+            </div>
+            <p className="inv-use-sub">
+              {pendingYarn?.yarn
+                ? `${pendingYarn.yarn.name}${pendingYarn.colour ? ` — ${pendingYarn.colour.name}` : ''}`
+                : ''}
+            </p>
+
+            <div className="inv-use-items">
+              <button
+                className={`inv-use-item ${!selectedInvItem ? 'inv-use-item--selected' : ''}`}
+                onClick={() => setSelectedInvItem(null)}
+              >
+                <span className="inv-use-item-name">{t('noInventoryItem')}</span>
+              </button>
+
+              {inventoryItems.map(item => (
+                <button
+                  key={item.id}
+                  className={`inv-use-item ${selectedInvItem?.id === item.id ? 'inv-use-item--selected' : ''}`}
+                  onClick={() => setSelectedInvItem(item)}
+                >
+                  <div className="inv-use-item-info">
+                    <span className="inv-use-item-name">{item.name}</span>
+                    <span className="inv-use-item-stock">{t('currentStock')}: <strong>{item.quantity}</strong> {t('skeinCount')}</span>
+                    {item.purchase_price && <span className="inv-use-item-price">💰 {item.purchase_price}</span>}
+                  </div>
+                  {selectedInvItem?.id === item.id && <span className="inv-use-check">✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {selectedInvItem && (
+              <div className="inv-use-skeins">
+                <span className="inv-use-skeins-label">{t('skeinsToUse')}</span>
+                <div className="inv-qty-row">
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.max(1, s - 1))}><Minus size={14} /></button>
+                  <span className="inv-qty-value">{skeinsToUse}<span className="inv-qty-unit">{t('skeinCount')}</span></span>
+                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.min(selectedInvItem.quantity, s + 1))}><Plus size={14} /></button>
+                </div>
+                {skeinsToUse > 0 && (
+                  <p className="inv-use-remaining">
+                    → {Math.max(0, selectedInvItem.quantity - skeinsToUse)} {t('skeinCount')} {t('currentStock').toLowerCase()}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="inv-use-footer">
+              <button className="inv-modal-cancel" onClick={handleInventorySkip}>{t('noInventoryItem')}</button>
+              <button className="inv-modal-save" onClick={handleInventoryConfirm}>
+                {t('startProject')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedbackMode && (
+        <FeedbackModal
+          mode={feedbackMode}
+          feedbackList={feedbackMode === 'view' ? (feedbackSession?.feedback || []) : []}
+          onSubmit={handleFeedbackSubmit}
+          onSkip={handleFeedbackSkip}
+          onClose={() => { setFeedbackMode(null); setFeedbackSession(null); }}
+          loading={loading}
+        />
+      )}
+
+      {editingSession && (
+        <ProjectSessionEditor
+          recipeId={recipe.id}
+          session={editingSession}
+          t={t}
+          onClose={() => setEditingSession(null)}
+          onUpdated={onUpdated}
+        />
+      )}
+    </>
+  );
+
+  if (controlsOnly) return modals;
 
   return (
     <div className="project-status">
@@ -389,6 +671,9 @@ export default function ProjectStatus({ recipe, onUpdated }) {
               <span>{t('startedAt')}: {formatDateTime(recipe.active_started_at, language)}</span>
             </div>
           )}
+          <div className="ps-time-row" style={{ marginTop: 4 }}>
+            <span>{t('startedBy')}: {activeSession?.username || recipe.active_username || t('unknownUser')}</span>
+          </div>
         </div>
       )}
 
@@ -430,6 +715,14 @@ export default function ProjectStatus({ recipe, onUpdated }) {
                       ★ {((s.feedback.reduce((a, f) => a + f.rating_recipe + f.rating_difficulty + f.rating_result, 0)) / (s.feedback.length * 3)).toFixed(1)}
                     </span>
                   )}
+                  <button
+                    className="ps-session-settings"
+                    onClick={e => { e.stopPropagation(); setEditingSession(s); }}
+                    title={t('editProjectSession')}
+                    aria-label={t('editProjectSession')}
+                  >
+                    <Settings size={13} />
+                  </button>
                   {dur !== null && <span className="ps-session-dur">{formatDuration(dur, t)}</span>}
                 </div>
 
@@ -446,6 +739,9 @@ export default function ProjectStatus({ recipe, onUpdated }) {
                 )}
 
                 <div className="ps-session-times">
+                  <div className="ps-time-row">
+                    <span>{t('startedBy')}: {s.username || t('unknownUser')}</span>
+                  </div>
                   <div className="ps-time-row">
                     <Play size={10} /><span>{formatDateTime(s.started_at, language)}</span>
                   </div>
@@ -471,105 +767,19 @@ export default function ProjectStatus({ recipe, onUpdated }) {
         <div className="ps-clear-wrap">
           {confirmClear ? (
             <div className="ps-confirm-row">
-              <span className="ps-confirm-text">{t('clearSessionsConfirm')}</span>
+              <span className="ps-confirm-text">{isAdmin ? t('clearAllSessionsConfirm') : t('clearMySessionsConfirm')}</span>
               <button className="ps-confirm-btn ps-confirm-btn--yes" onClick={handleClear} disabled={loading}>{t('clearSessionsYes')}</button>
               <button className="ps-confirm-btn ps-confirm-btn--no" onClick={() => setConfirmClear(false)}>{t('clearSessionsNo')}</button>
             </div>
           ) : (
             <button className="ps-clear-btn" onClick={() => setConfirmClear(true)} disabled={loading}>
-              <Trash2 size={13} /> {t('clearSessions')}
+              <Trash2 size={13} /> {isAdmin ? t('clearAllSessions') : t('clearMySessions')}
             </button>
           )}
         </div>
       )}
 
-      {/* ── Yarn picker modal ──────────────────────────────────────── */}
-      {showYarnPicker && (
-        <YarnPickerModal
-          t={t}
-          onSelect={handleYarnSelected}
-          onSkip={() => handleYarnSelected(null, null)}
-          onClose={() => setShowYarnPicker(false)}
-        />
-      )}
-
-      {/* ── Inventory deduction step ── */}
-      {showInventoryPicker && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleInventorySkip()}>
-          <div className="inv-use-modal">
-            <div className="inv-use-header">
-              <h3>{t('useFromInventory')}</h3>
-              <button className="inv-modal-close" onClick={handleInventorySkip}><X size={18} /></button>
-            </div>
-            <p className="inv-use-sub">
-              {pendingYarn?.yarn
-                ? `${pendingYarn.yarn.name}${pendingYarn.colour ? ` — ${pendingYarn.colour.name}` : ''}`
-                : ''}
-            </p>
-
-            <div className="inv-use-items">
-              {/* "Don't use inventory" option */}
-              <button
-                className={`inv-use-item ${!selectedInvItem ? 'inv-use-item--selected' : ''}`}
-                onClick={() => setSelectedInvItem(null)}
-              >
-                <span className="inv-use-item-name">{t('noInventoryItem')}</span>
-              </button>
-
-              {inventoryItems.map(item => (
-                <button
-                  key={item.id}
-                  className={`inv-use-item ${selectedInvItem?.id === item.id ? 'inv-use-item--selected' : ''}`}
-                  onClick={() => setSelectedInvItem(item)}
-                >
-                  <div className="inv-use-item-info">
-                    <span className="inv-use-item-name">{item.name}</span>
-                    <span className="inv-use-item-stock">{t('currentStock')}: <strong>{item.quantity}</strong> {t('skeinCount')}</span>
-                    {item.purchase_price && <span className="inv-use-item-price">💰 {item.purchase_price}</span>}
-                  </div>
-                  {selectedInvItem?.id === item.id && <span className="inv-use-check">✓</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Skein count — only when an inventory item is picked */}
-            {selectedInvItem && (
-              <div className="inv-use-skeins">
-                <span className="inv-use-skeins-label">{t('skeinsToUse')}</span>
-                <div className="inv-qty-row">
-                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.max(1, s - 1))}><Minus size={14} /></button>
-                  <span className="inv-qty-value">{skeinsToUse}<span className="inv-qty-unit">{t('skeinCount')}</span></span>
-                  <button className="inv-qty-btn" onClick={() => setSkeinsToUse(s => Math.min(selectedInvItem.quantity, s + 1))}><Plus size={14} /></button>
-                </div>
-                {skeinsToUse > 0 && (
-                  <p className="inv-use-remaining">
-                    → {Math.max(0, selectedInvItem.quantity - skeinsToUse)} {t('skeinCount')} {t('currentStock').toLowerCase()}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="inv-use-footer">
-              <button className="inv-modal-cancel" onClick={handleInventorySkip}>{t('noInventoryItem')}</button>
-              <button className="inv-modal-save" onClick={handleInventoryConfirm}>
-                {t('startProject')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Feedback modal ──────────────────────────────────────────── */}
-      {feedbackMode && (
-        <FeedbackModal
-          mode={feedbackMode}
-          feedbackList={feedbackMode === 'view' ? (feedbackSession?.feedback || []) : []}
-          onSubmit={handleFeedbackSubmit}
-          onSkip={handleFeedbackSkip}
-          onClose={() => { setFeedbackMode(null); setFeedbackSession(null); }}
-          loading={loading}
-        />
-      )}
+      {modals}
     </div>
   );
 }

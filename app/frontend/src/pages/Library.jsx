@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
-  Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2, Plus,
-  MousePointer2, Tag,
+  Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2,
+  MousePointer2, Tag, ArrowUpDown, ChevronDown,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CollectionToolbar from '../components/CollectionToolbar';
+import TaxonomyField, { TaxonomyManagerModal } from '../components/TaxonomyManager';
 
 import { useApp } from '../utils/AppContext';
-import { fetchRecipes, fetchCategories, fetchAllCategories, fetchTags, deleteRecipe, addCategory, deleteCategory, bulkUpdateRecipes } from '../utils/api';
+import { fetchRecipes, fetchCategories, fetchTags, deleteRecipe, bulkUpdateRecipes } from '../utils/api';
 import './Library.css';
 
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
@@ -37,6 +39,30 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [categories, setCategories]   = useState([]);
   const [allTags, setAllTags]         = useState([]);
+  const sortStorageKey = `library_recipe_sort_${user?.id || user?.username || 'guest'}`;
+  const SORT_OPTIONS = [
+    { key: 'default', label: t('sortDefault') },
+    { key: 'title_asc', label: t('sortTitleAsc') },
+    { key: 'title_desc', label: t('sortTitleDesc') },
+    { key: 'created_desc', label: t('sortNewest') },
+    { key: 'created_asc', label: t('sortOldest') },
+    { key: 'last_completed_desc', label: t('sortLastCompleted') },
+    { key: 'rating_desc', label: t('sortRating') },
+  ];
+  const [sortBy, setSortBy] = useState(() => {
+    try {
+      const saved = localStorage.getItem(sortStorageKey);
+      return SORT_OPTIONS.some(option => option.key === saved) ? saved : 'default';
+    } catch (_) {
+      return 'default';
+    }
+  });
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef(null);
+  const sortButtonRef = useRef(null);
+  const sortMenuRef = useRef(null);
+  const [sortMenuPosition, setSortMenuPosition] = useState({ top: 0, left: 0, width: 190 });
+  const activeSortOption = SORT_OPTIONS.find(option => option.key === sortBy) || SORT_OPTIONS[0];
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const viewStorageKey = `library_grid_size_${user?.id || user?.username || 'guest'}`;
@@ -57,61 +83,77 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } catch (_) {}
   }, [viewStorageKey]);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(sortStorageKey);
+      setSortBy(SORT_OPTIONS.some(option => option.key === saved) ? saved : 'default');
+    } catch (_) {}
+  }, [sortStorageKey]);
+
+  useEffect(() => {
+    const close = (event) => {
+      if (
+        sortRef.current &&
+        !sortRef.current.contains(event.target) &&
+        sortMenuRef.current &&
+        !sortMenuRef.current.contains(event.target)
+      ) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const updateSortMenuPosition = useCallback(() => {
+    const button = sortButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const width = Math.max(190, rect.width);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    setSortMenuPosition({
+      top: rect.bottom + 8,
+      left,
+      width,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!sortOpen) return undefined;
+    updateSortMenuPosition();
+    window.addEventListener('resize', updateSortMenuPosition);
+    window.addEventListener('scroll', updateSortMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateSortMenuPosition);
+      window.removeEventListener('scroll', updateSortMenuPosition, true);
+    };
+  }, [sortOpen, updateSortMenuPosition]);
+
   const handleGridSizeChange = (nextSize) => {
     setGridSize(nextSize);
     try { localStorage.setItem(viewStorageKey, nextSize); } catch (_) {}
   };
 
-  // ── Category management ───────────────────────────────────────────────────
-  const [managingCats, setManagingCats]   = useState(false);
-  const [allCategories, setAllCategories] = useState([]);  // all cats for manage UI
-  const [newCatName, setNewCatName]       = useState('');
-  const [catSaving, setCatSaving]         = useState(false);
-  const [catError, setCatError]           = useState('');
-  const newCatRef = useRef(null);
-
-  // Fetch all categories (including unassigned) for the manage panel
-  useEffect(() => {
-    if (managingCats) {
-      fetchAllCategories().then(setAllCategories).catch(console.error);
-    }
-  }, [managingCats]);
-
-  const refreshCategories = useCallback(() => {
-    // Refresh both the filter pills and the manage panel list
-    fetchCategories().then(setCategories).catch(console.error);
-    if (managingCats) {
-      fetchAllCategories().then(setAllCategories).catch(console.error);
-    }
-  }, [managingCats]);
-
-  const handleAddCategory = async (e) => {
-    e.preventDefault();
-    const name = newCatName.trim();
-    if (!name) return;
-    setCatSaving(true); setCatError('');
-    try {
-      await addCategory(name);
-      setNewCatName('');
-      refreshCategories();
-      newCatRef.current?.focus();
-    } catch (err) {
-      setCatError(err.message || 'Could not add category');
-    } finally {
-      setCatSaving(false);
-    }
+  const handleSortChange = (nextSort) => {
+    setSortBy(nextSort);
+    setSortOpen(false);
+    try { localStorage.setItem(sortStorageKey, nextSort); } catch (_) {}
   };
 
-  const handleDeleteCategory = async (name) => {
+  const [taxonomyModal, setTaxonomyModal] = useState(null);
+
+  const refreshTaxonomy = useCallback(async () => {
     try {
-      // If this category is currently active as a filter, clear the filter first
-      if (category === name) setCategory('');
-      await deleteCategory(name);
-      refreshCategories();
-    } catch (err) {
-      setCatError(err.message || 'Could not delete category');
-    }
-  };
+      const nextCategories = await fetchCategories();
+      setCategories(nextCategories);
+      setCategory(prev => (prev && !nextCategories.includes(prev) ? '' : prev));
+    } catch (e) { console.error(e); }
+    try {
+      const nextTags = await fetchTags();
+      setAllTags(nextTags);
+      setActiveTags(prev => prev.filter(tag => nextTags.includes(tag)));
+    } catch (e) { console.error(e); }
+  }, []);
 
   // ── Scroll restoration ────────────────────────────────────────────────────
   const SCROLL_KEY = 'library_scroll_y';
@@ -143,8 +185,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   // ── Bulk tag/category state ───────────────────────────────────────────────
   const [bulkModal, setBulkModal]     = useState(false);
-  const [bulkTags, setBulkTags]       = useState('');
-  const [bulkCats, setBulkCats]       = useState('');
+  const [bulkTags, setBulkTags]       = useState([]);
+  const [bulkCats, setBulkCats]       = useState([]);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkDone, setBulkDone]       = useState(false);
 
@@ -169,7 +211,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setSelectedIds(new Set());
     setDeleteConfirm(false);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, page: 1 });
+      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, sort: sortBy, page: 1 });
       setRecipes(data.recipes);
       setTotalPages(data.pages);
       setTotalCount(data.total);
@@ -178,7 +220,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } finally {
       setLoading(false);
     }
-  }, [search, category, activeTags, statusFilter, refreshKey]);
+  }, [search, category, activeTags, statusFilter, sortBy, refreshKey]);
 
   useEffect(() => {
     const timer = setTimeout(loadRecipes, 300);
@@ -190,7 +232,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     const nextPage = currentPage + 1;
     setLoadingMore(true);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, page: nextPage });
+      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, sort: sortBy, page: nextPage });
       setRecipes(prev => [...prev, ...data.recipes]);
       setCurrentPage(nextPage);
       setTotalPages(data.pages);
@@ -200,7 +242,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     } finally {
       setLoadingMore(false);
     }
-  }, [search, category, activeTags, statusFilter, currentPage]);
+  }, [search, category, activeTags, statusFilter, sortBy, currentPage]);
 
   // ── Filter helpers ────────────────────────────────────────────────────────
   const toggleTag = (tag) => {
@@ -246,8 +288,8 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setSelectionModeActive(false);
     setDeleteConfirm(false);
     setBulkModal(false);
-    setBulkTags('');
-    setBulkCats('');
+    setBulkTags([]);
+    setBulkCats([]);
     setBulkDone(false);
   };
 
@@ -261,15 +303,16 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
 
   // ── Bulk apply tags/categories ────────────────────────────────────────────
   const handleBulkApply = async () => {
-    const tags = bulkTags.split(',').map(s => s.trim()).filter(Boolean);
-    const cats = bulkCats.split(',').map(s => s.trim()).filter(Boolean);
+    const tags = bulkTags.map(s => s.trim()).filter(Boolean);
+    const cats = bulkCats.map(s => s.trim()).filter(Boolean);
     if (!tags.length && !cats.length) return;
     setBulkApplying(true);
     try {
       await bulkUpdateRecipes(Array.from(selectedIds), { tags, categories: cats });
       setBulkDone(true);
-      setBulkTags('');
-      setBulkCats('');
+      setBulkTags([]);
+      setBulkCats([]);
+      refreshTaxonomy();
       // Reload to reflect updated tags/categories on cards
       loadRecipes();
       setTimeout(() => setBulkDone(false), 2000);
@@ -322,6 +365,52 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             {hasActiveFilters && <span className="collection-filter-badge" />}
           </button>
         )}
+        middleControls={(
+          <div className="collection-sort" ref={sortRef}>
+            <button
+              ref={sortButtonRef}
+              type="button"
+              className={`collection-sort-btn ${sortOpen || sortBy !== 'default' ? 'active' : ''}`}
+              onClick={() => {
+                updateSortMenuPosition();
+                setSortOpen(open => !open);
+              }}
+              aria-expanded={sortOpen}
+              aria-haspopup="menu"
+              title={`${t('sortBy')}: ${activeSortOption.label}`}
+            >
+              <ArrowUpDown size={17} />
+              <span>{activeSortOption.label}</span>
+              <ChevronDown size={13} className={sortOpen ? 'rotated' : ''} />
+            </button>
+            {sortOpen && createPortal(
+              <div
+                ref={sortMenuRef}
+                className="collection-sort-menu"
+                role="menu"
+                style={{
+                  top: sortMenuPosition.top,
+                  left: sortMenuPosition.left,
+                  minWidth: sortMenuPosition.width,
+                }}
+              >
+                {SORT_OPTIONS.map(option => (
+                  <button
+                    type="button"
+                    key={option.key}
+                    className={`collection-sort-option ${sortBy === option.key ? 'active' : ''}`}
+                    onClick={() => handleSortChange(option.key)}
+                    role="menuitemradio"
+                    aria-checked={sortBy === option.key}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>,
+              document.body
+            )}
+          </div>
+        )}
         viewOptions={Object.entries(GRID_SIZES).map(([key, val]) => ({ key, label: val.label, icon: val.icon }))}
         viewValue={gridSize}
         onViewChange={handleGridSizeChange}
@@ -359,86 +448,56 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                 <div className="filter-label-row">
                   <label className="filter-label">{t('category')}</label>
                   <button
-                    className={`cat-manage-btn ${managingCats ? 'active' : ''}`}
-                    onClick={() => { setManagingCats(m => !m); setCatError(''); setNewCatName(''); }}
-                    title={managingCats ? t('doneManagingCategories') : t('manageCategoriesHint')}
+                    className="cat-manage-btn"
+                    onClick={() => setTaxonomyModal('category')}
+                    title={t('manageCategoriesHint')}
                   >
                     <Settings2 size={13} />
-                    {managingCats ? t('done') : t('manage')}
+                    {t('manage')}
                   </button>
                 </div>
 
-                {managingCats ? (
-                  <div className="cat-manage-panel">
-                    {catError && <p className="cat-manage-error">{catError}</p>}
-                    <div className="cat-manage-pills">
-                      {allCategories.length === 0 && (
-                        <span className="cat-manage-empty">{t('noCategoriesShort')}</span>
-                      )}
-                      {allCategories.map(cat => (
-                        <span key={cat} className="cat-manage-pill">
-                          {cat}
-                          <button
-                            className="cat-manage-delete"
-                            onClick={() => handleDeleteCategory(cat)}
-                            title={`${t('deleteCategoryConfirm')} "${cat}"`}
-                            aria-label={`${t('deleteCategoryConfirm')} ${cat}`}
-                          >
-                            <X size={11} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <form className="cat-manage-add" onSubmit={handleAddCategory}>
-                      <input
-                        ref={newCatRef}
-                        type="text"
-                        value={newCatName}
-                        onChange={e => setNewCatName(e.target.value)}
-                        placeholder={t('newCategoryNamePlaceholder')}
-                        className="cat-manage-input"
-                        disabled={catSaving}
-                        maxLength={60}
-                      />
-                      <button type="submit" className="cat-manage-add-btn" disabled={catSaving || !newCatName.trim()}>
-                        <Plus size={14} />
-                      </button>
-                    </form>
-                  </div>
-                ) : (
-                  <div className="filter-pills">
-                    <button className={`pill ${!category ? 'pill-active' : ''}`} onClick={() => setCategory('')}>
-                      {t('all')}
+                <div className="filter-pills">
+                  <button className={`pill ${!category ? 'pill-active' : ''}`} onClick={() => setCategory('')}>
+                    {t('all')}
+                  </button>
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      className={`pill ${category === cat ? 'pill-active' : ''}`}
+                      onClick={() => setCategory(category === cat ? '' : cat)}
+                    >
+                      {cat}
                     </button>
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        className={`pill ${category === cat ? 'pill-active' : ''}`}
-                        onClick={() => setCategory(category === cat ? '' : cat)}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
 
-              {allTags.length > 0 && (
-                <div className="filter-group">
+              <div className="filter-group">
+                <div className="filter-label-row">
                   <label className="filter-label">{t('tags')}</label>
-                  <div className="filter-pills">
-                    {allTags.map(tag => (
-                      <button
-                        key={tag}
-                        className={`pill ${activeTags.includes(tag) ? 'pill-active' : ''}`}
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    className="cat-manage-btn"
+                    onClick={() => setTaxonomyModal('tag')}
+                    title={t('manageTagsHint')}
+                  >
+                    <Settings2 size={13} />
+                    {t('manage')}
+                  </button>
                 </div>
-              )}
+                <div className="filter-pills">
+                  {allTags.length === 0 && <span className="filter-empty-note">{t('noTagsShort')}</span>}
+                  {allTags.map(tag => (
+                    <button
+                      key={tag}
+                      className={`pill ${activeTags.includes(tag) ? 'pill-active' : ''}`}
+                      onClick={() => toggleTag(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {hasActiveFilters && (
                 <button className="clear-filters-btn" onClick={clearFilters}>
@@ -613,26 +672,20 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
               <p className="bulk-tag-hint">
                 {t('bulkAddTags')} &amp; {t('bulkAddCategories')} — {t('bulkSelected')}: {selectedIds.size}
               </p>
-              <div className="bulk-tag-row">
-                <label className="bulk-tag-label">{t('tagsLabel')}</label>
-                <input
-                  className="bulk-tag-input"
-                  value={bulkTags}
-                  onChange={e => setBulkTags(e.target.value)}
-                  placeholder={t('bulkTagsPlaceholder')}
-                  disabled={bulkApplying}
-                />
-              </div>
-              <div className="bulk-tag-row">
-                <label className="bulk-tag-label">{t('category')}</label>
-                <input
-                  className="bulk-tag-input"
-                  value={bulkCats}
-                  onChange={e => setBulkCats(e.target.value)}
-                  placeholder={t('bulkCatsPlaceholder')}
-                  disabled={bulkApplying}
-                />
-              </div>
+              <TaxonomyField
+                type="tag"
+                label={t('tagsLabel')}
+                values={bulkTags}
+                onChange={setBulkTags}
+                onChanged={refreshTaxonomy}
+              />
+              <TaxonomyField
+                type="category"
+                label={t('category')}
+                values={bulkCats}
+                onChange={setBulkCats}
+                onChanged={refreshTaxonomy}
+              />
               <div className="bulk-tag-actions">
                 <button
                   className="selection-btn selection-btn--ghost"
@@ -644,7 +697,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
                 <button
                   className="selection-btn selection-btn--primary"
                   onClick={handleBulkApply}
-                  disabled={bulkApplying || (!bulkTags.trim() && !bulkCats.trim())}
+                  disabled={bulkApplying || (!bulkTags.length && !bulkCats.length)}
                 >
                   {bulkDone ? t('bulkApplied') : bulkApplying ? t('bulkApplying') : t('bulkApply')}
                 </button>
@@ -652,6 +705,17 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
             </div>
           )}
         </div>
+      )}
+
+      {taxonomyModal && (
+        <TaxonomyManagerModal
+          type={taxonomyModal}
+          selected={[]}
+          onChange={() => {}}
+          selectionEnabled={false}
+          onClose={() => setTaxonomyModal(null)}
+          onChanged={refreshTaxonomy}
+        />
       )}
     </div>
   );

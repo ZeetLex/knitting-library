@@ -213,6 +213,66 @@
   flex-shrink: 0;
 }
 
+.stats-ai-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--accent);
+}
+
+.stats-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 9%, var(--card-bg));
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.stats-icon-btn:hover:not(:disabled) {
+  background: var(--accent-muted);
+}
+
+.stats-icon-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.stats-range-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  margin: -2px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-secondary) 42%, transparent);
+}
+
+.stats-range-tabs button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stats-range-tabs button.active {
+  background: var(--card-bg);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
 .stats-ring {
   --ring-bg: color-mix(in srgb, var(--accent) 14%, var(--bg-secondary));
   display: flex;
@@ -349,6 +409,7 @@
 }
 
 .stats-inventory-strip,
+.stats-ai-detail,
 .stats-list {
   display: flex;
   flex-wrap: wrap;
@@ -357,6 +418,7 @@
 }
 
 .stats-inventory-strip span,
+.stats-ai-detail span,
 .stats-list span {
   display: inline-flex;
   align-items: center;
@@ -371,8 +433,51 @@
 }
 
 .stats-inventory-strip strong,
+.stats-ai-detail strong,
 .stats-list strong {
   color: var(--text-primary);
+}
+
+.stats-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.stats-user-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.stats-user-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.stats-user-row strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-user-row span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.stats-user-row small {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .stats-breakdown {

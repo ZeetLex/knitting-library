@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, BookOpen, CheckCircle, Dice5,
-  FolderOpen, Package, Play, Sparkles, Star,
+  FolderOpen, Github, Package, Play, Sparkles, Star,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchStats, thumbnailUrl } from '../utils/api';
@@ -64,9 +64,26 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
         </div>
         <strong>{recipe.title}</strong>
         {recipe.categories?.length > 0 && <span>{recipe.categories.slice(0, 2).join(' · ')}</span>}
+        {status === 'active' && <span>{t('startedBy')}: {recipe.active_username || t('unknownUser')}</span>}
         {recipe.active_started_at && <span>{t('startedAt')}: {fmtDate(recipe.active_started_at, language)}</span>}
+        {status === 'finished' && <span>{t('finishedBy')}: {recipe.finished_username || t('unknownUser')}</span>}
+        {recipe.finished_at && <span>{t('finishedAt')}: {fmtDate(recipe.finished_at, language)}</span>}
       </div>
     </button>
+  );
+}
+
+function MobileLatestRelease({ release }) {
+  const { t } = useApp();
+  if (!release) return null;
+  const title = release.title || release.name || release.tag_name || t('githubReleaseNotes');
+  const url = release.html_url || 'https://github.com/ZeetLex/knitting-library/releases';
+  return (
+    <a className="home-latest-release" href={url} target="_blank" rel="noreferrer">
+      <Github size={15} />
+      <span>{release.prerelease ? t('releasePrerelease') : t('latestRelease')}</span>
+      <strong>{title}</strong>
+    </a>
   );
 }
 
@@ -112,7 +129,7 @@ function HomeProjectPanel({ panelKey, panel, loading, onOpenRecipe, onNavigate, 
   );
 }
 
-export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
+export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, latestRelease, workQueueDock }) {
   const { t } = useApp();
   const [stats, setStats] = useState(null);
   const [active, setActive] = useState([]);
@@ -127,8 +144,8 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
     try {
       const [statsData, activeData, finishedData, recipesData] = await Promise.all([
         fetchStats().catch(() => null),
-        fetchRecipes({ status: 'active', per_page: 12 }).catch(() => ({ recipes: [] })),
-        fetchRecipes({ status: 'finished', per_page: 12 }).catch(() => ({ recipes: [] })),
+        fetchRecipes({ status: 'active', project_scope: 'global', per_page: 12 }).catch(() => ({ recipes: [] })),
+        fetchRecipes({ status: 'finished', project_scope: 'global', per_page: 12 }).catch(() => ({ recipes: [] })),
         fetchRecipes({ per_page: 80 }).catch(() => ({ recipes: [] })),
       ]);
       setStats(statsData);
@@ -166,6 +183,7 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
   return (
     <div className="home-page">
       <section className="home-hero">
+        <MobileLatestRelease release={latestRelease} />
         <div className="home-brand-hero">
           <img className="home-brand-logo" src="/brand-logo.png" alt="" aria-hidden="true" />
           <div className="home-wordmark">
@@ -190,6 +208,8 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe }) {
         <StatBubble icon={<Package size={22} />} value={stats?.inventory_items} label={t('statsInventory')} />
         <StatBubble icon={<CheckCircle size={22} />} value={stats?.finished_projects} label={t('statsFinished')} />
       </section>
+
+      {workQueueDock}
 
       <section className="home-projects">
         <div className="home-slider-top">

@@ -96,6 +96,11 @@ export default function RecipeCard({ recipe, onClick, style, selectionMode, sele
             {recipe.categories.join(' · ')}
           </p>
         )}
+        {status === 'active' && (
+          <p className="recipe-card-categories">
+            {t('startedBy')}: {recipe.active_username || t('unknownUser')}
+          </p>
+        )}
         {recipe.tags.length > 0 && (
           <div className="recipe-card-tags">
             {recipe.tags.slice(0, 3).map(tag => (

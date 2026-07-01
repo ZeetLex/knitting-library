@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen, AlertTriangle, RotateCcw, RotateCw, Scissors, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createRecipe, checkDuplicate, fetchCategories, fetchTags, rotateImage, deleteRecipeImage, cropImage, saveImageOrder, imageUrl } from '../utils/api';
+import { createRecipe, checkDuplicate, rotateImage, deleteRecipeImage, cropImage, saveImageOrder, imageUrl } from '../utils/api';
 import CropModal from './CropModal';
+import TaxonomyField from './TaxonomyManager';
 import './UploadModal.css';
 
 // ── PillInput ─────────────────────────────────────────────────────────────────
@@ -272,18 +273,11 @@ export default function UploadModal({ onClose, onSuccess }) {
   const [description, setDesc]      = useState('');
   const [selCats, setSelCats]       = useState([]);
   const [selTags, setSelTags]       = useState([]);
-  const [allCats, setAllCats]       = useState([]);
-  const [allTags, setAllTags]       = useState([]);
   const [dragging, setDragging]     = useState(false);
   const [uploading, setUploading]   = useState(false);
   const [error, setError]           = useState('');
   const [dupWarning, setDupWarning] = useState(null);
   const [uploadedRecipe, setUploadedRecipe] = useState(null);
-
-  useEffect(() => {
-    fetchCategories().then(setAllCats).catch(console.error);
-    fetchTags().then(setAllTags).catch(console.error);
-  }, []);
 
   const handleFiles = useCallback((newFiles) => {
     const valid = Array.from(newFiles).filter(f =>
@@ -462,21 +456,18 @@ export default function UploadModal({ onClose, onSuccess }) {
                   onChange={e => setDesc(e.target.value)} placeholder={t('notesPlaceholder')} rows={2} />
               </div>
 
-              <PillInput
+              <TaxonomyField
+                type="category"
                 label={t('categoryLabel')}
                 values={selCats}
-                allOptions={allCats}
                 onChange={setSelCats}
-                placeholder="Add a category…"
               />
 
-              <PillInput
+              <TaxonomyField
+                type="tag"
                 label={t('tagsLabel')}
-                hint="space or enter to add"
                 values={selTags}
-                allOptions={allTags}
                 onChange={setSelTags}
-                placeholder="Add a tag…"
               />
 
               {fileType === 'images' && files.length > 0 && (

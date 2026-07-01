@@ -1,21 +1,71 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, fetchCategories, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
+import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
-export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
-  const { t, language } = useApp();
+const VIEWER_RESUME_PREFIX = 'knitting_recipe_viewer_state_v1';
+
+function viewerResumeKey(user, recipeId) {
+  return `${VIEWER_RESUME_PREFIX}_${user?.id || user?.username || 'guest'}_${recipeId}`;
+}
+
+function readViewerResume(user, recipeId) {
+  if (!recipeId) return null;
+  try {
+    const raw = localStorage.getItem(viewerResumeKey(user, recipeId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clampIndex(value, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(parsed, Math.max(0, max)));
+}
+
+function normalizeViewMode(value) {
+  return value === 'charts' ? 'review' : (value || 'original');
+}
+
+function requestedViewTakesPrecedence(value) {
+  const mode = normalizeViewMode(value);
+  return mode === 'review' || mode === 'text';
+}
+
+function resolveResumeView(saved, requested) {
+  if (requestedViewTakesPrecedence(requested)) return normalizeViewMode(requested);
+  return normalizeViewMode(saved?.viewMode || requested);
+}
+
+function normalizeResume(saved, requested = 'original') {
+  return {
+    viewMode: resolveResumeView(saved, requested),
+    imageIndex: clampIndex(saved?.imageIndex, 9999),
+    zoom: Number.isFinite(Number(saved?.zoom)) ? Math.max(0.5, Math.min(Number(saved.zoom), 4)) : 1,
+    scrollY: Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null,
+    textScrollY: Number.isFinite(Number(saved?.textScrollY)) ? Number(saved.textScrollY) : null,
+    mobileImagesVisible: Boolean(saved?.mobileImagesVisible),
+  };
+}
+
+export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
+  const { t, language, user } = useApp();
+  const initialResume = readViewerResume(user, recipeId);
+  const initialState = normalizeResume(initialResume, initialViewMode);
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
-  const [imageIndex, setImageIndex] = useState(0);
-  const [zoom, setZoom]             = useState(1);
+  const [imageIndex, setImageIndex] = useState(() => initialState.imageIndex);
+  const [zoom, setZoom]             = useState(() => initialState.zoom);
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -29,7 +79,13 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   const [imageVersions, setImageVersions] = useState({}); // { filename: timestamp } for cache-busting after rotate
   const [deleteImageConfirm, setDeleteImageConfirm] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
+  const [viewMode, setViewMode] = useState(initialState.viewMode);
+  const [textVersion, setTextVersion] = useState(null);
+  const [textLoading, setTextLoading] = useState(false);
+  const [reviewSession, setReviewSession] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const addImagesInputRef = useRef(null);
   // Controls panel: open by default on desktop, closed on mobile
   const [controlsOpen, setControlsOpen] = useState(() =>
@@ -39,9 +95,18 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
+  const [mobileImagesVisible, setMobileImagesVisible] = useState(initialState.mobileImagesVisible);
   const [panelDragY, setPanelDragY] = useState(0);
   const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
+  const pendingScrollY = useRef(initialState.scrollY);
+  const pendingTextScrollY = useRef(initialState.textScrollY);
+  const lastTextScrollYRef = useRef(initialState.textScrollY || 0);
+  const restoredScrollRef = useRef(false);
+  const restoredTextScrollRef = useRef(false);
+  const textPanelRef = useRef(null);
+  const serverSaveTimerRef = useRef(null);
+  const lastServerSaveRef = useRef(0);
 
   useEffect(() => {
     const openPanel = (event) => {
@@ -52,6 +117,31 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     window.addEventListener('knitting-recipe-mobile-panel', openPanel);
     return () => window.removeEventListener('knitting-recipe-mobile-panel', openPanel);
   }, []);
+
+  useEffect(() => {
+    const handleProjectAction = () => {
+      if ((recipe?.project_status || 'none') === 'none') {
+        window.dispatchEvent(new CustomEvent('knitting-recipe-start-project'));
+        return;
+      }
+      setPanelDragY(0);
+      setMobileImageEditing(false);
+      setMobileImagesVisible(false);
+      setMobilePanel(panel => panel === 'info' ? null : 'info');
+    };
+    const handleImageToggle = () => {
+      if (recipe?.file_type !== 'images' || (recipe.images || []).length <= 1) return;
+      setMobileImageEditing(false);
+      setMobilePanel(null);
+      setMobileImagesVisible(visible => !visible);
+    };
+    window.addEventListener('knitting-recipe-project-action', handleProjectAction);
+    window.addEventListener('knitting-recipe-toggle-images', handleImageToggle);
+    return () => {
+      window.removeEventListener('knitting-recipe-project-action', handleProjectAction);
+      window.removeEventListener('knitting-recipe-toggle-images', handleImageToggle);
+    };
+  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length]);
 
   const beginPanelDrag = (event) => {
     panelDragStartY.current = event.clientY;
@@ -139,6 +229,30 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     }
   };
 
+  const handleAdjust = async (adjustments) => {
+    const filename = recipe?.images?.[imageIndex];
+    if (!filename) return;
+    const result = await adjustImage(recipeId, filename, adjustments);
+    setImageVersions(v => ({ ...v, [filename]: Date.now() }));
+    if (result.thumbnail_version !== undefined) {
+      setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
+      setThumbCacheBust(Date.now());
+    }
+    setAdjustOpen(false);
+  };
+
+  const handleRestoreOriginal = async () => {
+    const filename = recipe?.images?.[imageIndex];
+    if (!filename) return;
+    const result = await restoreOriginalImage(recipeId, filename);
+    setImageVersions(v => ({ ...v, [filename]: Date.now() }));
+    if (result.thumbnail_version !== undefined) {
+      setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
+      setThumbCacheBust(Date.now());
+    }
+    setAdjustOpen(false);
+  };
+
   const handleAddImages = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -156,12 +270,48 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const localSaved = readViewerResume(user, recipeId);
+    const fallbackResume = normalizeResume(localSaved, initialViewMode);
+    pendingScrollY.current = fallbackResume.scrollY;
+    pendingTextScrollY.current = fallbackResume.textScrollY;
+    lastTextScrollYRef.current = fallbackResume.textScrollY || 0;
+    restoredScrollRef.current = false;
+    restoredTextScrollRef.current = false;
     setLoading(true);
+    setError(null);
     setMobileImageEditing(false);
     setMobilePanel(null);
-    fetchRecipe(recipeId)
-      .then(r => {
+    setMobileImagesVisible(fallbackResume.mobileImagesVisible);
+    setViewMode(fallbackResume.viewMode);
+    setImageIndex(fallbackResume.imageIndex);
+    setZoom(fallbackResume.zoom);
+    setFullscreen(false);
+    setTextVersion(null);
+    setReviewSession(null);
+
+    const load = async () => {
+      try {
+        const [r, serverSaved] = await Promise.all([
+          fetchRecipe(recipeId),
+          fetchViewerProgress(recipeId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const saved = serverSaved?.exists ? serverSaved : localSaved;
+        const resume = normalizeResume(saved, initialViewMode);
+        pendingScrollY.current = resume.scrollY;
+        pendingTextScrollY.current = resume.textScrollY;
+        lastTextScrollYRef.current = resume.textScrollY || 0;
+        restoredScrollRef.current = false;
+        restoredTextScrollRef.current = false;
+        setMobileImagesVisible(resume.mobileImagesVisible);
+        setViewMode(resume.viewMode);
+        setImageIndex(resume.imageIndex);
+        setZoom(resume.zoom);
         setRecipe(r);
+        if (r.file_type === 'images') {
+          setImageIndex(index => clampIndex(index, (r.images || []).length - 1));
+        }
         if (r.file_type === 'pdf') {
           fetchPdfPages(recipeId).then(d => {
             const pages = d.pages || [];
@@ -177,10 +327,146 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
             }
           });
         }
-      })
-      .catch(() => setError('Could not load this recipe.'))
-      .finally(() => setLoading(false));
-  }, [recipeId]);
+      } catch (_) {
+        if (!cancelled) setError('Could not load this recipe.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [recipeId, initialViewMode, user]);
+
+  useEffect(() => {
+    if (viewMode !== 'text') return;
+    setTextLoading(true);
+    fetchTextVersion(recipeId)
+      .then(setTextVersion)
+      .catch(() => setTextVersion({ exists: false, error: true }))
+      .finally(() => setTextLoading(false));
+  }, [recipeId, viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'review') return;
+    setReviewLoading(true);
+    fetchReviewSession(recipeId)
+      .then(setReviewSession)
+      .catch(() => setReviewSession({ exists: false, error: true }))
+      .finally(() => setReviewLoading(false));
+  }, [recipeId, viewMode]);
+
+  const saveViewerResume = useCallback((flushServer = false) => {
+    const progress = {
+      recipeId,
+      viewMode,
+      imageIndex,
+      zoom,
+      scrollY: window.scrollY || 0,
+      textScrollY: textPanelRef.current?.scrollTop ?? lastTextScrollYRef.current ?? 0,
+      mobileImagesVisible,
+      updatedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify(progress));
+    } catch (_) {}
+    if (!user || !recipeId) return;
+    const saveServer = () => {
+      lastServerSaveRef.current = Date.now();
+      saveViewerProgressApi(recipeId, progress).catch(() => {});
+    };
+    if (flushServer) {
+      if (serverSaveTimerRef.current) {
+        clearTimeout(serverSaveTimerRef.current);
+        serverSaveTimerRef.current = null;
+      }
+      saveServer();
+      return;
+    }
+    const elapsed = Date.now() - lastServerSaveRef.current;
+    if (elapsed >= 1500) {
+      saveServer();
+    } else if (!serverSaveTimerRef.current) {
+      serverSaveTimerRef.current = setTimeout(() => {
+        serverSaveTimerRef.current = null;
+        saveServer();
+      }, 1500 - elapsed);
+    }
+  }, [user, recipeId, viewMode, imageIndex, zoom, mobileImagesVisible]);
+
+  useEffect(() => {
+    if (!recipeId) return undefined;
+    const saveOnPageHide = () => saveViewerResume(true);
+    const saveOnVisibility = () => {
+      if (document.visibilityState === 'hidden') saveViewerResume(true);
+    };
+    let scrollFrame = null;
+    const saveOnScroll = () => {
+      if (scrollFrame != null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        saveViewerResume();
+      });
+    };
+
+    window.addEventListener('pagehide', saveOnPageHide);
+    document.addEventListener('visibilitychange', saveOnVisibility);
+    window.addEventListener('scroll', saveOnScroll, { passive: true });
+    return () => {
+      saveViewerResume(true);
+      if (scrollFrame != null) cancelAnimationFrame(scrollFrame);
+      if (serverSaveTimerRef.current) {
+        clearTimeout(serverSaveTimerRef.current);
+        serverSaveTimerRef.current = null;
+      }
+      window.removeEventListener('pagehide', saveOnPageHide);
+      document.removeEventListener('visibilitychange', saveOnVisibility);
+      window.removeEventListener('scroll', saveOnScroll);
+    };
+  }, [recipeId, saveViewerResume]);
+
+  useEffect(() => {
+    if (!recipeId || loading) return;
+    if (pendingScrollY.current != null && !restoredScrollRef.current) return;
+    if (viewMode === 'text' && pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
+    saveViewerResume();
+  }, [recipeId, loading, viewMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
+
+  useEffect(() => {
+    if (loading || restoredScrollRef.current || pendingScrollY.current == null) return;
+    if (viewMode === 'text' && textLoading) return;
+    if (viewMode === 'review' && reviewLoading) return;
+    if (viewMode === 'original' && recipe?.file_type === 'pdf' && pdfPages.length === 0 && !converting) return;
+
+    const targetY = Math.max(0, pendingScrollY.current);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, targetY);
+        restoredScrollRef.current = true;
+      });
+    });
+  }, [loading, viewMode, textLoading, reviewLoading, recipe?.file_type, pdfPages.length, converting]);
+
+  useEffect(() => {
+    if (loading || viewMode !== 'text' || textLoading || restoredTextScrollRef.current || pendingTextScrollY.current == null) return;
+    const targetY = Math.max(0, pendingTextScrollY.current);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (textPanelRef.current) {
+          textPanelRef.current.scrollTop = Math.min(targetY, textPanelRef.current.scrollHeight);
+          lastTextScrollYRef.current = textPanelRef.current.scrollTop;
+        }
+        restoredTextScrollRef.current = true;
+      });
+    });
+  }, [loading, viewMode, textLoading, textVersion?.content_markdown]);
+
+  const handleTextPanelScroll = useCallback(() => {
+    if (viewMode !== 'text') return;
+    if (pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
+    lastTextScrollYRef.current = textPanelRef.current?.scrollTop || 0;
+    saveViewerResume();
+  }, [viewMode, saveViewerResume]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') setFullscreen(false);
@@ -205,6 +491,51 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
     touchStartX.current = null;
   };
 
+  const handleMobileThumbClick = (index, event) => {
+    setImageIndex(index);
+  };
+
+  const formatStartedDate = (iso) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString(getLanguageLocale(language), {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatStartedShortDate = (iso) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(getLanguageLocale(language), {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
+  const isRecipeStarted = recipe?.project_status === 'active';
+  const startedAtLabel = formatStartedDate(recipe?.active_started_at);
+  const startedAtShortLabel = formatStartedShortDate(recipe?.active_started_at);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+      detail: {
+        projectStatus: recipe?.project_status || 'none',
+        hasImages: recipe?.file_type === 'images' && (recipe.images || []).length > 1,
+        imagesVisible: mobileImagesVisible,
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+        detail: { projectStatus: 'none', hasImages: false, imagesVisible: false },
+      }));
+    };
+  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length, mobileImagesVisible]);
+
   const handleDelete = async () => {
     try { await deleteRecipe(recipeId); onDeleted(); }
     catch (e) { alert('Failed to delete recipe.'); }
@@ -224,41 +555,114 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   );
 
   return (
-    <div className={`viewer ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
+    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${viewMode === 'review' && reviewSession?.exists ? 'viewer--review-active' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
         </button>
-        <div className="viewer-actions">
-          <button
-            className="viewer-action-btn viewer-info-toggle"
-            onClick={() => setDesktopInfoOpen(open => !open)}
-            title={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
-            aria-label={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
-            aria-pressed={!desktopInfoOpen}
-          >
-            {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
-          <a
-            className="viewer-action-btn"
-            href={downloadUrl(recipeId)}
-            download
-            title={recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images (ZIP)'}
-          >
-            <Download size={18} />
-          </a>
-          <button className="viewer-action-btn" onClick={() => setEditing(true)} title={t('editRecipe')}>
-            <Pencil size={18} />
-          </button>
-          <button className="viewer-action-btn danger" onClick={() => setDeleteConfirm(true)} title={t('deleteRecipe')}>
-            <Trash2 size={18} />
-          </button>
+        <div className="viewer-topbar-right">
+          {isRecipeStarted && (
+            <div className="recipe-started-badge" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
+              <CheckCircle2 size={15} />
+              <span className="recipe-started-badge-main">{t('recipeStarted')}</span>
+              {startedAtLabel && <span className="recipe-started-badge-date">{startedAtLabel}</span>}
+            </div>
+          )}
+          <div className="viewer-actions">
+            <button
+              className="viewer-action-btn viewer-info-toggle"
+              onClick={() => setDesktopInfoOpen(open => !open)}
+              title={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+              aria-label={desktopInfoOpen ? t('hideInfo') : t('showInfo')}
+              aria-pressed={!desktopInfoOpen}
+            >
+              {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+            <a
+              className="viewer-action-btn"
+              href={downloadUrl(recipeId)}
+              download
+              title={recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images (ZIP)'}
+            >
+              <Download size={18} />
+            </a>
+            <button className="viewer-action-btn" onClick={() => setEditing(true)} title={t('editRecipe')}>
+              <Pencil size={18} />
+            </button>
+            <button className="viewer-action-btn danger" onClick={() => setDeleteConfirm(true)} title={t('deleteRecipe')}>
+              <Trash2 size={18} />
+            </button>
+          </div>
         </div>
+      </div>
+
+      <div className="viewer-mode-tabs" role="tablist" aria-label={t('recipeViewTabs')}>
+        <button
+          className={`viewer-mode-tab ${viewMode === 'original' ? 'active' : ''}`}
+          onClick={() => setViewMode('original')}
+          role="tab"
+          aria-selected={viewMode === 'original'}
+        >
+          <LucideImage size={16} />
+          <span>{t('originalView')}</span>
+        </button>
+        <button
+          className={`viewer-mode-tab ${viewMode === 'text' ? 'active' : ''}`}
+          onClick={() => setViewMode('text')}
+          role="tab"
+          aria-selected={viewMode === 'text'}
+        >
+          <FileText size={16} />
+          <span>{t('textVersion')}</span>
+        </button>
+        <button
+          className={`viewer-mode-tab viewer-mode-tab--review ${viewMode === 'review' ? 'active' : ''}`}
+          onClick={() => setViewMode('review')}
+          role="tab"
+          aria-selected={viewMode === 'review'}
+        >
+          <CheckCircle2 size={16} />
+          <span>{t('reviewText')}</span>
+        </button>
       </div>
 
       <div className="viewer-body">
         <div className="viewer-content">
-          {recipe.file_type === 'pdf' ? (
+          {viewMode === 'text' ? (
+            <TextVersionPanel
+              t={t}
+              recipeId={recipeId}
+              language={language}
+              textVersion={textVersion}
+              setTextVersion={setTextVersion}
+              loading={textLoading}
+              setLoading={setTextLoading}
+              onTextJobQueued={onTextJobQueued}
+              onReviewReady={(session) => {
+                setReviewSession(session);
+                setViewMode('review');
+              }}
+              panelRef={textPanelRef}
+              onPanelScroll={handleTextPanelScroll}
+            />
+          ) : viewMode === 'review' ? (
+            <ReviewSessionPanel
+              t={t}
+              recipe={recipe}
+              recipeId={recipeId}
+              language={language}
+              session={reviewSession}
+              setSession={setReviewSession}
+              loading={reviewLoading}
+              setLoading={setReviewLoading}
+              onTextJobQueued={onTextJobQueued}
+              onCompleted={(textVersionResult) => {
+                setTextVersion(textVersionResult || null);
+                setViewMode('text');
+                onTextJobQueued?.();
+              }}
+            />
+          ) : recipe.file_type === 'pdf' ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
               <div className="pdf-controls">
                 <button className="pdf-open-btn" onClick={() => { setFullscreen(f => !f); }}>
@@ -392,6 +796,10 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
                       <button onClick={() => setCropOpen(true)} title={t('cropImage')}>
                         <Scissors size={14} />
                         <span>{t('cropImage')}</span>
+                      </button>
+                      <button onClick={() => setAdjustOpen(true)} title={t('adjustImage')}>
+                        <SlidersHorizontal size={14} />
+                        <span>{t('adjustImage')}</span>
                       </button>
                       <button
                         className={`set-cover-btn ${thumbSet === recipe.images[imageIndex] ? 'set-cover-btn--done' : ''}`}
@@ -546,8 +954,34 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
         />
       )}
 
+      {adjustOpen && recipe?.file_type === 'images' && recipe.images.length > 0 && (
+        <ImageAdjustPanel
+          t={t}
+          imageSrc={imageUrl(recipeId, recipe.images[imageIndex], imageVersions[recipe.images[imageIndex]] || recipe.thumbnail_version)}
+          onClose={() => setAdjustOpen(false)}
+          onApply={handleAdjust}
+          onRestore={handleRestoreOriginal}
+        />
+      )}
+
       {/* ── Knitting tools remain available on desktop through their floating button. ── */}
       <KnittingToolbar recipeId={recipeId} t={t} />
+
+      {isRecipeStarted && (
+        <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
+          <CheckCircle2 size={14} />
+          {startedAtShortLabel && <span className="recipe-started-badge-date">{startedAtShortLabel}</span>}
+        </div>
+      )}
+
+      {mobilePanel !== 'info' && (
+        <ProjectStatus
+          recipe={recipe}
+          onUpdated={setRecipe}
+          enableExternalControls
+          controlsOnly
+        />
+      )}
 
       {/* ── Mobile Info panel ── */}
       <div
@@ -573,6 +1007,8 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               thumbCacheBust={thumbCacheBust}
               thumbSet={thumbSet}
               onUpdated={setRecipe}
+              showCover={false}
+              enableExternalProjectControls
             />
           )}
         </div>
@@ -598,6 +1034,20 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
           <div className="mobile-actions-section">
             <span className="mobile-actions-heading">{t('recipeActions') || 'Actions'}</span>
             <div className="mobile-action-list">
+              <button
+                className="mobile-action-row"
+                onClick={() => { setMobilePanel('info'); }}
+              >
+                <Info size={19} />
+                <span>{t('mobileTabInfo') || 'Info'}</span>
+              </button>
+              <button
+                className="mobile-action-row"
+                onClick={() => { setViewMode('review'); setMobilePanel(null); }}
+              >
+                <CheckCircle2 size={19} />
+                <span>{t('reviewOcrText') || t('reviewText') || 'Review AI scan'}</span>
+              </button>
               <a
                 className="mobile-action-row"
                 href={downloadUrl(recipeId)}
@@ -640,13 +1090,16 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
 
       {recipe.file_type === 'images' && (
         <>
-          {recipe.images.length > 1 && !mobileImageEditing && !fullscreen && (
-            <div className="mobile-quick-strip" aria-label="Recipe images">
+          {recipe.images.length > 1 && mobileImagesVisible && !mobileImageEditing && !fullscreen && (
+            <div
+              className="mobile-quick-strip mobile-quick-strip--bottom"
+              aria-label="Recipe images"
+            >
               {recipe.images.map((img, i) => (
                 <button
                   key={img}
                   className={`mobile-quick-thumb ${i === imageIndex ? 'active' : ''}`}
-                  onClick={() => setImageIndex(i)}
+                  onClick={(event) => handleMobileThumbClick(i, event)}
                   aria-label={`Page ${i + 1}`}
                 >
                   <img src={imageUrl(recipeId, img, imageVersions[img] || recipe.thumbnail_version)} alt="" loading="lazy" />
@@ -698,6 +1151,9 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
               <button onClick={() => { setCropOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('cropImage')} title={t('cropImage')}>
                 <Scissors size={18} />
               </button>
+              <button onClick={() => { setAdjustOpen(true); setMobileImageEditing(false); }} disabled={recipe.images.length === 0} aria-label={t('adjustImage')} title={t('adjustImage')}>
+                <SlidersHorizontal size={18} />
+              </button>
               <button onClick={() => handleSetThumbnail('image', recipe.images[imageIndex])} disabled={recipe.images.length === 0} aria-label="Set cover" title="Set cover">
                 <LucideImage size={18} />
               </button>
@@ -720,25 +1176,919 @@ export default function RecipeViewer({ recipeId, onBack, onDeleted }) {
   );
 }
 
+const DEFAULT_ADJUSTMENTS = {
+  brightness: 0,
+  contrast: 0,
+  gamma: 1,
+  saturation: 0,
+  warmth: 0,
+  sharpness: 0,
+};
+
+function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
+  const [values, setValues] = useState(DEFAULT_ADJUSTMENTS);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const f = (key, value) => setValues(prev => ({ ...prev, [key]: Number(value) }));
+  const previewFilter = [
+    `brightness(${1 + values.brightness / 100})`,
+    `contrast(${1 + values.contrast / 100})`,
+    `saturate(${Math.max(0, 1 + values.saturation / 100)})`,
+  ].join(' ');
+
+  const handleApply = async () => {
+    setSaving(true); setError('');
+    try { await onApply(values); }
+    catch (e) { setError(e.message || t('adjustImageError')); setSaving(false); }
+  };
+
+  const handleRestore = async () => {
+    if (!window.confirm(t('restoreOriginalConfirm'))) return;
+    setSaving(true); setError('');
+    try { await onRestore(); }
+    catch (e) { setError(e.message || t('restoreOriginalError')); setSaving(false); }
+  };
+
+  const sliders = [
+    ['brightness', t('adjustBrightness'), -100, 100, 1],
+    ['contrast', t('adjustContrast'), -100, 100, 1],
+    ['gamma', t('adjustGamma'), 0.2, 3, 0.05],
+    ['saturation', t('adjustSaturation'), -100, 100, 1],
+    ['warmth', t('adjustWarmth'), -100, 100, 1],
+    ['sharpness', t('adjustSharpness'), -100, 100, 1],
+  ];
+
+  return (
+    <div className="adjust-panel-overlay" onClick={onClose}>
+      <div className="adjust-panel" onClick={e => e.stopPropagation()}>
+        <div className="adjust-panel-header">
+          <div>
+            <h3>{t('adjustImage')}</h3>
+            <p>{t('adjustImageHint')}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="adjust-panel-body">
+          <div className="adjust-preview">
+            <img src={imageSrc} alt="" style={{ filter: previewFilter }} />
+          </div>
+          <div className="adjust-sliders">
+            {sliders.map(([key, label, min, max, step]) => (
+              <label className="adjust-slider" key={key}>
+                <span>{label}<strong>{values[key]}</strong></span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={values[key]}
+                  onChange={e => f(key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+        {error && <p className="status-error adjust-error">{error}</p>}
+        <div className="adjust-panel-actions">
+          <button className="btn-secondary" onClick={() => setValues(DEFAULT_ADJUSTMENTS)} disabled={saving}>{t('resetSliders')}</button>
+          <button className="btn-secondary" onClick={handleRestore} disabled={saving}>{t('restoreOriginal')}</button>
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={handleApply} disabled={saving}>{saving ? t('saving') : t('apply')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function cleanReviewDraftText(text) {
+  return String(text || '')
+    .replace(/^```(?:markdown|md|text)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession, loading, setLoading, onTextJobQueued, onCompleted }) {
+  const [pageIndex, setPageIndex] = useState(0);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [assetMode, setAssetMode] = useState(null);
+  const [mobileSplit, setMobileSplit] = useState(50);
+  const [mobileImageZoom, setMobileImageZoom] = useState(1);
+  const reviewBodyRef = useRef(null);
+
+  const pages = session?.pages || [];
+  const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
+  const sourceText = page?.source_text || page?.ocr_text || '';
+
+  useEffect(() => {
+    if (!page) { setDraft(''); return; }
+    setDraft(cleanReviewDraftText(page.reviewed_text || page.source_text || page.ocr_text || ''));
+  }, [page?.id]);
+
+  const pageSrc = page ? reviewPageImageSrc(recipe, recipeId, page.page_key) : '';
+  const resetToRaw = () => setDraft(cleanReviewDraftText(sourceText));
+
+  const goPreviousPage = () => setPageIndex(i => Math.max(0, i - 1));
+  const goNextPage = () => setPageIndex(i => Math.min(pages.length - 1, i + 1));
+
+  const updateMobileSplit = (clientY) => {
+    const body = reviewBodyRef.current;
+    if (!body) return;
+    const rect = body.getBoundingClientRect();
+    const raw = ((clientY - rect.top) / rect.height) * 100;
+    setMobileSplit(Math.min(100, Math.max(0, raw)));
+  };
+
+  const startMobileSplitDrag = (event) => {
+    updateMobileSplit(event.clientY);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveMobileSplitDrag = (event) => {
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
+    updateMobileSplit(event.clientY);
+  };
+
+  const queueScan = async () => {
+    setLoading(true); setError('');
+    try {
+      await createTextVersionJob(recipeId, language);
+      onTextJobQueued?.();
+      setSession({ exists: false, queued: true });
+    } catch (e) {
+      setError(e.message || t('textVersionGenerateError'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const savePage = async (status = 'draft', moveNext = false) => {
+    if (!session?.id || !page?.id) return null;
+    setSaving(true); setError('');
+    try {
+      const updated = await saveReviewPage(session.id, page.id, draft, status);
+      setSession(updated);
+      if (moveNext && pageIndex < pages.length - 1) setPageIndex(i => i + 1);
+      return updated;
+    } catch (e) {
+      setError(e.message || 'Failed to save page');
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pause = async () => {
+    if (!session?.id) return;
+    await savePage('draft');
+    await pauseReviewSession(session.id).catch(() => {});
+    onTextJobQueued?.();
+  };
+
+  const cancel = async () => {
+    if (!session?.id || !window.confirm(t('cancelReviewConfirm'))) return;
+    setSaving(true);
+    try {
+      await cancelReviewSession(session.id);
+      setSession({ exists: false });
+      onTextJobQueued?.();
+    } catch (e) {
+      setError(e.message || 'Failed to cancel review');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const complete = async () => {
+    if (!session?.id) return;
+    await savePage('accepted');
+    setSaving(true); setError('');
+    try {
+      await completeReviewSession(session.id);
+      const text = await fetchTextVersion(recipeId).catch(() => null);
+      onCompleted?.(text);
+    } catch (e) {
+      setError(e.message || 'Failed to complete review');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveCurrentPage = async () => {
+    if (!session?.id || !page?.id || saving) return;
+    if (pageIndex >= pages.length - 1) {
+      await complete();
+      return;
+    }
+    await savePage('accepted', true);
+  };
+
+  const saveAsset = async (payload) => {
+    if (!session?.id || !page?.id) return;
+    setSaving(true); setError('');
+    try {
+      const updated = assetMode === 'legend'
+        ? await createReviewLegend(session.id, page.id, payload)
+        : await createReviewDiagram(session.id, page.id, payload);
+      setSession(updated);
+      setAssetMode(null);
+    } catch (e) {
+      setError(e.message || 'Failed to save asset');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    const reviewMode = !!session?.exists;
+    window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+      detail: { reviewMode, reviewSaving: saving },
+    }));
+  }, [session?.exists, saving]);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
+        detail: { reviewMode: false, reviewSaving: false },
+      }));
+    };
+  }, []);
+
+  useEffect(() => {
+    const approve = () => approveCurrentPage();
+    const pauseReview = () => pause();
+    const cancelReview = () => cancel();
+    window.addEventListener('knitting-review-mobile-approve', approve);
+    window.addEventListener('knitting-review-mobile-pause', pauseReview);
+    window.addEventListener('knitting-review-mobile-cancel', cancelReview);
+    return () => {
+      window.removeEventListener('knitting-review-mobile-approve', approve);
+      window.removeEventListener('knitting-review-mobile-pause', pauseReview);
+      window.removeEventListener('knitting-review-mobile-cancel', cancelReview);
+    };
+  }, [session?.id, page?.id, draft, pageIndex, pages.length, saving]);
+
+  if (loading) {
+    return <div className="review-panel review-panel--empty"><div className="spinner" /><p>{t('loading')}</p></div>;
+  }
+
+  if (!session?.exists) {
+    return (
+      <div className="review-panel review-panel--empty">
+        <Clock3 size={34} />
+        <h2>{session?.queued ? t('reviewQueued') : t('reviewReadyEmpty')}</h2>
+        <p>{session?.queued ? t('reviewQueuedHint') : t('reviewStartHint')}</p>
+        {error && <p className="status-error">{error}</p>}
+        {!session?.queued && (
+          <button className="btn-primary btn-icon-label" onClick={queueScan} disabled={saving}>
+            <Sparkles size={15} />{t('queueTextVersion') || 'Scan pages'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-panel">
+      <div className="review-topbar">
+        <div>
+          <h2>{t('reviewText')}</h2>
+          <p>{pages.length ? `${pageIndex + 1} / ${pages.length} · ${session.accepted_count || 0} ${t('reviewPagesAccepted')}` : ''}</p>
+        </div>
+        <div className="review-actions">
+          <button className="btn-secondary" onClick={cancel} disabled={saving}>{t('cancel') || 'Cancel'}</button>
+          <button className="btn-secondary" onClick={pause} disabled={saving}>{t('doLater')}</button>
+          <button className="btn-secondary btn-icon-label" onClick={() => setAssetMode('legend')} disabled={!page || saving}>
+            <Scissors size={15} />{t('cropLegend')}
+          </button>
+          <button className="btn-primary btn-icon-label review-insert-diagram" onClick={() => setAssetMode('diagram')} disabled={!page || saving}>
+            <Grid3X3 size={16} />{t('insertDiagram')}
+          </button>
+        </div>
+      </div>
+      {error && <p className="status-error">{error}</p>}
+      {page && (
+        <button
+          className="review-mobile-diagram-btn"
+          onClick={() => setAssetMode('diagram')}
+          disabled={!page || saving}
+          aria-label={t('insertDiagram')}
+        >
+          <Grid3X3 size={16} />
+          <span>{t('insertDiagram')}</span>
+        </button>
+      )}
+      {page && (
+        <div
+          className="review-body"
+          ref={reviewBodyRef}
+          style={{ '--review-mobile-image-size': `${mobileSplit}%` }}
+        >
+          <div className="review-page-side">
+            <div className="review-page-image-label">
+              <span>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}</span>
+              <strong>{page.page_key}</strong>
+            </div>
+            <div className="review-mobile-zoom-controls" aria-label={t('zoom') || 'Zoom'}>
+              <button
+                type="button"
+                onClick={() => setMobileImageZoom(z => Math.max(0.5, Math.round((z - 0.15) * 100) / 100))}
+                disabled={mobileImageZoom <= 0.5}
+                aria-label={t('zoomOut') || 'Zoom out'}
+              >
+                <ZoomOut size={16} />
+              </button>
+              <span>{Math.round(mobileImageZoom * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => setMobileImageZoom(z => Math.min(3, Math.round((z + 0.15) * 100) / 100))}
+                disabled={mobileImageZoom >= 3}
+                aria-label={t('zoomIn') || 'Zoom in'}
+              >
+                <ZoomIn size={16} />
+              </button>
+            </div>
+            <img
+              src={pageSrc}
+              alt=""
+              style={{ '--review-mobile-image-zoom': mobileImageZoom }}
+            />
+          </div>
+          <div
+            className="review-mobile-splitter"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('resize') || 'Resize panes'}
+            onPointerDown={startMobileSplitDrag}
+            onPointerMove={moveMobileSplitDrag}
+          >
+            <span />
+          </div>
+          <div className="review-text-side">
+            <div className="review-page-nav">
+              <button className="btn-secondary" onClick={goPreviousPage} disabled={pageIndex === 0 || saving}>
+                <ChevronLeft size={15} />{t('previous') || 'Previous'}
+              </button>
+              <span>{page.page_key}</span>
+              <button className="btn-secondary" onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving}>
+                {t('next') || 'Next'}<ChevronRight size={15} />
+              </button>
+            </div>
+            <div className="review-source-pair">
+              <details className="review-raw-ocr">
+                <summary>
+                  <span>{t('rawOcr') || 'AI scan'}</span>
+                  <small>{page.page_key}</small>
+                </summary>
+                <pre>{cleanReviewDraftText(sourceText) || t('noTextDetected') || 'No text detected'}</pre>
+              </details>
+              <div className="review-suggestion-head">
+                <div>
+                  <span>{t('aiSuggestion') || 'AI suggestion'}</span>
+                  <small>{pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length} · ${page.page_key}` : page.page_key}</small>
+                </div>
+                <button className="btn-secondary" onClick={resetToRaw} disabled={saving || !sourceText}>
+                  <RotateCcw size={14} />{t('resetToRawOcr') || 'Reset to AI scan'}
+                </button>
+              </div>
+            </div>
+            <textarea className="review-textarea" value={draft} onChange={e => setDraft(e.target.value)} />
+            {(page.diagrams?.length > 0 || page.legends?.length > 0) && (
+              <div className="review-assets">
+                {page.diagrams?.map(item => <img key={item.id} src={reviewAssetUrl(recipeId, item.image_path)} alt={item.title} />)}
+                {page.legends?.map(item => <img key={item.id} src={reviewAssetUrl(recipeId, item.image_path)} alt={item.title} />)}
+              </div>
+            )}
+            <div className="review-bottom-actions">
+              <button className="btn-secondary" onClick={() => savePage('draft')} disabled={saving}><Save size={15} />{t('saveChanges')}</button>
+              <button className="btn-primary" onClick={() => savePage('accepted', true)} disabled={saving}>
+                <CheckCircle2 size={15} />{pageIndex >= pages.length - 1 ? t('acceptPage') : t('acceptNext')}
+              </button>
+              <button className="btn-primary" onClick={complete} disabled={saving || !pages.length}>
+                {t('completeReview')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {page && (
+        <div className="review-mobile-page-nav" aria-label={t('pageNavigation') || 'Page navigation'}>
+          <button onClick={goPreviousPage} disabled={pageIndex === 0 || saving} aria-label={t('previous') || 'Previous'}>
+            <ChevronLeft size={18} />
+          </button>
+          <span>
+            {pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}
+            {page.page_key ? ` · ${page.page_key}` : ''}
+          </span>
+          <button onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving} aria-label={t('next') || 'Next'}>
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
+      {assetMode && page && (
+        <ReviewAssetModal
+          t={t}
+          mode={assetMode}
+          imageSrc={pageSrc}
+          onClose={() => setAssetMode(null)}
+          onSave={saveAsset}
+        />
+      )}
+    </div>
+  );
+}
+
+function reviewPageImageSrc(recipe, recipeId, pageKey) {
+  if (!recipe || !pageKey) return '';
+  return recipe.file_type === 'pdf' ? pdfPageUrl(recipeId, pageKey) : imageUrl(recipeId, pageKey, recipe.thumbnail_version);
+}
+
+function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
+  const imgRef = useRef(null);
+  const interactionRef = useRef(null);
+  const [controlsOpen, setControlsOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 640 : true
+  );
+  const [natural, setNatural] = useState({ w: 1, h: 1 });
+  const [points, setPoints] = useState({
+    tl: { x: 20, y: 20 },
+    tr: { x: 75, y: 20 },
+    br: { x: 75, y: 58 },
+    bl: { x: 20, y: 58 },
+  });
+  const [title, setTitle] = useState(mode === 'legend' ? t('legendDefaultTitle') : t('diagramDefaultTitle'));
+  const [cols, setCols] = useState(10);
+  const [rows, setRows] = useState(10);
+  const [opacity, setOpacity] = useState(0.85);
+  const [backgroundBlur, setBackgroundBlur] = useState(0);
+  const [gridLineWidth, setGridLineWidth] = useState(1);
+
+  const clampPoint = (point) => ({
+    x: Math.max(0, Math.min(100, Number(point.x))),
+    y: Math.max(0, Math.min(100, Number(point.y))),
+  });
+
+  const pointOrder = ['tl', 'tr', 'br', 'bl'];
+  const bounds = pointOrder.reduce((acc, key) => ({
+    minX: Math.min(acc.minX, points[key].x),
+    maxX: Math.max(acc.maxX, points[key].x),
+    minY: Math.min(acc.minY, points[key].y),
+    maxY: Math.max(acc.maxY, points[key].y),
+  }), { minX: 100, maxX: 0, minY: 100, maxY: 0 });
+
+  const movePoints = (startPoints, dx, dy) => {
+    const minX = Math.min(...pointOrder.map(key => startPoints[key].x));
+    const maxX = Math.max(...pointOrder.map(key => startPoints[key].x));
+    const minY = Math.min(...pointOrder.map(key => startPoints[key].y));
+    const maxY = Math.max(...pointOrder.map(key => startPoints[key].y));
+    const safeDx = Math.max(-minX, Math.min(100 - maxX, dx));
+    const safeDy = Math.max(-minY, Math.min(100 - maxY, dy));
+    setPoints(Object.fromEntries(pointOrder.map(key => [
+      key,
+      { x: startPoints[key].x + safeDx, y: startPoints[key].y + safeDy },
+    ])));
+  };
+
+  const updatePoint = (key, point) => {
+    setPoints(prev => ({ ...prev, [key]: clampPoint(point) }));
+  };
+
+  const pointToPercent = (event) => {
+    const rect = imgRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return { x: 0, y: 0 };
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    };
+  };
+
+  const startInteraction = (event, type, handle = '') => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startPoint = pointToPercent(event);
+    const startPoints = JSON.parse(JSON.stringify(points));
+    interactionRef.current = { type, handle, startPoint, startPoints };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveInteraction = (event) => {
+    const active = interactionRef.current;
+    if (!active) return;
+    event.preventDefault();
+    const point = pointToPercent(event);
+    const dx = point.x - active.startPoint.x;
+    const dy = point.y - active.startPoint.y;
+    if (active.type === 'move') {
+      movePoints(active.startPoints, dx, dy);
+    } else if (active.type === 'corner') {
+      updatePoint(active.handle, {
+        x: active.startPoints[active.handle].x + dx,
+        y: active.startPoints[active.handle].y + dy,
+      });
+    }
+  };
+
+  const endInteraction = (event) => {
+    interactionRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const resetSelection = () => {
+    setPoints({
+      tl: { x: 20, y: 20 },
+      tr: { x: 75, y: 20 },
+      br: { x: 75, y: 58 },
+      bl: { x: 20, y: 58 },
+    });
+    setOpacity(0.85);
+    setBackgroundBlur(0);
+    setGridLineWidth(1);
+  };
+
+  const adjustCols = (delta) => setCols(value => Math.max(1, Math.min(200, value + delta)));
+  const adjustRows = (delta) => setRows(value => Math.max(1, Math.min(200, value + delta)));
+
+  const interpolate = (a, b, t) => ({
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  });
+
+  const pointToPixel = (point) => ({
+    x: Math.round(natural.w * point.x / 100),
+    y: Math.round(natural.h * point.y / 100),
+  });
+
+  const crop = {
+    x: Math.round(natural.w * bounds.minX / 100),
+    y: Math.round(natural.h * bounds.minY / 100),
+    width: Math.round(natural.w * (bounds.maxX - bounds.minX) / 100),
+    height: Math.round(natural.h * (bounds.maxY - bounds.minY) / 100),
+    points: pointOrder.map(key => pointToPixel(points[key])),
+  };
+
+  const save = () => {
+    onSave({
+      title,
+      crop,
+      grid_columns: mode === 'diagram' ? cols : 0,
+      grid_rows: mode === 'diagram' ? rows : 0,
+      rotation: 0,
+      grid_line_width: mode === 'diagram' ? gridLineWidth : 1,
+    });
+  };
+
+  return (
+    <div className="review-asset-overlay" onClick={onClose}>
+      <div className="review-asset-modal" onClick={e => e.stopPropagation()}>
+        <div className="review-asset-head">
+          <div>
+            <h3>{mode === 'legend' ? t('cropLegend') : t('insertDiagram')}</h3>
+            <p>{mode === 'legend' ? t('cropLegendHint') : t('insertDiagramHint')}</p>
+          </div>
+          <div className="review-asset-head-actions">
+            <button
+              type="button"
+              className={`review-asset-settings-toggle ${controlsOpen ? 'active' : ''}`}
+              onClick={() => setControlsOpen(open => !open)}
+              aria-label={t('settings')}
+              title={t('settings')}
+            >
+              <SlidersHorizontal size={18} />
+            </button>
+            <button className="modal-close" onClick={onClose}><X size={20} /></button>
+          </div>
+        </div>
+        <div className={`review-asset-body ${controlsOpen ? 'controls-open' : 'controls-closed'}`}>
+          <div className="review-asset-preview">
+            <div className="review-asset-canvas">
+              <img
+                ref={imgRef}
+                src={imageSrc}
+                alt=""
+                onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
+                style={{ filter: mode === 'diagram' && backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : undefined }}
+              />
+              <div
+                className="review-crop-freeform"
+                onPointerDown={e => startInteraction(e, 'move')}
+                onPointerMove={moveInteraction}
+                onPointerUp={endInteraction}
+                onPointerCancel={endInteraction}
+                style={{
+                  opacity,
+                }}
+              >
+                <svg className="review-crop-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <polygon
+                    className={mode === 'diagram' ? 'review-crop-polygon review-crop-polygon--grid' : 'review-crop-polygon'}
+                    points={pointOrder.map(key => `${points[key].x},${points[key].y}`).join(' ')}
+                  />
+                  {mode === 'diagram' && Array.from({ length: Math.max(0, cols - 1) }).map((_, index) => {
+                    const tValue = (index + 1) / cols;
+                    const top = interpolate(points.tl, points.tr, tValue);
+                    const bottom = interpolate(points.bl, points.br, tValue);
+                    return <line key={`col-${index}`} x1={top.x} y1={top.y} x2={bottom.x} y2={bottom.y} />;
+                  })}
+                  {mode === 'diagram' && Array.from({ length: Math.max(0, rows - 1) }).map((_, index) => {
+                    const tValue = (index + 1) / rows;
+                    const left = interpolate(points.tl, points.bl, tValue);
+                    const right = interpolate(points.tr, points.br, tValue);
+                    return <line key={`row-${index}`} x1={left.x} y1={left.y} x2={right.x} y2={right.y} />;
+                  })}
+                </svg>
+                {pointOrder.map(handle => (
+                  <button
+                    type="button"
+                    key={handle}
+                    className="review-crop-point"
+                    aria-label={`${t('cropResize')} ${handle}`}
+                    onPointerDown={e => startInteraction(e, 'corner', handle)}
+                    onPointerMove={moveInteraction}
+                    onPointerUp={endInteraction}
+                    onPointerCancel={endInteraction}
+                    style={{
+                      left: `${points[handle].x}%`,
+                      top: `${points[handle].y}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              {mode === 'diagram' && (
+                <div className="review-grid-quickbar" aria-label={t('diagramGridControls') || 'Grid controls'}>
+                  <button type="button" onClick={() => adjustRows(-1)} disabled={rows <= 1} title={t('diagramRows')}><Minus size={13} /><span>{t('diagramRows')}</span></button>
+                  <button type="button" onClick={() => adjustRows(1)} title={t('diagramRows')}><Plus size={13} /><span>{t('diagramRows')}</span></button>
+                  <button type="button" onClick={() => adjustCols(-1)} disabled={cols <= 1} title={t('diagramColumns')}><Minus size={13} /><span>{t('diagramColumns')}</span></button>
+                  <button type="button" onClick={() => adjustCols(1)} title={t('diagramColumns')}><Plus size={13} /><span>{t('diagramColumns')}</span></button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="review-asset-controls">
+            <label className="review-control-field">{t('diagramTitle')}<input value={title} onChange={e => setTitle(e.target.value)} /></label>
+            {mode === 'diagram' && (
+              <>
+                <div className="review-control-grid">
+                  <label>{t('diagramColumns')}<input type="number" min="1" max="200" value={cols} onChange={e => setCols(Number(e.target.value) || 1)} /></label>
+                  <label>{t('diagramRows')}<input type="number" min="1" max="200" value={rows} onChange={e => setRows(Number(e.target.value) || 1)} /></label>
+                </div>
+                <label>{t('diagramOverlay')}<input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={e => setOpacity(Number(e.target.value))} /></label>
+                <label>{t('diagramBackgroundBlur')}<input type="range" min="0" max="8" step="0.5" value={backgroundBlur} onChange={e => setBackgroundBlur(Number(e.target.value))} /></label>
+                <label>{t('diagramLineWidth')}<input type="range" min="1" max="8" step="1" value={gridLineWidth} onChange={e => setGridLineWidth(Number(e.target.value))} /></label>
+              </>
+            )}
+            <p className="review-control-note">{t('cropResize')}: {t('diagramDragCorners') || 'Drag the four corners to fit the skewed diagram.'}</p>
+            <button className="btn-secondary" type="button" onClick={resetSelection}>{t('resetSelection')}</button>
+          </div>
+        </div>
+        <div className="review-asset-footer">
+          <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={save}>{t('saveChanges')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [generationJob, setGenerationJob] = useState(null);
+  const [readySession, setReadySession] = useState(null);
+
+  useEffect(() => {
+    setDraft(textVersion?.content_markdown || '');
+    setEditing(false);
+  }, [textVersion?.content_markdown]);
+
+  const hasText = !!textVersion?.content_markdown;
+  const jobStatus = generationJob?.status || '';
+  const isGenerating = ['queued', 'running'].includes(jobStatus);
+  const isReviewReady = !!readySession?.exists || jobStatus === 'ready_to_review';
+
+  const refreshGenerationState = useCallback(async () => {
+    if (hasText) {
+      setGenerationJob(null);
+      setReadySession(null);
+      return;
+    }
+    const session = await fetchReviewSession(recipeId).catch(() => null);
+    if (session?.exists) {
+      setReadySession(session);
+      setGenerationJob(prev => prev ? { ...prev, status: 'ready_to_review' } : { status: 'ready_to_review' });
+      return;
+    }
+    const queue = await fetchWorkQueue().catch(() => null);
+    const job = queue?.ai_jobs?.find(item => item.recipe_id === recipeId && ['queued', 'running', 'ready_to_review'].includes(item.status));
+    setGenerationJob(job || null);
+    setReadySession(null);
+  }, [hasText, recipeId]);
+
+  useEffect(() => {
+    if (hasText) {
+      setGenerationJob(null);
+      setReadySession(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      await refreshGenerationState();
+    };
+    tick();
+    const timer = window.setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hasText, refreshGenerationState]);
+
+  const generate = async () => {
+    if (textVersion?.exists && !window.confirm(t('regenerateTextConfirm'))) return;
+    setLoading(true); setError('');
+    try {
+      const result = await createTextVersionJob(recipeId, language);
+      setGenerationJob(result?.job || { status: 'queued' });
+      onTextJobQueued?.();
+      await refreshGenerationState();
+    } catch (e) {
+      setError(e.message || t('textVersionGenerateError'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      const result = await saveTextVersion(recipeId, draft, language);
+      setTextVersion(result);
+      setEditing(false);
+    } catch (e) {
+      setError(e.message || t('textVersionSaveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openReview = async () => {
+    const session = readySession?.exists ? readySession : await fetchReviewSession(recipeId);
+    if (session?.exists) {
+      onReviewReady?.(session);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}><div className="spinner" /><p>{t('loading')}</p></div>;
+  }
+
+  return (
+    <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}>
+      <div className="text-version-header">
+        <div>
+          <h2>{t('textVersion')}</h2>
+          <p>{hasText ? t('textVersionReadyHint') : t('textVersionEmptyHint')}</p>
+        </div>
+        <div className="text-version-actions">
+          {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
+          {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
+          <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
+            <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
+          </button>
+        </div>
+      </div>
+      {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
+      {error && <p className="status-error">{error}</p>}
+      {!hasText && (isGenerating || isReviewReady) ? (
+        <div className="text-generation-state">
+          <div className={`text-generation-state-icon ${isReviewReady ? 'text-generation-state-icon--ready' : ''}`}>
+            {isReviewReady ? <CheckCircle2 size={34} /> : <div className="spinner" />}
+          </div>
+          <h3>{isReviewReady ? t('reviewReadyTitle') : t('textGenerationWorkingTitle')}</h3>
+          <p>{isReviewReady ? t('reviewReadyHint') : t('textGenerationWorkingHint')}</p>
+          <button
+            className={`text-generation-review-btn ${isReviewReady ? 'text-generation-review-btn--ready' : ''}`}
+            onClick={openReview}
+            disabled={!isReviewReady}
+          >
+            <CheckCircle2 size={18} />
+            {t('reviewText')}
+          </button>
+        </div>
+      ) : null}
+      {editing || !hasText ? (
+        (isGenerating || isReviewReady) ? null : (
+          <textarea
+            className="text-version-editor"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder={t('textVersionEditorPlaceholder')}
+          />
+        )
+      ) : (
+        <MarkdownView content={textVersion.content_markdown} />
+      )}
+      {hasText && !editing && <GenerationAuditBar audit={textVersion?.generation_audit} t={t} />}
+    </div>
+  );
+}
+
+function MarkdownView({ content }) {
+  const lines = content.split(/\r?\n/);
+  const elements = [];
+  let code = null;
+  lines.forEach((line, i) => {
+    if (/^```/.test(line.trim())) {
+      if (code) {
+        elements.push(<pre key={`code-${i}`} className="markdown-code"><code>{code.lines.join('\n')}</code></pre>);
+        code = null;
+      } else {
+        code = { lines: [] };
+      }
+      return;
+    }
+    if (code) {
+      code.lines.push(line);
+      return;
+    }
+    if (/^<!--.*-->$/.test(line.trim())) return;
+    if (line.trim() === '---') { elements.push(<hr key={i} />); return; }
+    if (!line.trim()) { elements.push(<br key={i} />); return; }
+    if (line.startsWith('### ')) { elements.push(<h4 key={i}>{line.slice(4)}</h4>); return; }
+    if (line.startsWith('## ')) { elements.push(<h3 key={i}>{line.slice(3)}</h3>); return; }
+    if (line.startsWith('# ')) { elements.push(<h2 key={i}>{line.slice(2)}</h2>); return; }
+    const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (img) { elements.push(<img key={i} className="markdown-image" src={img[2]} alt={img[1]} />); return; }
+    if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>); return; }
+    if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{line.trim().slice(1, -1)}</p>); return; }
+    elements.push(<p key={i}>{line}</p>);
+  });
+  if (code) {
+    elements.push(<pre key="code-final" className="markdown-code"><code>{code.lines.join('\n')}</code></pre>);
+  }
+  return (
+    <div className="markdown-view">
+      {elements}
+    </div>
+  );
+}
+
+function formatAuditNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toLocaleString() : '0';
+}
+
+function formatAuditDuration(value) {
+  const seconds = Math.max(0, Math.round(Number(value) || 0));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function GenerationAuditBar({ audit, t }) {
+  if (!audit) return null;
+  const providerTokens = audit.provider_total_tokens ?? 0;
+  const estimated = audit.estimated_input_tokens ?? 0;
+  const warnings = audit.warnings || [];
+  return (
+    <div className="text-generation-audit">
+      <div className="tga-main">
+        <span><strong>{t('generationWorkflow') || 'Workflow'}:</strong> {audit.workflow || audit.model || 'Text generation'}</span>
+        <span>{t('aiPagesShort') || 'Pages'}: {formatAuditNumber(audit.pages_processed)}</span>
+        <span>{t('generationTime') || 'Time'}: {formatAuditDuration(audit.duration_seconds)}</span>
+        <span>{t('generationProviderTokens') || 'Provider tokens'}: {formatAuditNumber(providerTokens)}</span>
+        <span>{t('generationEstimatedInput') || 'Estimated input'}: {formatAuditNumber(estimated)}</span>
+        <span>{t('generationOutputWords') || 'Output words'}: {formatAuditNumber(audit.output_words)}</span>
+      </div>
+      {(audit.token_report_note || warnings.length > 0) && (
+        <p>{audit.token_report_note || warnings[0]}</p>
+      )}
+    </div>
+  );
+}
+
 /* ─── Sidebar info content — shared between desktop sidebar and mobile Info panel ── */
-function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated }) {
+function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpdated, showCover = true, enableExternalProjectControls = false }) {
   const { t, language } = useApp();
   return (
     <>
-      <div className="viewer-cover-wrap">
-        <img
-          key={thumbCacheBust || recipe.thumbnail_version || 'initial'}
-          className="viewer-cover-thumb"
-          src={thumbnailUrl(recipeId, thumbCacheBust || recipe.thumbnail_version)}
-          alt="Cover"
-        />
-        {thumbSet && <div className="viewer-cover-badge">✓ Cover updated!</div>}
-      </div>
+      {showCover && (
+        <div className="viewer-cover-wrap">
+          <img
+            key={thumbCacheBust || recipe.thumbnail_version || 'initial'}
+            className="viewer-cover-thumb"
+            src={thumbnailUrl(recipeId, thumbCacheBust || recipe.thumbnail_version)}
+            alt="Cover"
+          />
+          {thumbSet && <div className="viewer-cover-badge">✓ Cover updated!</div>}
+        </div>
+      )}
 
       <h1 className="viewer-title">{recipe.title}</h1>
       {recipe.description && <p className="viewer-description">{recipe.description}</p>}
 
-      <ProjectStatus recipe={recipe} onUpdated={onUpdated} />
+      <ProjectStatus recipe={recipe} onUpdated={onUpdated} enableExternalControls={enableExternalProjectControls} />
 
       {recipe.categories.length > 0 && (
         <div className="viewer-meta-group">
@@ -773,32 +2123,9 @@ function SidebarInfoContent({ recipe, recipeId, thumbCacheBust, thumbSet, onUpda
 function EditModal({ t, recipe, onClose, onSaved }) {
   const [title, setTitle]           = useState(recipe.title);
   const [description, setDesc]      = useState(recipe.description || '');
-  const [categories, setCategories] = useState([]);
   const [selCats, setSelCats]       = useState(recipe.categories);
-  const [newCatInput, setNewCatInput] = useState('');
-  const [tagInput, setTagInput]     = useState(recipe.tags.join(', '));
+  const [selTags, setSelTags]       = useState(recipe.tags);
   const [saving, setSaving]         = useState(false);
-
-  useEffect(() => { fetchCategories().then(setCategories).catch(console.error); }, []);
-
-  const toggleCat = (cat) => {
-    setSelCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  };
-
-  const addNewCategory = () => {
-    const cat = newCatInput.trim();
-    if (cat && !categories.includes(cat) && !selCats.includes(cat)) {
-      setCategories(prev => [...prev, cat]);
-      setNewCatInput('');
-    }
-  };
-
-  const removeCategory = (cat) => {
-    // Only remove from existing categories, not from selected
-    if (!selCats.includes(cat)) {
-      setCategories(prev => prev.filter(c => c !== cat));
-    }
-  };
 
   const handleSave = async () => {
     if (!title.trim()) return alert(t('recipeNameLabel') + ' is required.');
@@ -808,7 +2135,7 @@ function EditModal({ t, recipe, onClose, onSaved }) {
       fd.append('title', title.trim());
       fd.append('description', description.trim());
       fd.append('categories', selCats.join(','));
-      fd.append('tags', tagInput);
+      fd.append('tags', selTags.join(','));
       const updated = await updateRecipe(recipe.id, fd);
       onSaved(updated);
     } catch (e) {
@@ -834,47 +2161,19 @@ function EditModal({ t, recipe, onClose, onSaved }) {
           <textarea className="form-input form-textarea" value={description}
             onChange={e => setDesc(e.target.value)} placeholder={t('notesPlaceholder')} rows={3} />
 
-          <label className="form-label">{t('categoryLabel')}</label>
-          <div className="category-editor">
-            {/* Existing categories - can be toggled or deleted */}
-            <div className="form-pills">
-              {categories.map(cat => (
-                <div key={cat} className="pill-group">
-                  <button type="button"
-                    className={`pill ${selCats.includes(cat) ? 'pill-active' : ''}`}
-                    onClick={() => toggleCat(cat)}>{cat}</button>
-                  <button type="button" className="pill-remove" onClick={() => removeCategory(cat)}>×</button>
-                </div>
-              ))}
-            </div>
+          <TaxonomyField
+            type="category"
+            label={t('categoryLabel')}
+            values={selCats}
+            onChange={setSelCats}
+          />
 
-            {/* Add new category input */}
-            <div className="add-category-row">
-              <input
-                type="text"
-                className="add-category-input"
-                value={newCatInput}
-                onChange={e => setNewCatInput(e.target.value)}
-                placeholder={t('newCategoryPlaceholder')}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addNewCategory();
-                  }
-                }}
-              />
-              <button type="button" className="add-category-btn" onClick={addNewCategory}>
-                +
-              </button>
-            </div>
-            <p className="category-hint">{t('categoryHint')}</p>
-          </div>
-
-          <label className="form-label">
-            {t('tagsLabel')} <span className="form-hint">— {t('tagsSeparator')}</span>
-          </label>
-          <input className="form-input" value={tagInput} onChange={e => setTagInput(e.target.value)}
-            placeholder={t('tagsPlaceholder')} />
+          <TaxonomyField
+            type="tag"
+            label={t('tagsLabel')}
+            values={selTags}
+            onChange={setSelTags}
+          />
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>

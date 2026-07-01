@@ -40,12 +40,14 @@ export async function createFirstAdmin(username, password) {
   return data;
 }
 
-export async function fetchRecipes({ search='', category='', tags=[], status='', page=1, per_page=60 }={}) {
+export async function fetchRecipes({ search='', category='', tags=[], status='', sort='default', project_scope='', page=1, per_page=60 }={}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (category) params.set('category', category);
   if (tags.length) params.set('tags', tags.join(','));
   if (status) params.set('status', status);
+  if (sort && sort !== 'default') params.set('sort', sort);
+  if (project_scope) params.set('project_scope', project_scope);
   params.set('page', page);
   params.set('per_page', per_page);
   const res = await fetch(`${API_BASE}/recipes?${params}`, { headers: authHeaders() });
@@ -96,8 +98,23 @@ export async function fetchAllCategories() {
   if (!res.ok) throw new Error('Failed to load categories');
   return res.json();
 }
+export async function fetchCategoryDetails() {
+  const res = await fetch(`${API_BASE}/categories?all=true&details=true`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load categories');
+  return res.json();
+}
 export async function fetchTags() {
   const res = await fetch(`${API_BASE}/tags`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load tags');
+  return res.json();
+}
+export async function fetchAllTags() {
+  const res = await fetch(`${API_BASE}/tags?all=true`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load tags');
+  return res.json();
+}
+export async function fetchTagDetails() {
+  const res = await fetch(`${API_BASE}/tags?all=true&details=true`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load tags');
   return res.json();
 }
@@ -112,10 +129,38 @@ export async function deleteCategory(name) {
   if (!res.ok) throw new Error('Failed to delete category');
   return res.json();
 }
+export async function addTag(name) {
+  const res = await fetch(`${API_BASE}/tags`, { method:'POST', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify({name}) });
+  if (!res.ok) throw new Error('Failed to add tag');
+  return res.json();
+}
+
+export async function deleteTag(name) {
+  const res = await fetch(`${API_BASE}/tags/${encodeURIComponent(name)}`, { method:'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to delete tag');
+  return res.json();
+}
 export async function fetchUsers() {
   const res = await fetch(`${API_BASE}/admin/users`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load users');
   return res.json();
+}
+
+export async function fetchNavigationProgress() {
+  const res = await fetch(`${API_BASE}/auth/navigation-progress`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load navigation progress');
+  return res.json();
+}
+
+export async function saveNavigationProgress(progress) {
+  const res = await fetch(`${API_BASE}/auth/navigation-progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(progress),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save navigation progress');
+  return data;
 }
 export async function createUser(data) {
   const res = await fetch(`${API_BASE}/admin/users`, { method:'POST', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify(data) });
@@ -192,6 +237,27 @@ export async function cropImage(recipeId, filename, points) {
   return res.json();
 }
 
+export async function adjustImage(recipeId, filename, adjustments) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}/adjust`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(adjustments),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to adjust image');
+  return data;
+}
+
+export async function restoreOriginalImage(recipeId, filename) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}/restore-original`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to restore image');
+  return data;
+}
+
 export async function deleteRecipeImage(recipeId, filename) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/images/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
@@ -199,6 +265,152 @@ export async function deleteRecipeImage(recipeId, filename) {
   });
   if (!res.ok) throw new Error('Failed to delete image');
   return res.json();
+}
+
+export async function fetchTextVersion(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load text version');
+  return res.json();
+}
+
+export async function fetchViewerProgress(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/viewer-progress`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load viewer progress');
+  return res.json();
+}
+
+export async function saveViewerProgress(recipeId, progress) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/viewer-progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(progress),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save viewer progress');
+  return data;
+}
+
+export async function saveTextVersion(recipeId, contentMarkdown, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ content_markdown: contentMarkdown, language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save text version');
+  return data;
+}
+
+export async function generateTextVersion(recipeId, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to generate text version');
+  return data;
+}
+
+export async function createTextVersionJob(recipeId, language) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ language }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to queue text generation');
+  return data;
+}
+
+export async function fetchReviewSession(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/review-session`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load review session');
+  return res.json();
+}
+
+export async function saveReviewPage(sessionId, pageId, reviewedText, status = 'draft') {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ reviewed_text: reviewedText, status }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save review page');
+  return data;
+}
+
+export async function pauseReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pause`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to pause review');
+  return data;
+}
+
+export async function cancelReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/cancel`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to cancel review');
+  return data;
+}
+
+export async function completeReviewSession(sessionId) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/complete`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to complete review');
+  return data;
+}
+
+export async function createReviewDiagram(sessionId, pageId, payload) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}/diagrams`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to create diagram');
+  return data;
+}
+
+export async function createReviewLegend(sessionId, pageId, payload) {
+  const res = await fetch(`${API_BASE}/review-sessions/${sessionId}/pages/${pageId}/legends`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to create legend');
+  return data;
+}
+
+export function reviewAssetUrl(recipeId, assetPath) {
+  return `${API_BASE}/recipes/${recipeId}/review-assets/${assetPath}`;
+}
+
+export async function fetchWorkQueue() {
+  const res = await fetch(`${API_BASE}/work-queue`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load work queue');
+  return res.json();
+}
+
+export async function cancelAIJob(jobId) {
+  const res = await fetch(`${API_BASE}/work-queue/ai/${jobId}/cancel`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to cancel AI job');
+  return data;
+}
+
+export async function dismissAIJob(jobId) {
+  const res = await fetch(`${API_BASE}/work-queue/ai/${jobId}/dismiss`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to dismiss AI job');
+  return data;
 }
 
 // Export — fetches the ZIP and triggers a browser download
@@ -307,9 +519,11 @@ export async function startProject(recipeId, yarnId = null, yarnColourId = null,
   if (!res.ok) throw new Error('Failed to start project');
   return res.json();
 }
-export async function finishProject(recipeId) {
+export async function finishProject(recipeId, sessionId = null) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/finish`, {
-    method: 'POST', headers: authHeaders()
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(sessionId ? { session_id: sessionId } : {}),
   });
   if (!res.ok) throw new Error('Failed to finish project');
   return res.json();
@@ -321,6 +535,37 @@ export async function clearSessions(recipeId) {
   });
   if (!res.ok) throw new Error('Failed to clear sessions');
   return res.json();
+}
+
+export async function updateProjectSession(recipeId, sessionId, payload) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to update project session');
+  return data;
+}
+
+export async function reopenProjectSession(recipeId, sessionId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}/reopen`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reopen project session');
+  return data;
+}
+
+export async function deleteProjectSession(recipeId, sessionId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to delete project session');
+  return data;
 }
 
 // ── Yarn API ──────────────────────────────────────────────────────────────────
@@ -557,31 +802,34 @@ export async function saveFeedback(recipeId, payload) {
   return res.json();
 }
 
-// ── Announcements ─────────────────────────────────────────────────────────────
-export async function createAnnouncement(title, body) {
-  const res = await fetch(`${API_BASE}/admin/announcements`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ title, body }),
-  });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Failed to push announcement'); }
+// ── GitHub release notes ─────────────────────────────────────────────────────
+export async function listReleases() {
+  const res = await fetch(`${API_BASE}/releases`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load releases');
   return res.json();
 }
-export async function listAnnouncements() {
-  const res = await fetch(`${API_BASE}/admin/announcements`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load announcements');
+export async function fetchLatestRelease() {
+  const res = await fetch(`${API_BASE}/releases/latest`, { headers: authHeaders() });
+  if (!res.ok) return { release: null };
   return res.json();
 }
-export async function fetchPendingAnnouncements() {
-  const res = await fetch(`${API_BASE}/announcements/pending`, { headers: authHeaders() });
+export async function fetchPendingReleases() {
+  const res = await fetch(`${API_BASE}/releases/pending`, { headers: authHeaders() });
   if (!res.ok) return [];
   return res.json();
 }
-export async function dismissAnnouncement(id) {
-  const res = await fetch(`${API_BASE}/announcements/${id}/dismiss`, {
+export async function dismissRelease(id) {
+  const res = await fetch(`${API_BASE}/releases/${id}/dismiss`, {
     method: 'POST', headers: authHeaders()
   });
-  if (!res.ok) throw new Error('Failed to dismiss');
+  if (!res.ok) throw new Error('Failed to dismiss release');
+  return res.json();
+}
+export async function syncReleases() {
+  const res = await fetch(`${API_BASE}/admin/releases/sync`, {
+    method: 'POST', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to sync releases');
   return res.json();
 }
 
@@ -589,6 +837,15 @@ export async function dismissAnnouncement(id) {
 export async function fetchLogs(lines = 200, source = 'all') {
   const res = await fetch(`${API_BASE}/admin/logs?lines=${lines}&source=${source}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch logs');
+  return res.json();
+}
+
+export async function fetchUserActions({ limit = 200, action = '', user = '' } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (action) params.set('action', action);
+  if (user) params.set('user', user);
+  const res = await fetch(`${API_BASE}/admin/user-actions?${params.toString()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch user actions');
   return res.json();
 }
 
@@ -626,6 +883,43 @@ export async function testMailTemplate(to, subject, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Test failed');
   return data;
+}
+
+// ── Admin: AI settings ───────────────────────────────────────────────────────
+export async function fetchAISettings() {
+  const res = await fetch(`${API_BASE}/admin/ai`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load AI settings');
+  return res.json();
+}
+export async function saveAISettings(data) {
+  const res = await fetch(`${API_BASE}/admin/ai`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to save AI settings');
+  return result;
+}
+export async function fetchAIModels(data) {
+  const res = await fetch(`${API_BASE}/admin/ai/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to fetch AI models');
+  return result;
+}
+export async function testAISettings(data) {
+  const res = await fetch(`${API_BASE}/admin/ai/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'AI test failed');
+  return result;
 }
 
 // ── Admin: 2FA management ─────────────────────────────────────────────────────
@@ -678,10 +972,24 @@ export async function verify2FAChallenge(challengeToken, code) {
 }
 
 // ── Statistics ───────────────────────────────────────────────────────
-export async function fetchStats() {
-  const res = await fetch(`${API_BASE}/stats`, { headers: authHeaders() });
+export async function fetchStats(aiRange = 'all') {
+  const params = new URLSearchParams();
+  if (aiRange) params.set('ai_range', aiRange);
+  const query = params.toString();
+  const res = await fetch(`${API_BASE}/stats${query ? `?${query}` : ''}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load stats');
   return res.json();
+}
+
+export async function resetAIStats(range = 'all') {
+  const res = await fetch(`${API_BASE}/stats/ai/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ range }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reset AI stats');
+  return data;
 }
 
 // ── Bulk recipe actions ───────────────────────────────────────────────
