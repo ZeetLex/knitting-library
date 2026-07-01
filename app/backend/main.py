@@ -406,6 +406,14 @@ def get_db() -> sqlite3.Connection:
         if "dismissed" not in job_cols:
             conn.execute("ALTER TABLE ai_text_jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
             conn.commit()
+    if "project_sessions" in tables:
+        project_session_cols = [r["name"] for r in conn.execute("PRAGMA table_info(project_sessions)").fetchall()]
+        if "user_id" not in project_session_cols:
+            conn.execute("ALTER TABLE project_sessions ADD COLUMN user_id TEXT")
+            conn.commit()
+        if "username" not in project_session_cols:
+            conn.execute("ALTER TABLE project_sessions ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+            conn.commit()
     if "users" in tables:
         user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
         if "email" not in user_cols:
@@ -471,6 +479,23 @@ def get_db() -> sqlite3.Connection:
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
+        conn.commit()
+    if "user_action_log" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_action_log (
+                id            TEXT PRIMARY KEY,
+                user_id       TEXT,
+                username      TEXT NOT NULL DEFAULT '',
+                action        TEXT NOT NULL,
+                recipe_id     TEXT,
+                recipe_title  TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at    TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_action ON user_action_log (action)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_user ON user_action_log (user_id, username)")
         conn.commit()
     if "recipe_text_versions" not in tables:
         conn.execute("""
@@ -777,6 +802,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS project_sessions (
             id             TEXT PRIMARY KEY,
             recipe_id      TEXT NOT NULL,
+            user_id        TEXT,
+            username       TEXT NOT NULL DEFAULT '',
             started_at     TEXT NOT NULL,
             finished_at    TEXT,
             yarn_id        TEXT,
@@ -832,6 +859,16 @@ def init_db():
             recipe_id  TEXT PRIMARY KEY,
             group_name TEXT NOT NULL DEFAULT '',
             status     TEXT NOT NULL DEFAULT 'staged'
+        );
+        CREATE TABLE IF NOT EXISTS user_action_log (
+            id            TEXT PRIMARY KEY,
+            user_id       TEXT,
+            username      TEXT NOT NULL DEFAULT '',
+            action        TEXT NOT NULL,
+            recipe_id     TEXT,
+            recipe_title  TEXT NOT NULL DEFAULT '',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at    TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
@@ -1018,6 +1055,9 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_yarn_colours_yarn_id   ON yarn_colours (yarn_id);
         CREATE INDEX IF NOT EXISTS idx_inventory_items_type   ON inventory_items (type);
         CREATE INDEX IF NOT EXISTS idx_inventory_log_item_id  ON inventory_log (item_id);
+        CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);
+        CREATE INDEX IF NOT EXISTS idx_user_action_log_action  ON user_action_log (action);
+        CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id, username);
         CREATE INDEX IF NOT EXISTS idx_ai_text_jobs_status    ON ai_text_jobs (status, dismissed, created_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events (created_at);
@@ -1063,6 +1103,38 @@ def init_db():
 
 
 init_db()
+
+def _log_user_action(
+    conn,
+    user: Optional[dict],
+    action: str,
+    recipe_id: Optional[str] = None,
+    recipe_title: str = "",
+    metadata: Optional[dict] = None,
+) -> None:
+    user_id = user.get("id") if user else None
+    username = user.get("username", "") if user else ""
+    try:
+        metadata_json = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        metadata_json = "{}"
+    conn.execute(
+        """
+        INSERT INTO user_action_log
+            (id, user_id, username, action, recipe_id, recipe_title, metadata_json, created_at)
+        VALUES (?,?,?,?,?,?,?,?)
+        """,
+        (
+            str(uuid.uuid4()),
+            user_id,
+            username or "",
+            action,
+            recipe_id,
+            recipe_title or "",
+            metadata_json,
+            datetime.utcnow().isoformat(),
+        )
+    )
 
 # ── Auth middleware ───────────────────────────────────────────────────────────
 
@@ -1333,6 +1405,7 @@ def change_password(data: dict, current_user: dict = Depends(get_current_user)):
         conn.close()
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash_password(new_pw), current_user["id"]))
+    _log_user_action(conn, current_user, "password_updated", metadata={"method": "self_change"})
     conn.commit()
     conn.close()
     return {"message": "Password changed"}
@@ -1369,6 +1442,12 @@ def forgot_password(data: dict, request: Request):
         conn.close()
         raise HTTPException(status_code=502, detail=f"Could not send email: {e}")
     conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash_password(temp_pw), user["id"]))
+    _log_user_action(
+        conn,
+        dict(user),
+        "password_updated",
+        metadata={"method": "forgot_password"},
+    )
     conn.commit()
     conn.close()
     return _GENERIC
@@ -1462,7 +1541,17 @@ def reset_password(user_id: str, data: dict, admin: dict = Depends(require_admin
     if len(new_pw) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     conn = get_db()
+    user = conn.execute("SELECT id, username FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
     conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash_password(new_pw), user_id))
+    _log_user_action(
+        conn,
+        dict(user),
+        "password_updated",
+        metadata={"method": "admin_reset", "admin_id": admin["id"], "admin_username": admin["username"]},
+    )
     conn.commit()
     conn.close()
     return {"message": "Password reset"}
@@ -1675,7 +1764,7 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
     else:
         recipe["images"] = []
     sessions = conn.execute(
-        """SELECT ps.id, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id,
+        """SELECT ps.id, ps.user_id, ps.username, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id,
                   y.name as yarn_name, yc.name as yarn_colour
            FROM project_sessions ps
            LEFT JOIN yarns y        ON ps.yarn_id=y.id
@@ -1708,6 +1797,8 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
         recipe["project_status"]    = "active"
         recipe["active_session_id"] = active["id"]
         recipe["active_started_at"] = active["started_at"]
+        recipe["active_user_id"] = active.get("user_id")
+        recipe["active_username"] = active.get("username", "") or ""
     elif recipe["sessions"]:
         recipe["project_status"] = "finished"
     else:
@@ -3812,6 +3903,8 @@ def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
         d["project_status"] = "none"
         d["active_session_id"] = None
         d["active_started_at"] = None
+        d["active_user_id"] = None
+        d["active_username"] = ""
         d["avg_score"] = None
         d["feedback_count"] = 0
 
@@ -3842,6 +3935,8 @@ def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
         f"""SELECT recipe_id,
                    MAX(CASE WHEN finished_at IS NULL THEN id END) as active_id,
                    MAX(CASE WHEN finished_at IS NULL THEN started_at END) as active_started,
+                   MAX(CASE WHEN finished_at IS NULL THEN user_id END) as active_user_id,
+                   MAX(CASE WHEN finished_at IS NULL THEN username END) as active_username,
                    COUNT(id) as session_count
             FROM project_sessions
             WHERE recipe_id IN ({placeholders})
@@ -3855,6 +3950,8 @@ def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
             by_id[rid]["project_status"]    = "active"
             by_id[rid]["active_session_id"] = row["active_id"]
             by_id[rid]["active_started_at"] = row["active_started"]
+            by_id[rid]["active_user_id"] = row["active_user_id"]
+            by_id[rid]["active_username"] = row["active_username"] or ""
         elif row["session_count"] > 0:
             by_id[rid]["project_status"] = "finished"
 
@@ -5291,7 +5388,8 @@ def download_recipe(recipe_id: str, request: Request, token: Optional[str] = Non
 @app.post("/api/recipes/{recipe_id}/start")
 def start_project(recipe_id: str, body: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     conn = get_db()
-    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+    recipe_row = conn.execute("SELECT id, title FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+    if not recipe_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
     if conn.execute("SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)).fetchone():
@@ -5300,8 +5398,16 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
     session_id = str(uuid.uuid4())
     now        = datetime.utcnow().isoformat()
     conn.execute(
-        "INSERT INTO project_sessions (id, recipe_id, started_at, yarn_id, yarn_colour_id) VALUES (?,?,?,?,?)",
-        (session_id, recipe_id, now, body.get("yarn_id") or None, body.get("yarn_colour_id") or None)
+        "INSERT INTO project_sessions (id, recipe_id, user_id, username, started_at, yarn_id, yarn_colour_id) VALUES (?,?,?,?,?,?,?)",
+        (
+            session_id,
+            recipe_id,
+            current_user["id"],
+            current_user["username"],
+            now,
+            body.get("yarn_id") or None,
+            body.get("yarn_colour_id") or None,
+        )
     )
     inv_id      = body.get("inventory_item_id") or None
     skeins_used = int(body.get("skeins_used") or 0)
@@ -5314,6 +5420,14 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
                 "INSERT INTO inventory_log (id,item_id,change,reason,recipe_id,session_id,note,created_at) VALUES (?,?,?,?,?,?,?,?)",
                 (str(uuid.uuid4()), inv_id, -skeins_used, "project_start", recipe_id, session_id, f"Used for: {recipe_title}", now)
             )
+    _log_user_action(
+        conn,
+        current_user,
+        "project_started",
+        recipe_id=recipe_id,
+        recipe_title=recipe_row["title"],
+        metadata={"session_id": session_id},
+    )
     conn.commit()
     recipe = _get_recipe_full(recipe_id, conn)
     conn.close()
@@ -5323,11 +5437,22 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
 @app.post("/api/recipes/{recipe_id}/finish")
 def finish_project(recipe_id: str, current_user: dict = Depends(get_current_user)):
     conn   = get_db()
-    active = conn.execute("SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)).fetchone()
+    active = conn.execute(
+        "SELECT ps.id, r.title FROM project_sessions ps JOIN recipes r ON r.id=ps.recipe_id WHERE ps.recipe_id=? AND ps.finished_at IS NULL",
+        (recipe_id,)
+    ).fetchone()
     if not active:
         conn.close()
         raise HTTPException(status_code=400, detail="No active session")
     conn.execute("UPDATE project_sessions SET finished_at=? WHERE id=?", (datetime.utcnow().isoformat(), active["id"]))
+    _log_user_action(
+        conn,
+        current_user,
+        "project_finished",
+        recipe_id=recipe_id,
+        recipe_title=active["title"],
+        metadata={"session_id": active["id"]},
+    )
     conn.commit()
     recipe = _get_recipe_full(recipe_id, conn)
     conn.close()
@@ -5347,7 +5472,8 @@ def save_feedback(recipe_id: str, data: dict, current_user: dict = Depends(get_c
             raise HTTPException(status_code=400, detail="Ratings must be 1–6")
     conn = get_db()
     sess = conn.execute(
-        "SELECT id, finished_at FROM project_sessions WHERE id=? AND recipe_id=?", (session_id, recipe_id)
+        "SELECT ps.id, ps.finished_at, r.title FROM project_sessions ps JOIN recipes r ON r.id=ps.recipe_id WHERE ps.id=? AND ps.recipe_id=?",
+        (session_id, recipe_id)
     ).fetchone()
     if not sess:
         conn.close()
@@ -5355,6 +5481,14 @@ def save_feedback(recipe_id: str, data: dict, current_user: dict = Depends(get_c
     now = datetime.utcnow().isoformat()
     if data.get("finish_session") and not sess["finished_at"]:
         conn.execute("UPDATE project_sessions SET finished_at=? WHERE id=?", (now, session_id))
+        _log_user_action(
+            conn,
+            current_user,
+            "project_finished",
+            recipe_id=recipe_id,
+            recipe_title=sess["title"],
+            metadata={"session_id": session_id, "source": "feedback"},
+        )
     existing = conn.execute(
         "SELECT id FROM project_feedback WHERE session_id=? AND user_id=?", (session_id, current_user["id"])
     ).fetchone()
@@ -5575,6 +5709,14 @@ def import_confirm(recipe_id: str, data: dict, current_user: dict = Depends(get_
     conn.execute("DELETE FROM recipe_categories WHERE recipe_id=?", (new_id,))
     conn.execute("DELETE FROM recipe_tags       WHERE recipe_id=?", (new_id,))
     _save_cats_tags(conn, new_id, data.get("categories", ""), data.get("tags", ""))
+    _log_user_action(
+        conn,
+        current_user,
+        "recipe_added",
+        recipe_id=new_id,
+        recipe_title=title,
+        metadata={"import_group": data.get("group_name", "")},
+    )
     conn.commit()
     conn.close()
     return {"status": "confirmed", "recipe_id": new_id}
@@ -6242,10 +6384,70 @@ def _ai_log_lines(limit: int) -> list[str]:
         result.append(" ".join(str(bit) for bit in bits))
     return result
 
+def _user_action_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    try:
+        data["metadata"] = json.loads(data.pop("metadata_json") or "{}")
+    except Exception:
+        data["metadata"] = {}
+    return data
+
+def _user_action_log_lines(limit: int) -> list[str]:
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, user_id, username, action, recipe_id, recipe_title, metadata_json, created_at
+        FROM user_action_log
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (limit,)
+    ).fetchall()
+    conn.close()
+    result = []
+    for row in reversed(rows):
+        bits = [
+            f"{row['created_at']} USER_ACTION",
+            f"action={row['action']}",
+            f"user={row['username'] or row['user_id'] or 'unknown'}",
+        ]
+        if row["recipe_title"] or row["recipe_id"]:
+            bits.append(f"recipe={row['recipe_title'] or row['recipe_id']}")
+        result.append(" ".join(str(bit) for bit in bits))
+    return result
+
+@app.get("/api/admin/user-actions")
+def get_user_actions(
+    limit: int = 200,
+    action: str = "",
+    user: str = "",
+    admin: dict = Depends(require_admin),
+):
+    limit = max(10, min(limit, 1000))
+    query = """
+        SELECT id, user_id, username, action, recipe_id, recipe_title, metadata_json, created_at
+        FROM user_action_log
+        WHERE 1=1
+    """
+    params: list = []
+    if action:
+        query += " AND action=?"
+        params.append(action)
+    if user:
+        like = f"%{user.strip()}%"
+        query += " AND (username LIKE ? OR user_id LIKE ?)"
+        params.extend([like, like])
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    conn = get_db()
+    rows = conn.execute(query, tuple(params)).fetchall()
+    conn.close()
+    return {"items": [_user_action_dict(row) for row in rows], "count": len(rows)}
+
 @app.get("/api/admin/logs")
 def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(require_admin)):
     """Return the last N lines from the persistent log files in /logs/.
-    source: 'all' | 'uvicorn' | 'supervisord' | 'auth' | 'ai'
+    source: 'all' | 'uvicorn' | 'supervisord' | 'auth' | 'ai' | 'user_actions'
     """
     lines = max(10, min(lines, 1000))
 
@@ -6255,13 +6457,17 @@ def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(requir
         "auth":        Path("/logs/auth.log"),
     }
 
-    sources = [*log_files.keys(), "ai"] if source == "all" else [source]
+    sources = [*log_files.keys(), "ai", "user_actions"] if source == "all" else [source]
     collected = []
 
     for src in sources:
         if src == "ai":
             for line in _ai_log_lines(lines):
                 collected.append(f"[ai] {line}")
+            continue
+        if src == "user_actions":
+            for line in _user_action_log_lines(lines):
+                collected.append(f"[user_actions] {line}")
             continue
         path = log_files.get(src)
         if not path or not path.exists():
@@ -6671,6 +6877,21 @@ def get_stats(ai_range: str = "all", current_user: dict = Depends(get_current_us
         GROUP BY COALESCE(NULLIF(category, ''), 'other')
     """).fetchall()
     tool_categories = {row["category"]: row["count"] for row in tool_category_rows}
+    active_user_rows = conn.execute("""
+        SELECT
+            COALESCE(NULLIF(username, ''), 'Unknown user') as username,
+            user_id,
+            COUNT(*) as action_count,
+            SUM(CASE WHEN action='project_started' THEN 1 ELSE 0 END) as projects_started,
+            SUM(CASE WHEN action='project_finished' THEN 1 ELSE 0 END) as projects_finished,
+            SUM(CASE WHEN action='recipe_added' THEN 1 ELSE 0 END) as recipes_added
+        FROM user_action_log
+        WHERE action IN ('project_started', 'project_finished', 'recipe_added')
+        GROUP BY COALESCE(NULLIF(username, ''), 'Unknown user'), user_id
+        ORDER BY action_count DESC, username ASC
+        LIMIT 5
+    """).fetchall()
+    most_active_users = [dict(row) for row in active_user_rows]
     ai = _ai_usage_stats(conn, ai_range)
     total_sessions = active + finished
     conn.close()
@@ -6703,6 +6924,7 @@ def get_stats(ai_range: str = "all", current_user: dict = Depends(get_current_us
             "notion": tool_categories.get("notion", 0),
             "other": tool_categories.get("other", 0),
         },
+        "most_active_users": most_active_users,
         "ai": ai,
     }
 

@@ -488,6 +488,9 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
               <span>{t('startedAt')}: {formatDateTime(recipe.active_started_at, language)}</span>
             </div>
           )}
+          <div className="ps-time-row" style={{ marginTop: 4 }}>
+            <span>{t('startedBy')}: {activeSession?.username || recipe.active_username || t('unknownUser')}</span>
+          </div>
         </div>
       )}
 
@@ -545,6 +548,9 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
                 )}
 
                 <div className="ps-session-times">
+                  <div className="ps-time-row">
+                    <span>{t('startedBy')}: {s.username || t('unknownUser')}</span>
+                  </div>
                   <div className="ps-time-row">
                     <Play size={10} /><span>{formatDateTime(s.started_at, language)}</span>
                   </div>

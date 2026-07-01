@@ -803,6 +803,15 @@ export async function fetchLogs(lines = 200, source = 'all') {
   return res.json();
 }
 
+export async function fetchUserActions({ limit = 200, action = '', user = '' } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (action) params.set('action', action);
+  if (user) params.set('user', user);
+  const res = await fetch(`${API_BASE}/admin/user-actions?${params.toString()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch user actions');
+  return res.json();
+}
+
 // ── Admin: mail settings ──────────────────────────────────────────────────────
 export async function fetchMailSettings() {
   const res = await fetch(`${API_BASE}/admin/mail`, { headers: authHeaders() });

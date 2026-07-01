@@ -408,6 +408,31 @@ export default function StatisticsPage() {
               </div>
               <p className="stats-note">{t('statsSubUsers')}</p>
             </article>
+
+            <article className="stats-panel stats-panel--compact">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="stats-panel-kicker">{t('statsPeople')}</span>
+                  <h2>{t('statsMostActiveUsers')}</h2>
+                </div>
+                <Activity size={23} />
+              </div>
+              {stats.most_active_users?.length ? (
+                <div className="stats-user-list">
+                  {stats.most_active_users.map((item, index) => (
+                    <div className="stats-user-row" key={`${item.user_id || item.username}-${index}`}>
+                      <strong>{item.username || t('unknownUser')}</strong>
+                      <span>{fmtNum(item.action_count)} {t('statsUserActions')}</span>
+                      <small>
+                        {fmtNum(item.projects_started)} {t('statsProjectsStarted')} · {fmtNum(item.projects_finished)} {t('statsProjectsFinished')} · {fmtNum(item.recipes_added)} {t('statsRecipesAdded')}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="stats-note">{t('statsNoUserActivity')}</p>
+              )}
+            </article>
           </section>
         </>
       ) : (

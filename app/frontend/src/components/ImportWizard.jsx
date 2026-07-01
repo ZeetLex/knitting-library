@@ -766,14 +766,12 @@ function WizardPhase({ initialItems, onClose, onRecipeAdded, t }) {
                   </span>
                 </div>
               )}
-              {/* Type + counter badge overlay */}
-              <div className="iw-viewer-badges">
-                {currentItem?.recipe?.file_type === 'pdf'
-                  ? <span className="iw-type-badge pdf">PDF</span>
-                  : <span className="iw-type-badge img">{pages.length} {pages.length === 1 ? 'image' : 'images'}</span>
-                }
-                <span className="iw-counter-badge">{cursor + 1} / {total}</span>
-              </div>
+              {/* PDF badge only; image imports already show page navigation in the toolbar. */}
+              {pageType === 'pdf' && (
+                <div className="iw-viewer-badges">
+                  <span className="iw-type-badge pdf">PDF</span>
+                </div>
+              )}
             </div>
             <div className="iw-form">
               <div className="iw-field">

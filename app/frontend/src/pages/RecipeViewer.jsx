@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -638,6 +638,10 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               loading={textLoading}
               setLoading={setTextLoading}
               onTextJobQueued={onTextJobQueued}
+              onReviewReady={(session) => {
+                setReviewSession(session);
+                setViewMode('review');
+              }}
               panelRef={textPanelRef}
               onPanelScroll={handleTextPanelScroll}
             />
@@ -1846,23 +1850,69 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   );
 }
 
-function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, panelRef, onPanelScroll }) {
+function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [generationJob, setGenerationJob] = useState(null);
+  const [readySession, setReadySession] = useState(null);
 
   useEffect(() => {
     setDraft(textVersion?.content_markdown || '');
     setEditing(false);
   }, [textVersion?.content_markdown]);
 
+  const hasText = !!textVersion?.content_markdown;
+  const jobStatus = generationJob?.status || '';
+  const isGenerating = ['queued', 'running'].includes(jobStatus);
+  const isReviewReady = !!readySession?.exists || jobStatus === 'ready_to_review';
+
+  const refreshGenerationState = useCallback(async () => {
+    if (hasText) {
+      setGenerationJob(null);
+      setReadySession(null);
+      return;
+    }
+    const session = await fetchReviewSession(recipeId).catch(() => null);
+    if (session?.exists) {
+      setReadySession(session);
+      setGenerationJob(prev => prev ? { ...prev, status: 'ready_to_review' } : { status: 'ready_to_review' });
+      return;
+    }
+    const queue = await fetchWorkQueue().catch(() => null);
+    const job = queue?.ai_jobs?.find(item => item.recipe_id === recipeId && ['queued', 'running', 'ready_to_review'].includes(item.status));
+    setGenerationJob(job || null);
+    setReadySession(null);
+  }, [hasText, recipeId]);
+
+  useEffect(() => {
+    if (hasText) {
+      setGenerationJob(null);
+      setReadySession(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      await refreshGenerationState();
+    };
+    tick();
+    const timer = window.setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hasText, refreshGenerationState]);
+
   const generate = async () => {
     if (textVersion?.exists && !window.confirm(t('regenerateTextConfirm'))) return;
     setLoading(true); setError('');
     try {
-      await createTextVersionJob(recipeId, language);
+      const result = await createTextVersionJob(recipeId, language);
+      setGenerationJob(result?.job || { status: 'queued' });
       onTextJobQueued?.();
+      await refreshGenerationState();
     } catch (e) {
       setError(e.message || t('textVersionGenerateError'));
     } finally {
@@ -1883,11 +1933,16 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
     }
   };
 
+  const openReview = async () => {
+    const session = readySession?.exists ? readySession : await fetchReviewSession(recipeId);
+    if (session?.exists) {
+      onReviewReady?.(session);
+    }
+  };
+
   if (loading) {
     return <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}><div className="spinner" /><p>{t('loading')}</p></div>;
   }
-
-  const hasText = !!textVersion?.content_markdown;
 
   return (
     <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}>
@@ -1906,13 +1961,32 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
       </div>
       {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
       {error && <p className="status-error">{error}</p>}
+      {!hasText && (isGenerating || isReviewReady) ? (
+        <div className="text-generation-state">
+          <div className={`text-generation-state-icon ${isReviewReady ? 'text-generation-state-icon--ready' : ''}`}>
+            {isReviewReady ? <CheckCircle2 size={34} /> : <div className="spinner" />}
+          </div>
+          <h3>{isReviewReady ? t('reviewReadyTitle') : t('textGenerationWorkingTitle')}</h3>
+          <p>{isReviewReady ? t('reviewReadyHint') : t('textGenerationWorkingHint')}</p>
+          <button
+            className={`text-generation-review-btn ${isReviewReady ? 'text-generation-review-btn--ready' : ''}`}
+            onClick={openReview}
+            disabled={!isReviewReady}
+          >
+            <CheckCircle2 size={18} />
+            {t('reviewText')}
+          </button>
+        </div>
+      ) : null}
       {editing || !hasText ? (
-        <textarea
-          className="text-version-editor"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          placeholder={t('textVersionEditorPlaceholder')}
-        />
+        (isGenerating || isReviewReady) ? null : (
+          <textarea
+            className="text-version-editor"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder={t('textVersionEditorPlaceholder')}
+          />
+        )
       ) : (
         <MarkdownView content={textVersion.content_markdown} />
       )}

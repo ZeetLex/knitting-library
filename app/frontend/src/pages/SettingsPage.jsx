@@ -642,7 +642,7 @@ function LogsSection() {
   const getLineClass = (line) => {
     const l = line.toLowerCase();
     if (l.includes('auth_fail') || l.includes(' 4') || l.includes(' 5') || l.includes('error') || l.includes('failed') || l.includes('exception')) return 'log-line--error';
-    if (l.includes('auth_ok') || l.includes('200') || l.includes('started') || l.includes('success')) return 'log-line--ok';
+    if (l.includes('auth_ok') || l.includes('user_action') || l.includes('200') || l.includes('started') || l.includes('success')) return 'log-line--ok';
     if (l.includes('warn') || l.includes('warning') || l.includes('429')) return 'log-line--warn';
     return '';
   };
@@ -662,9 +662,9 @@ function LogsSection() {
 
       {/* Source tabs */}
       <div className="log-source-tabs">
-        {['all', 'uvicorn', 'supervisord', 'auth', 'ai'].map(s => (
+        {['all', 'uvicorn', 'supervisord', 'auth', 'ai', 'user_actions'].map(s => (
           <button key={s} className={`log-tab ${source === s ? 'active' : ''}`} onClick={() => setSource(s)}>
-            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : s === 'auth' ? '🔐 Auth' : '✨ AI'}
+            {s === 'all' ? 'All' : s === 'uvicorn' ? '⚙ API' : s === 'supervisord' ? '🔧 System' : s === 'auth' ? '🔐 Auth' : s === 'ai' ? '✨ AI' : `☑ ${t('userActions')}`}
           </button>
         ))}
       </div>

@@ -438,6 +438,48 @@
   color: var(--text-primary);
 }
 
+.stats-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.stats-user-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.stats-user-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.stats-user-row strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-user-row span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.stats-user-row small {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .stats-breakdown {
   display: flex;
   flex-direction: column;

@@ -64,6 +64,7 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
         </div>
         <strong>{recipe.title}</strong>
         {recipe.categories?.length > 0 && <span>{recipe.categories.slice(0, 2).join(' · ')}</span>}
+        {status === 'active' && <span>{t('startedBy')}: {recipe.active_username || t('unknownUser')}</span>}
         {recipe.active_started_at && <span>{t('startedAt')}: {fmtDate(recipe.active_started_at, language)}</span>}
       </div>
     </button>
