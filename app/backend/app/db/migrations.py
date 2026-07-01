@@ -1,2 +1,4 @@
-"""Database migration and cleanup helpers."""
-from app.services import _cleanup_stale_import_queue
+"""SQLite migration helpers."""
+from app.core.foundation import _cleanup_stale_import_queue
+
+__all__ = [name for name in globals() if not name.startswith("__")]

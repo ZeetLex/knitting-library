@@ -1,7 +1,7 @@
 """Route registrations for the releases backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.releases import service as services
 
 router = APIRouter()
 

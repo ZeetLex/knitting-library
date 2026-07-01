@@ -1,7 +1,7 @@
 """Route registrations for the recipes backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.recipes import service as services
 
 router = APIRouter()
 

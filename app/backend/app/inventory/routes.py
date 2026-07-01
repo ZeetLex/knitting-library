@@ -1,7 +1,7 @@
 """Route registrations for the inventory backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.inventory import service as services
 
 router = APIRouter()
 

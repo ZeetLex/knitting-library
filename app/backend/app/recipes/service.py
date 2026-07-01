@@ -1,8 +1,5 @@
-"""Recipe business workflows preserved from the legacy backend."""
-from app import services as _services
+"""Recipe service facade assembled from focused recipe modules."""
+from app.recipes.repository import *
+from app.recipes.files import *
 
-globals().update({
-    name: getattr(_services, name)
-    for name in dir(_services)
-    if not name.startswith("__")
-})
+__all__ = [name for name in globals() if not name.startswith("__")]

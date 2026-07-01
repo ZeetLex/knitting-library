@@ -1,7 +1,7 @@
 """Route registrations for the yarns backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.yarns import service as services
 
 router = APIRouter()
 

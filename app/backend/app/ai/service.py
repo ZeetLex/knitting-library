@@ -1,8 +1,6 @@
-"""AI text recognition service helpers."""
-from app import services as _services
+"""AI service facade assembled from prompts, OCR, and job modules."""
+from app.ai.prompts import *
+from app.ai.ocr import *
+from app.ai.jobs import *
 
-globals().update({
-    name: getattr(_services, name)
-    for name in dir(_services)
-    if not name.startswith("__")
-})
+__all__ = [name for name in globals() if not name.startswith("__")]

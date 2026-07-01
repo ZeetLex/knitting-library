@@ -1,7 +1,7 @@
 """Route registrations for the core backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.core import service as services
 
 router = APIRouter()
 

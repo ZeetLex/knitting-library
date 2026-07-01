@@ -1,7 +1,7 @@
 """Route registrations for the stats backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.stats import service as services
 
 router = APIRouter()
 

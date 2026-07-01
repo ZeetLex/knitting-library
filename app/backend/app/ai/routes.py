@@ -1,7 +1,7 @@
 """Route registrations for the ai backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.ai import service as services
 
 router = APIRouter()
 

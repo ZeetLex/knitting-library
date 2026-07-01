@@ -1,7 +1,7 @@
 """Route registrations for the review backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.review import service as services
 
 router = APIRouter()
 

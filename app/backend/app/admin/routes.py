@@ -1,7 +1,7 @@
 """Route registrations for the admin backend area."""
 from fastapi import APIRouter
 
-from app import services
+from app.admin import service as services
 
 router = APIRouter()
 
