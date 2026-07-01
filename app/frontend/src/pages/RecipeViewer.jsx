@@ -52,6 +52,7 @@ function normalizeResume(saved, requested = 'original') {
     imageIndex: clampIndex(saved?.imageIndex, 9999),
     zoom: Number.isFinite(Number(saved?.zoom)) ? Math.max(0.5, Math.min(Number(saved.zoom), 4)) : 1,
     scrollY: Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null,
+    textScrollY: Number.isFinite(Number(saved?.textScrollY)) ? Number(saved.textScrollY) : null,
     mobileImagesVisible: Boolean(saved?.mobileImagesVisible),
   };
 }
@@ -99,7 +100,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
   const pendingScrollY = useRef(initialState.scrollY);
+  const pendingTextScrollY = useRef(initialState.textScrollY);
+  const lastTextScrollYRef = useRef(initialState.textScrollY || 0);
   const restoredScrollRef = useRef(false);
+  const restoredTextScrollRef = useRef(false);
+  const textPanelRef = useRef(null);
   const serverSaveTimerRef = useRef(null);
   const lastServerSaveRef = useRef(0);
 
@@ -269,7 +274,10 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     const localSaved = readViewerResume(user, recipeId);
     const fallbackResume = normalizeResume(localSaved, initialViewMode);
     pendingScrollY.current = fallbackResume.scrollY;
+    pendingTextScrollY.current = fallbackResume.textScrollY;
+    lastTextScrollYRef.current = fallbackResume.textScrollY || 0;
     restoredScrollRef.current = false;
+    restoredTextScrollRef.current = false;
     setLoading(true);
     setError(null);
     setMobileImageEditing(false);
@@ -292,7 +300,10 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         const saved = serverSaved?.exists ? serverSaved : localSaved;
         const resume = normalizeResume(saved, initialViewMode);
         pendingScrollY.current = resume.scrollY;
+        pendingTextScrollY.current = resume.textScrollY;
+        lastTextScrollYRef.current = resume.textScrollY || 0;
         restoredScrollRef.current = false;
+        restoredTextScrollRef.current = false;
         setMobileImagesVisible(resume.mobileImagesVisible);
         setViewMode(resume.viewMode);
         setImageIndex(resume.imageIndex);
@@ -352,6 +363,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       imageIndex,
       zoom,
       scrollY: window.scrollY || 0,
+      textScrollY: textPanelRef.current?.scrollTop ?? lastTextScrollYRef.current ?? 0,
       mobileImagesVisible,
       updatedAt: Date.now(),
     };
@@ -416,6 +428,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   useEffect(() => {
     if (!recipeId || loading) return;
     if (pendingScrollY.current != null && !restoredScrollRef.current) return;
+    if (viewMode === 'text' && pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
     saveViewerResume();
   }, [recipeId, loading, viewMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
 
@@ -433,6 +446,27 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       });
     });
   }, [loading, viewMode, textLoading, reviewLoading, recipe?.file_type, pdfPages.length, converting]);
+
+  useEffect(() => {
+    if (loading || viewMode !== 'text' || textLoading || restoredTextScrollRef.current || pendingTextScrollY.current == null) return;
+    const targetY = Math.max(0, pendingTextScrollY.current);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (textPanelRef.current) {
+          textPanelRef.current.scrollTop = Math.min(targetY, textPanelRef.current.scrollHeight);
+          lastTextScrollYRef.current = textPanelRef.current.scrollTop;
+        }
+        restoredTextScrollRef.current = true;
+      });
+    });
+  }, [loading, viewMode, textLoading, textVersion?.content_markdown]);
+
+  const handleTextPanelScroll = useCallback(() => {
+    if (viewMode !== 'text') return;
+    if (pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
+    lastTextScrollYRef.current = textPanelRef.current?.scrollTop || 0;
+    saveViewerResume();
+  }, [viewMode, saveViewerResume]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') setFullscreen(false);
@@ -604,6 +638,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               loading={textLoading}
               setLoading={setTextLoading}
               onTextJobQueued={onTextJobQueued}
+              panelRef={textPanelRef}
+              onPanelScroll={handleTextPanelScroll}
             />
           ) : viewMode === 'review' ? (
             <ReviewSessionPanel
@@ -1810,7 +1846,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   );
 }
 
-function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued }) {
+function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, panelRef, onPanelScroll }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -1848,13 +1884,13 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
   };
 
   if (loading) {
-    return <div className="text-version-panel"><div className="spinner" /><p>{t('loading')}</p></div>;
+    return <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}><div className="spinner" /><p>{t('loading')}</p></div>;
   }
 
   const hasText = !!textVersion?.content_markdown;
 
   return (
-    <div className="text-version-panel">
+    <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}>
       <div className="text-version-header">
         <div>
           <h2>{t('textVersion')}</h2>

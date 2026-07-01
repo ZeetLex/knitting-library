@@ -16,7 +16,7 @@ import ImportWizard from './components/ImportWizard';
 import AppShell from './components/AppShell';
 import AnnouncementModal from './components/AnnouncementModal';
 import WorkQueueDock from './components/WorkQueueDock';
-import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement, fetchWorkQueue, cancelAIJob, dismissAIJob } from './utils/api';
+import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement, fetchWorkQueue, cancelAIJob, dismissAIJob, fetchNavigationProgress, saveNavigationProgress } from './utils/api';
 import './App.css';
 
 const APP_RESUME_PREFIX = 'knitting_app_resume_v1';
@@ -26,7 +26,7 @@ function appResumeKey(user) {
 }
 
 function saveAppResume(user, data) {
-  if (!user || !data?.recipeId) return;
+  if (!user || !data?.activeView) return;
   try {
     localStorage.setItem(appResumeKey(user), JSON.stringify({ ...data, updatedAt: Date.now() }));
   } catch (_) {}
@@ -40,11 +40,6 @@ function readAppResume(user) {
   } catch (_) {
     return null;
   }
-}
-
-function clearAppResume(user) {
-  if (!user) return;
-  try { localStorage.removeItem(appResumeKey(user)); } catch (_) {}
 }
 
 function AppInner() {
@@ -78,6 +73,18 @@ function AppInner() {
         setImportCount(data?.imports?.count || 0);
       })
       .catch(() => {});
+  }, [user]);
+
+  const persistAppLocation = useCallback((data) => {
+    if (!user || !data?.activeView) return;
+    const payload = {
+      activeView: data.activeView,
+      recipeId: data.recipeId || '',
+      initialViewMode: data.initialViewMode || 'original',
+      yarnId: data.yarnId || '',
+    };
+    saveAppResume(user, payload);
+    saveNavigationProgress(payload).catch(() => {});
   }, [user]);
 
   // ── Announcements ─────────────────────────────────────────────────────────
@@ -115,7 +122,6 @@ function AppInner() {
   }, [user]);
 
   const handleNavigate = (view) => {
-    clearAppResume(user);
     setActiveView(view);
     setViewingRecipeId(null);
     setViewingYarnId(null);
@@ -123,34 +129,35 @@ function AppInner() {
     setShowStats(false);
     setShowSettings(false);
     setShowHelp(false);
+    persistAppLocation({ activeView: view });
   };
 
   const navigateApp = (view) => {
     if (view === 'settings') {
-      clearAppResume(user);
       setShowSettings(true);
       setShowStats(false);
       setShowHelp(false);
       setViewingRecipeId(null);
       setViewingYarnId(null);
+      persistAppLocation({ activeView: 'settings' });
       return;
     }
     if (view === 'stats') {
-      clearAppResume(user);
       setShowStats(true);
       setShowSettings(false);
       setShowHelp(false);
       setViewingRecipeId(null);
       setViewingYarnId(null);
+      persistAppLocation({ activeView: 'stats' });
       return;
     }
     if (view === 'help') {
-      clearAppResume(user);
       setShowHelp(true);
       setShowSettings(false);
       setShowStats(false);
       setViewingRecipeId(null);
       setViewingYarnId(null);
+      persistAppLocation({ activeView: 'help' });
       return;
     }
     handleNavigate(view);
@@ -163,20 +170,21 @@ function AppInner() {
     setShowHelp(false);
     setRecipeInitialView(initialView);
     setViewingRecipeId(id);
-    saveAppResume(user, { activeView: 'recipes', recipeId: id, initialViewMode: initialView });
+    persistAppLocation({ activeView: 'recipes', recipeId: id, initialViewMode: initialView });
   };
 
   const openYarn = (id) => {
     setActiveView('yarnDatabase');
     setViewingYarnId(id);
+    persistAppLocation({ activeView: 'yarnDatabase', yarnId: id });
   };
 
   const handleImportRecipe = () => {
-    clearAppResume(user);
     setActiveView('recipes');
     setViewingRecipeId(null);
     setRecipeInitialView('original');
     setImportOpen(true);
+    persistAppLocation({ activeView: 'recipes' });
   };
 
   const handleImportFolder = () => {
@@ -184,14 +192,13 @@ function AppInner() {
   };
 
   const handleAddYarn = () => {
-    clearAppResume(user);
     setActiveView('inventory');
     setViewingYarnId(null);
     setYarnUploadOpen(true);
+    persistAppLocation({ activeView: 'inventory' });
   };
 
   const handleAddTool = () => {
-    clearAppResume(user);
     setActiveView('inventory');
     setViewingRecipeId(null);
     setViewingYarnId(null);
@@ -199,6 +206,7 @@ function AppInner() {
     setShowStats(false);
     setShowHelp(false);
     setInventoryAddRequest({ type: 'tool', nonce: Date.now() });
+    persistAppLocation({ activeView: 'inventory' });
   };
 
   useEffect(() => {
@@ -208,15 +216,26 @@ function AppInner() {
     }
     if (resumeCheckedRef.current) return;
     resumeCheckedRef.current = true;
-    const saved = readAppResume(user);
-    if (saved?.activeView === 'recipes' && saved.recipeId) {
-      setActiveView('recipes');
-      setShowSettings(false);
-      setShowStats(false);
-      setShowHelp(false);
+    let cancelled = false;
+    const applySaved = (saved) => {
+      if (!saved?.activeView || cancelled) return;
+      setShowSettings(saved.activeView === 'settings');
+      setShowStats(saved.activeView === 'stats');
+      setShowHelp(saved.activeView === 'help');
+      if (saved.activeView === 'settings' || saved.activeView === 'stats' || saved.activeView === 'help') {
+        setViewingRecipeId(null);
+        setViewingYarnId(null);
+        return;
+      }
+      setActiveView(saved.activeView);
+      setViewingRecipeId(saved.activeView === 'recipes' && saved.recipeId ? saved.recipeId : null);
+      setViewingYarnId(saved.activeView === 'yarnDatabase' && saved.yarnId ? saved.yarnId : null);
       setRecipeInitialView(saved.initialViewMode || 'original');
-      setViewingRecipeId(saved.recipeId);
-    }
+    };
+    fetchNavigationProgress()
+      .then(saved => applySaved(saved?.exists ? saved : readAppResume(user)))
+      .catch(() => applySaved(readAppResume(user)));
+    return () => { cancelled = true; };
   }, [user]);
 
   if (loading) return (
@@ -308,7 +327,7 @@ function AppInner() {
         onImportRecipe={handleImportRecipe}
         onAddYarn={handleAddYarn}
         onAddTool={handleAddTool}
-        onRecipeBack={() => { clearAppResume(user); setViewingRecipeId(null); }}
+        onRecipeBack={() => { setViewingRecipeId(null); persistAppLocation({ activeView: 'recipes' }); }}
         queue={workQueue}
         onOpenImport={() => setImportOpen(true)}
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
@@ -340,8 +359,8 @@ function AppInner() {
             <RecipeViewer
               recipeId={viewingRecipeId}
               initialViewMode={recipeInitialView}
-              onBack={() => { clearAppResume(user); setViewingRecipeId(null); }}
-              onDeleted={() => { clearAppResume(user); setViewingRecipeId(null); setRefreshKey(k => k + 1); }}
+              onBack={() => { setViewingRecipeId(null); persistAppLocation({ activeView: 'recipes' }); }}
+              onDeleted={() => { setViewingRecipeId(null); setRefreshKey(k => k + 1); persistAppLocation({ activeView: 'recipes' }); }}
               onTextJobQueued={refreshWorkQueue}
             />
           ) : (
@@ -368,12 +387,13 @@ function AppInner() {
           viewingYarnId ? (
             <YarnViewer
               yarnId={viewingYarnId}
-              onBack={() => { setActiveView('inventory'); setViewingYarnId(null); }}
+              onBack={() => { setActiveView('inventory'); setViewingYarnId(null); persistAppLocation({ activeView: 'inventory' }); }}
               onDeleted={() => {
                 setActiveView('inventory');
                 setViewingYarnId(null);
                 setYarnRefreshKey(k => k + 1);
                 setInventoryRefreshKey(k => k + 1);
+                persistAppLocation({ activeView: 'inventory' });
               }}
             />
           ) : (

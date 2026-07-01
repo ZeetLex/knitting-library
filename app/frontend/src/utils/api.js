@@ -144,6 +144,23 @@ export async function fetchUsers() {
   if (!res.ok) throw new Error('Failed to load users');
   return res.json();
 }
+
+export async function fetchNavigationProgress() {
+  const res = await fetch(`${API_BASE}/auth/navigation-progress`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load navigation progress');
+  return res.json();
+}
+
+export async function saveNavigationProgress(progress) {
+  const res = await fetch(`${API_BASE}/auth/navigation-progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(progress),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save navigation progress');
+  return data;
+}
 export async function createUser(data) {
   const res = await fetch(`${API_BASE}/admin/users`, { method:'POST', headers:{'Content-Type':'application/json',...authHeaders()}, body: JSON.stringify(data) });
   if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || 'Failed to create user'); }

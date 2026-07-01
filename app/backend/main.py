@@ -448,11 +448,27 @@ def get_db() -> sqlite3.Connection:
                 image_index           INTEGER NOT NULL DEFAULT 0,
                 zoom                  REAL NOT NULL DEFAULT 1,
                 scroll_y              INTEGER NOT NULL DEFAULT 0,
+                text_scroll_y         INTEGER NOT NULL DEFAULT 0,
                 mobile_images_visible INTEGER NOT NULL DEFAULT 0,
                 updated_at            TEXT NOT NULL,
                 PRIMARY KEY (recipe_id, user_id),
                 FOREIGN KEY (recipe_id) REFERENCES recipes(id),
                 FOREIGN KEY (user_id)   REFERENCES users(id)
+            )
+        """)
+        conn.commit()
+    elif "recipe_viewer_progress" in tables:
+        progress_cols = [r["name"] for r in conn.execute("PRAGMA table_info(recipe_viewer_progress)").fetchall()]
+        if "text_scroll_y" not in progress_cols:
+            conn.execute("ALTER TABLE recipe_viewer_progress ADD COLUMN text_scroll_y INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+    if "app_navigation_progress" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_navigation_progress (
+                user_id    TEXT PRIMARY KEY,
+                data_json  TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
         conn.commit()
@@ -721,11 +737,18 @@ def init_db():
             image_index           INTEGER NOT NULL DEFAULT 0,
             zoom                  REAL NOT NULL DEFAULT 1,
             scroll_y              INTEGER NOT NULL DEFAULT 0,
+            text_scroll_y         INTEGER NOT NULL DEFAULT 0,
             mobile_images_visible INTEGER NOT NULL DEFAULT 0,
             updated_at            TEXT NOT NULL,
             PRIMARY KEY (recipe_id, user_id),
             FOREIGN KEY (recipe_id) REFERENCES recipes(id),
             FOREIGN KEY (user_id)   REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS app_navigation_progress (
+            user_id    TEXT PRIMARY KEY,
+            data_json  TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id              TEXT PRIMARY KEY,
@@ -1217,6 +1240,53 @@ def logout(request: Request):
 @app.get("/api/auth/me")
 def get_me(current_user: dict = Depends(get_current_user)):
     return _user_dict(current_user)
+
+
+@app.get("/api/auth/navigation-progress")
+def get_navigation_progress(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT data_json, updated_at FROM app_navigation_progress WHERE user_id=?",
+        (current_user["id"],)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"exists": False}
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except json.JSONDecodeError:
+        data = {}
+    return {"exists": True, "updatedAt": row["updated_at"], **data}
+
+
+@app.put("/api/auth/navigation-progress")
+def save_navigation_progress(data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    allowed_views = {"home", "recipes", "inventory", "yarnDatabase", "settings", "stats", "help"}
+    active_view = str(data.get("activeView") or data.get("active_view") or "home")
+    if active_view not in allowed_views:
+        active_view = "home"
+    payload = {
+        "activeView": active_view,
+        "recipeId": str(data.get("recipeId") or "")[:160],
+        "initialViewMode": str(data.get("initialViewMode") or data.get("initial_view_mode") or "original")[:40],
+        "yarnId": str(data.get("yarnId") or "")[:160],
+        "updatedAt": datetime.utcnow().isoformat(),
+    }
+    now = payload["updatedAt"]
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO app_navigation_progress (user_id,data_json,updated_at)
+        VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            data_json=excluded.data_json,
+            updated_at=excluded.updated_at
+        """,
+        (current_user["id"], json.dumps(payload), now)
+    )
+    conn.commit()
+    conn.close()
+    return {"exists": True, **payload}
 
 
 @app.put("/api/auth/settings")
@@ -3963,6 +4033,7 @@ def _viewer_progress_dict(row) -> dict:
         "imageIndex": row["image_index"],
         "zoom": row["zoom"],
         "scrollY": row["scroll_y"],
+        "textScrollY": row["text_scroll_y"],
         "mobileImagesVisible": bool(row["mobile_images_visible"]),
         "updatedAt": row["updated_at"],
     }
@@ -4000,6 +4071,10 @@ def save_recipe_viewer_progress(recipe_id: str, data: dict = Body(default={}), c
         scroll_y = max(0, int(float(data.get("scrollY", data.get("scroll_y", 0)) or 0)))
     except (TypeError, ValueError):
         scroll_y = 0
+    try:
+        text_scroll_y = max(0, int(float(data.get("textScrollY", data.get("text_scroll_y", 0)) or 0)))
+    except (TypeError, ValueError):
+        text_scroll_y = 0
     mobile_images_visible = 1 if data.get("mobileImagesVisible", data.get("mobile_images_visible", False)) else 0
     now = datetime.utcnow().isoformat()
     conn = get_db()
@@ -4009,17 +4084,18 @@ def save_recipe_viewer_progress(recipe_id: str, data: dict = Body(default={}), c
     conn.execute(
         """
         INSERT INTO recipe_viewer_progress
-            (recipe_id,user_id,view_mode,image_index,zoom,scroll_y,mobile_images_visible,updated_at)
-        VALUES (?,?,?,?,?,?,?,?)
+            (recipe_id,user_id,view_mode,image_index,zoom,scroll_y,text_scroll_y,mobile_images_visible,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
         ON CONFLICT(recipe_id,user_id) DO UPDATE SET
             view_mode=excluded.view_mode,
             image_index=excluded.image_index,
             zoom=excluded.zoom,
             scroll_y=excluded.scroll_y,
+            text_scroll_y=excluded.text_scroll_y,
             mobile_images_visible=excluded.mobile_images_visible,
             updated_at=excluded.updated_at
         """,
-        (recipe_id, current_user["id"], view_mode, image_index, zoom, scroll_y, mobile_images_visible, now)
+        (recipe_id, current_user["id"], view_mode, image_index, zoom, scroll_y, text_scroll_y, mobile_images_visible, now)
     )
     conn.commit()
     row = conn.execute(
