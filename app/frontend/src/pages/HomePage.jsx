@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, BookOpen, CheckCircle, Dice5,
-  FolderOpen, Package, Play, Sparkles, Star,
+  FolderOpen, Github, Package, Play, Sparkles, Star,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchStats, thumbnailUrl } from '../utils/api';
@@ -71,6 +71,20 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
   );
 }
 
+function MobileLatestRelease({ release }) {
+  const { t } = useApp();
+  if (!release) return null;
+  const title = release.title || release.name || release.tag_name || t('githubReleaseNotes');
+  const url = release.html_url || 'https://github.com/ZeetLex/knitting-library/releases';
+  return (
+    <a className="home-latest-release" href={url} target="_blank" rel="noreferrer">
+      <Github size={15} />
+      <span>{release.prerelease ? t('releasePrerelease') : t('latestRelease')}</span>
+      <strong>{title}</strong>
+    </a>
+  );
+}
+
 function HomeProjectPanel({ panelKey, panel, loading, onOpenRecipe, onNavigate, onAddRecipe, onShuffle, t }) {
   const action = panelKey === 'active' ? () => onNavigate('recipes') : panelKey === 'discover' ? onShuffle : onAddRecipe;
   const actionLabel = panelKey === 'active' ? t('homeBrowseRecipes') : panelKey === 'discover' ? t('homeShuffle') : t('addRecipe');
@@ -113,7 +127,7 @@ function HomeProjectPanel({ panelKey, panel, loading, onOpenRecipe, onNavigate, 
   );
 }
 
-export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, workQueueDock }) {
+export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, latestRelease, workQueueDock }) {
   const { t } = useApp();
   const [stats, setStats] = useState(null);
   const [active, setActive] = useState([]);
@@ -167,6 +181,7 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, workQu
   return (
     <div className="home-page">
       <section className="home-hero">
+        <MobileLatestRelease release={latestRelease} />
         <div className="home-brand-hero">
           <img className="home-brand-logo" src="/brand-logo.png" alt="" aria-hidden="true" />
           <div className="home-wordmark">

@@ -194,6 +194,71 @@
   gap: 10px;
 }
 
+.latest-release-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, var(--card-bg));
+  color: var(--text-primary);
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.latest-release-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 11%, var(--card-bg));
+}
+
+.latest-release-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--accent);
+}
+
+.latest-release-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.latest-release-label {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.latest-release-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.latest-release-card--collapsed {
+  display: grid;
+  width: 48px;
+  min-height: 48px;
+  grid-template-columns: 1fr;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--accent);
+}
+
 .desktop-brand-button {
   background: none;
   border: none;

@@ -16,7 +16,7 @@ import ImportWizard from './components/ImportWizard';
 import AppShell from './components/AppShell';
 import AnnouncementModal from './components/AnnouncementModal';
 import WorkQueueDock from './components/WorkQueueDock';
-import { getImportQueue, fetchPendingAnnouncements, dismissAnnouncement, fetchWorkQueue, cancelAIJob, dismissAIJob, fetchNavigationProgress, saveNavigationProgress } from './utils/api';
+import { getImportQueue, fetchPendingReleases, dismissRelease, fetchLatestRelease, fetchWorkQueue, cancelAIJob, dismissAIJob, fetchNavigationProgress, saveNavigationProgress } from './utils/api';
 import './App.css';
 
 const APP_RESUME_PREFIX = 'knitting_app_resume_v1';
@@ -87,16 +87,16 @@ function AppInner() {
     saveNavigationProgress(payload).catch(() => {});
   }, [user]);
 
-  // ── Announcements ─────────────────────────────────────────────────────────
-  const [pendingAnnouncements, setPendingAnnouncements] = useState([]);
+  // ── GitHub release notes ──────────────────────────────────────────────────
+  const [pendingReleases, setPendingReleases] = useState([]);
+  const [latestRelease, setLatestRelease] = useState(null);
 
-  const handleDismissAnnouncements = useCallback(async () => {
-    // Dismiss all currently shown announcements at once
-    for (const a of pendingAnnouncements) {
-      await dismissAnnouncement(a.id).catch(() => {});
+  const handleDismissReleases = useCallback(async () => {
+    for (const release of pendingReleases) {
+      await dismissRelease(release.id).catch(() => {});
     }
-    setPendingAnnouncements([]);
-  }, [pendingAnnouncements]);
+    setPendingReleases([]);
+  }, [pendingReleases]);
 
   // Only poll import queue once user is confirmed logged in.
   useEffect(() => { if (user) { checkImport(); refreshWorkQueue(); } }, [user, checkImport, refreshWorkQueue]);
@@ -110,15 +110,29 @@ function AppInner() {
     return () => clearInterval(timer);
   }, [user, refreshWorkQueue]);
 
-  // Fetch pending announcements once the user logs in
+  // Fetch cached release notes once the user logs in
   useEffect(() => {
     if (user) {
-      fetchPendingAnnouncements()
-        .then(data => setPendingAnnouncements(data || []))
-        .catch(() => {});
+      const loadReleases = () => {
+        fetchPendingReleases()
+          .then(data => setPendingReleases(data || []))
+          .catch(() => {});
+        fetchLatestRelease()
+          .then(data => setLatestRelease(data?.release || null))
+          .catch(() => {});
+      };
+      loadReleases();
+      const retry = setTimeout(loadReleases, 8000);
+      const timer = setInterval(loadReleases, 15 * 60 * 1000);
+      return () => {
+        clearTimeout(retry);
+        clearInterval(timer);
+      };
     } else {
-      setPendingAnnouncements([]);
+      setPendingReleases([]);
+      setLatestRelease(null);
     }
+    return undefined;
   }, [user]);
 
   const handleNavigate = (view) => {
@@ -251,6 +265,7 @@ function AppInner() {
     <div className="app">
       <AppShell
         activeView="settings"
+        latestRelease={latestRelease}
         onNavigate={navigateApp}
         onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
@@ -265,10 +280,10 @@ function AppInner() {
       >
         <SettingsPage onBack={() => setShowSettings(false)} />
       </AppShell>
-      {pendingAnnouncements.length > 0 && (
+      {pendingReleases.length > 0 && (
         <AnnouncementModal
-          announcements={pendingAnnouncements}
-          onDismiss={handleDismissAnnouncements}
+          announcements={pendingReleases}
+          onDismiss={handleDismissReleases}
         />
       )}
     </div>
@@ -278,6 +293,7 @@ function AppInner() {
     <div className="app">
       <AppShell
         activeView="stats"
+        latestRelease={latestRelease}
         onNavigate={navigateApp}
         onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
@@ -299,6 +315,7 @@ function AppInner() {
     <div className="app">
       <AppShell
         activeView="help"
+        latestRelease={latestRelease}
         onNavigate={navigateApp}
         onAddRecipe={handleImportRecipe}
         onImportFolder={handleImportFolder}
@@ -320,6 +337,7 @@ function AppInner() {
     <div className="app">
       <AppShell
         activeView={activeView}
+        latestRelease={latestRelease}
         recipeMode={activeView === 'recipes' && Boolean(viewingRecipeId)}
         onNavigate={navigateApp}
         onAddRecipe={handleImportRecipe}
@@ -340,6 +358,7 @@ function AppInner() {
             onOpenRecipe={openRecipe}
             onNavigate={navigateApp}
             onAddRecipe={handleImportRecipe}
+            latestRelease={latestRelease}
             workQueueDock={(
               <WorkQueueDock
                 queue={workQueue}
@@ -426,10 +445,10 @@ function AppInner() {
       )}
 
       {/* Announcement popup — shown once per push to all users */}
-      {pendingAnnouncements.length > 0 && (
+      {pendingReleases.length > 0 && (
         <AnnouncementModal
-          announcements={pendingAnnouncements}
-          onDismiss={handleDismissAnnouncements}
+          announcements={pendingReleases}
+          onDismiss={handleDismissReleases}
         />
       )}
     </div>

@@ -1,11 +1,11 @@
 import React from 'react';
-import { Megaphone, X } from 'lucide-react';
+import { ExternalLink, Github } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { getLanguageLocale } from '../utils/translations';
 import './AnnouncementModal.css';
 
 /**
- * Shows one or more unread announcements to the user.
+ * Shows one or more unread GitHub releases to the user.
  * Dismisses all of them when "Got it!" is clicked.
  */
 export default function AnnouncementModal({ announcements, onDismiss }) {
@@ -31,11 +31,12 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
       <div className="ann-modal">
         <div className="ann-header">
           <div className="ann-icon">
-            <Megaphone size={20} />
+            <Github size={20} />
           </div>
           <div className="ann-header-text">
-            <span className="ann-label">{t('updateNotes')}</span>
-            <h2 className="ann-title" id="ann-title">{latest.title}</h2>
+            <span className="ann-label">{latest.prerelease ? t('releasePrerelease') : t('githubReleaseNotes')}</span>
+            <h2 className="ann-title" id="ann-title">{latest.title || latest.name || latest.tag_name}</h2>
+            {latest.tag_name && <span className="ann-tag">{latest.tag_name}</span>}
           </div>
         </div>
 
@@ -47,11 +48,17 @@ export default function AnnouncementModal({ announcements, onDismiss }) {
 
         <div className="ann-footer">
           <div className="ann-meta">
-            {formatDate(latest.created_at)}
+            {formatDate(latest.published_at || latest.created_at)}
             {remaining > 0 && (
-              <span className="ann-more"> · {t('announcementMoreUpdates').replace('{COUNT}', remaining)}</span>
+              <span className="ann-more"> · {t('releaseMoreUpdates').replace('{COUNT}', remaining)}</span>
             )}
           </div>
+          {latest.html_url && (
+            <a className="ann-link-btn" href={latest.html_url} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} />
+              <span>{t('openOnGitHub')}</span>
+            </a>
+          )}
           <button className="ann-dismiss-btn" onClick={onDismiss} autoFocus>
             {t('gotIt')}
           </button>

@@ -9,7 +9,7 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign, Palette, Bot,
+  Pencil, AtSign, Palette, Bot, ExternalLink, Github,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import { LANGUAGE_OPTIONS } from '../utils/translations';
@@ -17,7 +17,7 @@ import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
   fetch2FAStatus, adminReset2FA, setup2FA, verify2FASetup, disable2FA,
-  createAnnouncement, listAnnouncements,
+  listReleases, syncReleases,
   updateUserEmail, sendWelcomeMail, fetchAISettings, saveAISettings, fetchAIModels, testAISettings,
 } from '../utils/api';
 import './SettingsPage.css';
@@ -832,22 +832,6 @@ function MailSection() {
           </button>
         </div>
 
-        {/* ── Announcement emails ── */}
-        <div className="settings-divider" />
-        <h4 className="section-subheading">{t('notifications')}</h4>
-
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <p className="settings-row-label">{t('emailUpdateNotes')}</p>
-            <p className="settings-row-sub">{t('emailUpdateNotesSub')}</p>
-          </div>
-          <button
-            className={`theme-toggle ${cfg.mail_announcements_enabled === 'true' ? 'dark' : ''}`}
-            onClick={() => f('mail_announcements_enabled', cfg.mail_announcements_enabled === 'true' ? 'false' : 'true')}
-          >
-            <span className="theme-toggle-knob" />
-          </button>
-        </div>
       </div>
 
       {templateModal === 'forgot' && (
@@ -1253,129 +1237,88 @@ function TwoFASection() {
   );
 }
 
-/* ─── Announcements Section (Admin) ─────────────────────────────────────── */
+/* ─── GitHub Releases Section (Admin) ───────────────────────────────────── */
 function AnnouncementsSection() {
-  const { t } = useApp();
-  const [announcements, setAnnouncements] = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [showPush, setShowPush]           = useState(false);
+  const { t, language } = useApp();
+  const [releaseData, setReleaseData] = useState({ items: [] });
+  const [loading, setLoading]         = useState(true);
+  const [syncing, setSyncing]         = useState(false);
+  const [error, setError]             = useState('');
 
   const load = () => {
     setLoading(true);
-    listAnnouncements()
-      .then(setAnnouncements)
-      .catch(console.error)
+    setError('');
+    listReleases()
+      .then(setReleaseData)
+      .catch(e => setError(e.message || t('releaseLoadError')))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
   const formatDate = (iso) => {
-    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+    try { return new Date(iso).toLocaleDateString(language === 'no' ? 'nb-NO' : undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return iso; }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setError('');
+    try {
+      await syncReleases();
+      await load();
+    } catch (e) {
+      setError(e.message || t('releaseSyncError'));
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
     <div className="settings-section">
       <div className="section-heading-row">
-        <h3 className="section-heading">{t('updateNotes')}</h3>
-        <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          onClick={() => setShowPush(true)}>
-          <Megaphone size={15} />
-          {t('pushUpdateNotes')}
+        <h3 className="section-heading">{t('githubReleaseNotes')}</h3>
+        <button className="btn-primary btn-icon-label" onClick={handleSync} disabled={syncing}>
+          <RefreshCw size={15} className={syncing ? 'spin-icon' : ''} />
+          {syncing ? t('syncingReleases') : t('syncReleases')}
         </button>
       </div>
       <p className="settings-row-sub" style={{ marginBottom: '1.25rem' }}>
-        {t('updateNotesSub')}
+        {t('githubReleaseNotesSub')}
       </p>
+      {releaseData.last_sync_at && (
+        <p className="settings-row-sub" style={{ marginBottom: '0.75rem' }}>
+          {t('lastSynced')}: {formatDate(releaseData.last_sync_at)}
+        </p>
+      )}
+      {(error || releaseData.last_sync_error) && (
+        <p className="status-error">{error || releaseData.last_sync_error}</p>
+      )}
 
       {loading ? (
         <p className="loading-text">Loading…</p>
-      ) : announcements.length === 0 ? (
-        <p className="settings-row-sub">{t('noAnnouncements')}</p>
+      ) : releaseData.items?.length === 0 ? (
+        <p className="settings-row-sub">{t('noGithubReleases')}</p>
       ) : (
         <div className="announcement-history">
-          {announcements.map(a => (
-            <div key={a.id} className="announcement-history-item">
-              <div className="announcement-history-title">{a.title}</div>
-              {a.body && <div className="announcement-history-body">{a.body}</div>}
+          {releaseData.items.map(release => (
+            <div key={release.id} className="announcement-history-item">
+              <div className="announcement-history-title">
+                <Github size={15} />
+                <span>{release.title || release.name || release.tag_name}</span>
+                {release.prerelease && <em>{t('releasePrerelease')}</em>}
+              </div>
+              {release.body && <div className="announcement-history-body">{release.body}</div>}
               <div className="announcement-history-meta">
-                {t('pushedBy')} <strong>{a.created_by}</strong> · {formatDate(a.created_at)}
+                <strong>{release.tag_name}</strong> · {formatDate(release.published_at || release.created_at)}
+                {release.html_url && (
+                  <a href={release.html_url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={13} /> {t('openOnGitHub')}
+                  </a>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
-
-      {showPush && (
-        <PushAnnouncementModal
-          t={t}
-          onClose={() => setShowPush(false)}
-          onPushed={() => { setShowPush(false); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ─── Push Announcement Modal ─────────────────────────────────────────────── */
-function PushAnnouncementModal({ t, onClose, onPushed }) {
-  const [title, setTitle]   = useState('');
-  const [body, setBody]     = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
-
-  const handlePush = async () => {
-    if (!title.trim()) { setError(t('titleRequired')); return; }
-    setSaving(true); setError('');
-    try {
-      await createAnnouncement(title.trim(), body.trim());
-      onPushed();
-    } catch (e) {
-      setError(e.message || t('announcementPushError'));
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-modal announcement-push-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3><Megaphone size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />{t('pushUpdateNotes')}</h3>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="modal-body">
-          <div className="form-field">
-            <label className="form-label">{t('title')}</label>
-            <input
-              className="form-input"
-              placeholder={t('announcementTitlePlaceholder')}
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              autoFocus
-              maxLength={120}
-            />
-          </div>
-          <div className="form-field">
-            <label className="form-label">{t('updateNotes')}</label>
-            <textarea
-              className="form-input announcement-textarea"
-              placeholder={t('announcementBodyPlaceholder')}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              rows={7}
-            />
-          </div>
-          {error && <p className="status-error">{error}</p>}
-          <p className="modal-hint">
-            {t('announcementModalHint')}
-          </p>
-        </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handlePush} disabled={saving || !title.trim()}>
-            {saving ? t('pushing') : <><Send size={14} style={{ marginRight: 6 }} />{t('pushToAllUsers')}</>}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

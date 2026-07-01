@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CheckCircle2, CircleHelp, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
+  CheckCircle2, CircleHelp, Github, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
@@ -105,6 +105,37 @@ function AppMenu({ open, onClose, onNavigate }) {
         <button className="app-menu-logout" onClick={logout}>{t('logout')}</button>
       </aside>
     </div>
+  );
+}
+
+function LatestReleaseCard({ release, collapsed = false }) {
+  const { t } = useApp();
+  if (!release) return null;
+  const title = release.title || release.name || release.tag_name || t('githubReleaseNotes');
+  const url = release.html_url || 'https://github.com/ZeetLex/knitting-library/releases';
+
+  if (collapsed) {
+    return (
+      <a
+        className="latest-release-card latest-release-card--collapsed"
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        title={`${t('latestRelease')}: ${title}`}
+      >
+        <Github size={19} />
+      </a>
+    );
+  }
+
+  return (
+    <a className="latest-release-card" href={url} target="_blank" rel="noreferrer">
+      <span className="latest-release-icon"><Github size={16} /></span>
+      <span className="latest-release-copy">
+        <span className="latest-release-label">{release.prerelease ? t('releasePrerelease') : t('latestRelease')}</span>
+        <strong>{title}</strong>
+      </span>
+    </a>
   );
 }
 
@@ -310,7 +341,7 @@ function MobileNav({
   );
 }
 
-function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
+function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
   const { t } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
@@ -339,6 +370,7 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </div>
+      <LatestReleaseCard release={latestRelease} collapsed={collapsed} />
       <button className="desktop-add-btn" onClick={onAddClick} title={collapsed ? t('navAddSomething') : undefined}>
         <Plus size={18} />
         <span>{t('navAddSomething')}</span>
@@ -387,6 +419,7 @@ function DesktopSidebar({ activeView, collapsed, onToggleCollapsed, onNavigate, 
 
 export default function AppShell({
   activeView,
+  latestRelease,
   recipeMode = false,
   onNavigate,
   onAddRecipe,
@@ -488,6 +521,7 @@ export default function AppShell({
       <DesktopSidebar
         activeView={activeView}
         collapsed={desktopSidebarCollapsed}
+        latestRelease={latestRelease}
         onToggleCollapsed={toggleDesktopSidebar}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}

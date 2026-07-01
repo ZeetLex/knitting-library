@@ -1408,15 +1408,6 @@
 .log-line--nginx { color: var(--text-muted); }
 
 /* ── Announcements section ─────────────────────────────────────────────────── */
-.announcement-push-modal {
-  max-width: 540px;
-}
-.announcement-textarea {
-  resize: vertical;
-  min-height: 140px;
-  font-family: 'DM Sans', sans-serif;
-  line-height: 1.5;
-}
 .announcement-history {
   display: flex;
   flex-direction: column;
@@ -1429,11 +1420,31 @@
   background: var(--bg-secondary);
 }
 .announcement-history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   font-size: 14px;
   color: var(--text-primary);
   margin-bottom: 4px;
 }
+
+.announcement-history-title span {
+  min-width: 0;
+}
+
+.announcement-history-title em {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 11%, var(--card-bg));
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .announcement-history-body {
   font-size: 13px;
   color: var(--text-secondary);
@@ -1442,8 +1453,25 @@
   line-height: 1.5;
 }
 .announcement-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-light);
+}
+
+.announcement-history-meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.announcement-history-meta a:hover {
+  text-decoration: underline;
 }
 
 /* ── Mail template extras ──────────────────────────────────────────────────── */

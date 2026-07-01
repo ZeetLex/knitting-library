@@ -48,6 +48,46 @@
   }
 }
 
+.home-latest-release {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .home-latest-release {
+    display: inline-flex;
+    max-width: min(92vw, 360px);
+    min-height: 34px;
+    align-items: center;
+    gap: 7px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card-bg) 82%, transparent);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
+    text-decoration: none;
+    backdrop-filter: blur(10px);
+  }
+
+  .home-latest-release span {
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .home-latest-release strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .home-brand-hero {
   display: flex;
   align-items: center;

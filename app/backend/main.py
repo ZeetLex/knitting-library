@@ -126,6 +126,11 @@ CSRF_COOKIE = "knitting_csrf"
 MAX_SCRAPE_BYTES = 5 * 1024 * 1024
 _ai_queue_task: Optional[asyncio.Task] = None
 _ai_queue_lock = asyncio.Lock()
+_release_sync_task: Optional[asyncio.Task] = None
+_release_sync_lock = asyncio.Lock()
+GITHUB_RELEASES_URL = "https://api.github.com/repos/ZeetLex/knitting-library/releases"
+GITHUB_RELEASES_HTML = "https://github.com/ZeetLex/knitting-library/releases"
+RELEASE_SYNC_INTERVAL_SECONDS = 6 * 60 * 60
 
 def _parse_trusted_proxies() -> list[ipaddress._BaseNetwork]:
     networks = []
@@ -496,6 +501,35 @@ def get_db() -> sqlite3.Connection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_action ON user_action_log (action)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_user_action_log_user ON user_action_log (user_id, username)")
+        conn.commit()
+    if "github_releases" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS github_releases (
+                id             TEXT PRIMARY KEY,
+                github_id      INTEGER NOT NULL UNIQUE,
+                tag_name       TEXT NOT NULL DEFAULT '',
+                name           TEXT NOT NULL DEFAULT '',
+                body           TEXT NOT NULL DEFAULT '',
+                html_url       TEXT NOT NULL DEFAULT '',
+                prerelease     INTEGER NOT NULL DEFAULT 0,
+                draft          INTEGER NOT NULL DEFAULT 0,
+                published_at   TEXT NOT NULL DEFAULT '',
+                created_at     TEXT NOT NULL DEFAULT '',
+                synced_at      TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_github_releases_tag ON github_releases (tag_name)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_github_releases_published ON github_releases (published_at DESC)")
+        conn.commit()
+    if "github_release_reads" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS github_release_reads (
+                user_id    TEXT NOT NULL,
+                release_id TEXT NOT NULL,
+                read_at    TEXT NOT NULL,
+                PRIMARY KEY (user_id, release_id)
+            )
+        """)
         conn.commit()
     if "recipe_text_versions" not in tables:
         conn.execute("""
@@ -870,6 +904,25 @@ def init_db():
             metadata_json TEXT NOT NULL DEFAULT '{}',
             created_at    TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS github_releases (
+            id             TEXT PRIMARY KEY,
+            github_id      INTEGER NOT NULL UNIQUE,
+            tag_name       TEXT NOT NULL DEFAULT '',
+            name           TEXT NOT NULL DEFAULT '',
+            body           TEXT NOT NULL DEFAULT '',
+            html_url       TEXT NOT NULL DEFAULT '',
+            prerelease     INTEGER NOT NULL DEFAULT 0,
+            draft          INTEGER NOT NULL DEFAULT 0,
+            published_at   TEXT NOT NULL DEFAULT '',
+            created_at     TEXT NOT NULL DEFAULT '',
+            synced_at      TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS github_release_reads (
+            user_id    TEXT NOT NULL,
+            release_id TEXT NOT NULL,
+            read_at    TEXT NOT NULL,
+            PRIMARY KEY (user_id, release_id)
+        );
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
@@ -1058,6 +1111,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);
         CREATE INDEX IF NOT EXISTS idx_user_action_log_action  ON user_action_log (action);
         CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id, username);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_github_releases_tag ON github_releases (tag_name);
+        CREATE INDEX IF NOT EXISTS idx_github_releases_published ON github_releases (published_at DESC);
         CREATE INDEX IF NOT EXISTS idx_ai_text_jobs_status    ON ai_text_jobs (status, dismissed, created_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_job    ON ai_usage_events (job_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events (created_at);
@@ -1135,6 +1190,159 @@ def _log_user_action(
             datetime.utcnow().isoformat(),
         )
     )
+
+def _release_row_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "github_id": row["github_id"],
+        "tag_name": row["tag_name"],
+        "name": row["name"] or row["tag_name"],
+        "title": row["name"] or row["tag_name"],
+        "body": row["body"] or "",
+        "html_url": row["html_url"] or GITHUB_RELEASES_HTML,
+        "prerelease": bool(row["prerelease"]),
+        "draft": bool(row["draft"]),
+        "published_at": row["published_at"],
+        "created_at": row["published_at"] or row["created_at"] or row["synced_at"],
+        "synced_at": row["synced_at"],
+        "source": "github",
+    }
+
+def _release_sync_status(conn) -> dict:
+    rows = conn.execute(
+        "SELECT key, value FROM app_settings WHERE key IN ('github_releases_last_sync_at','github_releases_last_sync_error')"
+    ).fetchall()
+    values = {row["key"]: row["value"] for row in rows}
+    return {
+        "last_sync_at": values.get("github_releases_last_sync_at", ""),
+        "last_sync_error": values.get("github_releases_last_sync_error", ""),
+        "source_url": GITHUB_RELEASES_HTML,
+    }
+
+async def _sync_github_releases() -> dict:
+    async with _release_sync_lock:
+        now = datetime.utcnow().isoformat()
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                response = await client.get(
+                    GITHUB_RELEASES_URL,
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": "Knitting-Library",
+                    },
+                    params={"per_page": 100},
+                )
+                response.raise_for_status()
+                releases = response.json()
+            if not isinstance(releases, list):
+                raise ValueError("GitHub returned an unexpected release payload")
+
+            conn = get_db()
+            inserted = 0
+            updated = 0
+            try:
+                for item in releases:
+                    if not isinstance(item, dict):
+                        continue
+                    github_id = item.get("id")
+                    tag_name = str(item.get("tag_name") or "").strip()
+                    if not github_id or not tag_name:
+                        continue
+                    release_id = f"github-{github_id}"
+                    existing = conn.execute(
+                        "SELECT id FROM github_releases WHERE github_id=? OR tag_name=?",
+                        (github_id, tag_name)
+                    ).fetchone()
+                    if existing:
+                        updated += 1
+                        conn.execute(
+                            """
+                            UPDATE github_releases SET
+                                github_id=?,
+                                tag_name=?,
+                                name=?,
+                                body=?,
+                                html_url=?,
+                                prerelease=?,
+                                draft=?,
+                                published_at=?,
+                                created_at=?,
+                                synced_at=?
+                            WHERE id=?
+                            """,
+                            (
+                                int(github_id),
+                                tag_name,
+                                str(item.get("name") or tag_name),
+                                str(item.get("body") or ""),
+                                str(item.get("html_url") or GITHUB_RELEASES_HTML),
+                                1 if item.get("prerelease") else 0,
+                                1 if item.get("draft") else 0,
+                                str(item.get("published_at") or item.get("created_at") or ""),
+                                str(item.get("created_at") or ""),
+                                now,
+                                existing["id"],
+                            )
+                        )
+                    else:
+                        inserted += 1
+                        conn.execute(
+                            """
+                            INSERT INTO github_releases
+                                (id, github_id, tag_name, name, body, html_url, prerelease, draft, published_at, created_at, synced_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            (
+                                release_id,
+                                int(github_id),
+                                tag_name,
+                                str(item.get("name") or tag_name),
+                                str(item.get("body") or ""),
+                                str(item.get("html_url") or GITHUB_RELEASES_HTML),
+                                1 if item.get("prerelease") else 0,
+                                1 if item.get("draft") else 0,
+                                str(item.get("published_at") or item.get("created_at") or ""),
+                                str(item.get("created_at") or ""),
+                                now,
+                            )
+                        )
+                conn.execute(
+                    "INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("github_releases_last_sync_at", now)
+                )
+                conn.execute(
+                    "INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("github_releases_last_sync_error", "")
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return {"ok": True, "inserted": inserted, "updated": updated, "synced_at": now}
+        except Exception as e:
+            conn = get_db()
+            try:
+                conn.execute(
+                    "INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("github_releases_last_sync_error", str(e))
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return {"ok": False, "inserted": 0, "updated": 0, "synced_at": now, "error": str(e)}
+
+async def _release_sync_loop() -> None:
+    while True:
+        await _sync_github_releases()
+        await asyncio.sleep(RELEASE_SYNC_INTERVAL_SECONDS)
+
+def _ensure_release_sync_processor() -> None:
+    global _release_sync_task
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if _release_sync_task is None or _release_sync_task.done():
+        _release_sync_task = loop.create_task(_release_sync_loop())
 
 # ── Auth middleware ───────────────────────────────────────────────────────────
 
@@ -3869,6 +4077,7 @@ def _ensure_ai_queue_processor() -> None:
 @app.on_event("startup")
 async def _resume_ai_queue_on_startup():
     _ensure_ai_queue_processor()
+    _ensure_release_sync_processor()
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -7072,7 +7281,80 @@ def verify_2fa_login(data: dict, request: Request):
     _set_auth_cookies(response, challenge, request)
     return response
 
-# ── Announcements ─────────────────────────────────────────────────────────────
+# ── GitHub release notes ──────────────────────────────────────────────────────
+
+@app.get("/api/releases")
+def list_github_releases(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT * FROM github_releases
+        WHERE draft=0
+        ORDER BY COALESCE(NULLIF(published_at, ''), created_at, synced_at) DESC
+        LIMIT 100
+        """
+    ).fetchall()
+    status = _release_sync_status(conn)
+    conn.close()
+    return {"items": [_release_row_dict(row) for row in rows], **status}
+
+
+@app.get("/api/releases/latest")
+def latest_github_release(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT * FROM github_releases
+        WHERE draft=0
+        ORDER BY COALESCE(NULLIF(published_at, ''), created_at, synced_at) DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    status = _release_sync_status(conn)
+    conn.close()
+    return {"release": _release_row_dict(row) if row else None, **status}
+
+
+@app.get("/api/releases/pending")
+def pending_github_releases(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT r.* FROM github_releases r
+        WHERE r.draft=0
+          AND r.id NOT IN (
+              SELECT release_id FROM github_release_reads WHERE user_id=?
+          )
+        ORDER BY COALESCE(NULLIF(r.published_at, ''), r.created_at, r.synced_at) DESC
+        LIMIT 10
+        """,
+        (current_user["id"],)
+    ).fetchall()
+    conn.close()
+    return [_release_row_dict(row) for row in rows]
+
+
+@app.post("/api/releases/{release_id}/dismiss")
+def dismiss_github_release(release_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM github_releases WHERE id=?", (release_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Release not found")
+    conn.execute(
+        "INSERT OR IGNORE INTO github_release_reads (user_id, release_id, read_at) VALUES (?,?,?)",
+        (current_user["id"], release_id, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/admin/releases/sync")
+async def sync_releases_now(admin: dict = Depends(require_admin)):
+    return await _sync_github_releases()
+
+
+# ── Legacy announcements ──────────────────────────────────────────────────────
 
 @app.post("/api/admin/announcements")
 def create_announcement(data: dict, background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):

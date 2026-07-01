@@ -768,31 +768,34 @@ export async function saveFeedback(recipeId, payload) {
   return res.json();
 }
 
-// ── Announcements ─────────────────────────────────────────────────────────────
-export async function createAnnouncement(title, body) {
-  const res = await fetch(`${API_BASE}/admin/announcements`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ title, body }),
-  });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Failed to push announcement'); }
+// ── GitHub release notes ─────────────────────────────────────────────────────
+export async function listReleases() {
+  const res = await fetch(`${API_BASE}/releases`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load releases');
   return res.json();
 }
-export async function listAnnouncements() {
-  const res = await fetch(`${API_BASE}/admin/announcements`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load announcements');
+export async function fetchLatestRelease() {
+  const res = await fetch(`${API_BASE}/releases/latest`, { headers: authHeaders() });
+  if (!res.ok) return { release: null };
   return res.json();
 }
-export async function fetchPendingAnnouncements() {
-  const res = await fetch(`${API_BASE}/announcements/pending`, { headers: authHeaders() });
+export async function fetchPendingReleases() {
+  const res = await fetch(`${API_BASE}/releases/pending`, { headers: authHeaders() });
   if (!res.ok) return [];
   return res.json();
 }
-export async function dismissAnnouncement(id) {
-  const res = await fetch(`${API_BASE}/announcements/${id}/dismiss`, {
+export async function dismissRelease(id) {
+  const res = await fetch(`${API_BASE}/releases/${id}/dismiss`, {
     method: 'POST', headers: authHeaders()
   });
-  if (!res.ok) throw new Error('Failed to dismiss');
+  if (!res.ok) throw new Error('Failed to dismiss release');
+  return res.json();
+}
+export async function syncReleases() {
+  const res = await fetch(`${API_BASE}/admin/releases/sync`, {
+    method: 'POST', headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to sync releases');
   return res.json();
 }
 
