@@ -5580,6 +5580,35 @@ def download_recipe(recipe_id: str, request: Request, token: Optional[str] = Non
 
 # ── Project sessions ──────────────────────────────────────────────────────────
 
+def _get_editable_project_session(conn, recipe_id: str, session_id: str, current_user: dict):
+    query = """
+        SELECT ps.id, ps.recipe_id, ps.user_id, ps.username, ps.started_at, ps.finished_at,
+               ps.yarn_id, ps.yarn_colour_id, r.title
+        FROM project_sessions ps
+        JOIN recipes r ON r.id=ps.recipe_id
+        WHERE ps.id=? AND ps.recipe_id=?
+    """
+    params = [session_id, recipe_id]
+    if not current_user.get("is_admin"):
+        query += " AND ps.user_id=?"
+        params.append(current_user["id"])
+    row = conn.execute(query, tuple(params)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return row
+
+
+def _clean_project_time(value, field_name: str) -> str:
+    value = str(value or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail=f"{field_name} is required")
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
+    return value
+
+
 def start_project(recipe_id: str, body: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     conn = get_db()
     recipe_row = conn.execute("SELECT id, title FROM recipes WHERE id=?", (recipe_id,)).fetchone()
@@ -5740,6 +5769,87 @@ def get_session_feedback(recipe_id: str, session_id: str, current_user: dict = D
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def update_project_session(recipe_id: str, session_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    try:
+        sess = _get_editable_project_session(conn, recipe_id, session_id, current_user)
+        started_at = _clean_project_time(data.get("started_at", sess["started_at"]), "started_at")
+        yarn_id = data.get("yarn_id") or None
+        yarn_colour_id = data.get("yarn_colour_id") or None
+        if yarn_colour_id and not yarn_id:
+            raise HTTPException(status_code=400, detail="yarn_id required when yarn_colour_id is set")
+        if yarn_id and not conn.execute("SELECT id FROM yarns WHERE id=?", (yarn_id,)).fetchone():
+            raise HTTPException(status_code=400, detail="Yarn not found")
+        if yarn_colour_id and not conn.execute(
+            "SELECT id FROM yarn_colours WHERE id=? AND yarn_id=?", (yarn_colour_id, yarn_id)
+        ).fetchone():
+            raise HTTPException(status_code=400, detail="Yarn colour not found")
+        conn.execute(
+            "UPDATE project_sessions SET started_at=?, yarn_id=?, yarn_colour_id=? WHERE id=?",
+            (started_at, yarn_id, yarn_colour_id, session_id),
+        )
+        _log_user_action(
+            conn,
+            current_user,
+            "project_session_updated",
+            recipe_id=recipe_id,
+            recipe_title=sess["title"],
+            metadata={"session_id": session_id},
+        )
+        conn.commit()
+        recipe = _get_recipe_full(recipe_id, conn, current_user)
+    finally:
+        conn.close()
+    return recipe
+
+
+def reopen_project_session(recipe_id: str, session_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    try:
+        sess = _get_editable_project_session(conn, recipe_id, session_id, current_user)
+        active = conn.execute(
+            "SELECT id FROM project_sessions WHERE recipe_id=? AND user_id=? AND finished_at IS NULL AND id!=?",
+            (recipe_id, sess["user_id"], session_id),
+        ).fetchone()
+        if active:
+            raise HTTPException(status_code=400, detail="User already has an active session for this recipe")
+        conn.execute("UPDATE project_sessions SET finished_at=NULL WHERE id=?", (session_id,))
+        _log_user_action(
+            conn,
+            current_user,
+            "project_session_reopened",
+            recipe_id=recipe_id,
+            recipe_title=sess["title"],
+            metadata={"session_id": session_id, "session_user_id": sess["user_id"]},
+        )
+        conn.commit()
+        recipe = _get_recipe_full(recipe_id, conn, current_user)
+    finally:
+        conn.close()
+    return recipe
+
+
+def delete_project_session(recipe_id: str, session_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    try:
+        sess = _get_editable_project_session(conn, recipe_id, session_id, current_user)
+        conn.execute("DELETE FROM project_feedback WHERE recipe_id=? AND session_id=?", (recipe_id, session_id))
+        conn.execute("DELETE FROM project_sessions WHERE recipe_id=? AND id=?", (recipe_id, session_id))
+        _log_user_action(
+            conn,
+            current_user,
+            "project_session_deleted",
+            recipe_id=recipe_id,
+            recipe_title=sess["title"],
+            metadata={"session_id": session_id, "session_user_id": sess["user_id"]},
+        )
+        conn.commit()
+        recipe = _get_recipe_full(recipe_id, conn, current_user)
+    finally:
+        conn.close()
+    return recipe
 
 
 def clear_sessions(recipe_id: str, current_user: dict = Depends(get_current_user)):

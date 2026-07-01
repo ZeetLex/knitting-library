@@ -41,6 +41,9 @@ router.add_api_route('/api/recipes/{recipe_id}/start', services.start_project, m
 router.add_api_route('/api/recipes/{recipe_id}/finish', services.finish_project, methods=['POST'])  # legacy line 5646
 router.add_api_route('/api/recipes/{recipe_id}/feedback', services.save_feedback, methods=['POST'])  # legacy line 5671
 router.add_api_route('/api/recipes/{recipe_id}/feedback/{session_id}', services.get_session_feedback, methods=['GET'])  # legacy line 5721
+router.add_api_route('/api/recipes/{recipe_id}/sessions/{session_id}', services.update_project_session, methods=['PUT'])
+router.add_api_route('/api/recipes/{recipe_id}/sessions/{session_id}/reopen', services.reopen_project_session, methods=['POST'])
+router.add_api_route('/api/recipes/{recipe_id}/sessions/{session_id}', services.delete_project_session, methods=['DELETE'])
 router.add_api_route('/api/recipes/{recipe_id}/sessions', services.clear_sessions, methods=['DELETE'])  # legacy line 5732
 router.add_api_route('/api/recipes/{recipe_id}/annotations/{page_key}', services.get_annotations, methods=['GET'])  # legacy line 5747
 router.add_api_route('/api/recipes/{recipe_id}/annotations/{page_key}', services.save_annotations, methods=['PUT'])  # legacy line 5758

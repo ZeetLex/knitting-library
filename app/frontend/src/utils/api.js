@@ -537,6 +537,37 @@ export async function clearSessions(recipeId) {
   return res.json();
 }
 
+export async function updateProjectSession(recipeId, sessionId, payload) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to update project session');
+  return data;
+}
+
+export async function reopenProjectSession(recipeId, sessionId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}/reopen`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reopen project session');
+  return data;
+}
+
+export async function deleteProjectSession(recipeId, sessionId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to delete project session');
+  return data;
+}
+
 // ── Yarn API ──────────────────────────────────────────────────────────────────
 export async function fetchYarns({ search = '', field = '', filterColour = '', filterWoolType = '', filterSeller = '' } = {}) {
   const params = new URLSearchParams();
