@@ -24,19 +24,31 @@ rotate_log() {
     fi
 }
 rotate_log /logs/uvicorn.log
+touch /logs/uvicorn.log 2>/dev/null || true
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  container started (uid=$(id -u) gid=$(id -g))" >> /logs/supervisord.log
+log_supervisor() {
+    line="$(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "$line" | tee -a /logs/supervisord.log
+}
+
+log_supervisor "INFO  container started (uid=$(id -u) gid=$(id -g))"
+
+# Mirror uvicorn's persistent log file to container stdout so `docker logs`
+# works even though the admin UI still reads /logs/uvicorn.log.
+tail -n 0 -F /logs/uvicorn.log &
+TAIL_PID=$!
 
 # ── Start uvicorn (serves React frontend + API on port 8080) ──────────────────
 cd /app/backend
 uvicorn main:app --host 0.0.0.0 --port 8080 --access-log >> /logs/uvicorn.log 2>&1 &
 UVICORN_PID=$!
-echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  uvicorn started (pid $UVICORN_PID)" >> /logs/supervisord.log
+log_supervisor "INFO  uvicorn started (pid $UVICORN_PID)"
 
 # ── Graceful shutdown ─────────────────────────────────────────────────────────
 shutdown() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  shutting down..." >> /logs/supervisord.log
+    log_supervisor "INFO  shutting down..."
     kill "$UVICORN_PID" 2>/dev/null
+    kill "$TAIL_PID" 2>/dev/null
     wait; exit 0
 }
 trap shutdown TERM INT
@@ -44,7 +56,7 @@ trap shutdown TERM INT
 # ── Watchdog ──────────────────────────────────────────────────────────────────
 while true; do
     if ! kill -0 "$UVICORN_PID" 2>/dev/null; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') WARN  uvicorn exited — restarting" >> /logs/supervisord.log
+        log_supervisor "WARN  uvicorn exited — restarting"
         rotate_log /logs/uvicorn.log
         cd /app/backend
         uvicorn main:app --host 0.0.0.0 --port 8080 --access-log >> /logs/uvicorn.log 2>&1 &

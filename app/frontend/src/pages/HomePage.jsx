@@ -66,6 +66,8 @@ function MiniRecipeCard({ recipe, mode, onOpen }) {
         {recipe.categories?.length > 0 && <span>{recipe.categories.slice(0, 2).join(' · ')}</span>}
         {status === 'active' && <span>{t('startedBy')}: {recipe.active_username || t('unknownUser')}</span>}
         {recipe.active_started_at && <span>{t('startedAt')}: {fmtDate(recipe.active_started_at, language)}</span>}
+        {status === 'finished' && <span>{t('finishedBy')}: {recipe.finished_username || t('unknownUser')}</span>}
+        {recipe.finished_at && <span>{t('finishedAt')}: {fmtDate(recipe.finished_at, language)}</span>}
       </div>
     </button>
   );
@@ -142,8 +144,8 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, latest
     try {
       const [statsData, activeData, finishedData, recipesData] = await Promise.all([
         fetchStats().catch(() => null),
-        fetchRecipes({ status: 'active', per_page: 12 }).catch(() => ({ recipes: [] })),
-        fetchRecipes({ status: 'finished', per_page: 12 }).catch(() => ({ recipes: [] })),
+        fetchRecipes({ status: 'active', project_scope: 'global', per_page: 12 }).catch(() => ({ recipes: [] })),
+        fetchRecipes({ status: 'finished', project_scope: 'global', per_page: 12 }).catch(() => ({ recipes: [] })),
         fetchRecipes({ per_page: 80 }).catch(() => ({ recipes: [] })),
       ]);
       setStats(statsData);

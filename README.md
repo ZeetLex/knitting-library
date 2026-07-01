@@ -68,7 +68,7 @@ Existing installs are not changed. If your database already has users, the norma
 
 Knitting Library is designed primarily for mobile/PWA use while still supporting desktop browsers.
 
-- **Home dashboard**: app logo, overview counters, active projects, finished projects, and a Discover shelf that favors unfinished or not-started recipes.
+- **Home dashboard**: app logo, overview counters, active projects, finished projects, and a Discover shelf that favors unfinished or not-started recipes. Active and finished project shelves are shared across users so everyone can see what is being worked on.
 - **Mobile navigation**: bottom nav for Home, Recipes, Add, Inventory, and Menu. The nav can be collapsed into a small restore button when more screen space is needed.
 - **Desktop navigation**: left sidebar with primary navigation and secondary links.
 - **Add menu**: one Add button opens choices for adding recipes, importing folders, or adding yarn.
@@ -127,7 +127,9 @@ Draw or highlight directly on recipe pages. Brush, opacity, and color are adjust
 
 ### Project Tracking
 
-Mark recipes as active or finished. Link a yarn and color variant when starting, optionally deducting skeins from inventory. Finished projects can be rated for quality, difficulty, and result with optional notes.
+Mark recipes as active or finished for your own account. Other users can start and finish the same recipe separately without changing your project state. Link a yarn and color variant when starting, optionally deducting skeins from inventory. Finished projects can be rated for quality, difficulty, and result with optional notes.
+
+The Home dashboard shows active and finished projects from every user, including who started or finished them. If you open a project someone else started, the recipe opens with your own project state, so you can start it yourself. Admin users can view and manage all project sessions.
 
 ### Yarn & Thread Inventory
 
@@ -153,7 +155,7 @@ The interface is available in English, Norwegian, and Hungarian. Prices and inve
 
 ### Admin Panel
 
-Create and manage user accounts, view API logs, configure SMTP mail, manage AI text recognition, manage 2FA status, and publish update notes.
+Create and manage user accounts, view API/container logs, configure SMTP mail, manage AI text recognition, manage 2FA status, publish update notes, and inspect all users' project sessions.
 
 ### Help And Guide
 
@@ -181,11 +183,12 @@ your-folder/
     recipes/          <- recipe files and thumbnails
     yarns/            <- yarn images
   logs/
-    uvicorn.log       <- API requests and errors
+    uvicorn.log       <- API requests and errors; also streamed to docker logs
+    supervisord.log   <- container startup and watchdog events
     auth.log          <- failed logins, useful for fail2ban
 ```
 
-Logs rotate automatically: 10 MB per file, 5 backups.
+Logs rotate automatically: 10 MB per file, 5 backups. Use `docker logs knitting-library` for startup, access, and crash output when the UI does not load. The Admin -> Logs screen reads the same persisted files from `./logs`.
 
 ---
 
@@ -319,7 +322,7 @@ fail2ban-client status knitting-library
 | Cannot reach it on phone | Use the server IP, not `localhost`, and make sure the phone is on the same network |
 | Annotations not saving | Check that the `./data` volume is mounted correctly |
 | URL import did not fill everything | URL import is early beta; fill missing fields manually |
-| Live logs show nothing | Check that `./logs:/logs` is mounted |
+| Live logs show nothing | Check `docker logs knitting-library` first, then confirm `./logs:/logs` is mounted |
 | Requests show the same IP | Configure forwarded headers and `TRUSTED_PROXIES` |
 | Port 8080 shows nothing | Check container logs with `docker logs knitting-library` |
 

@@ -412,6 +412,21 @@ def get_db() -> sqlite3.Connection:
         if "background" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN background TEXT NOT NULL DEFAULT 'floral'")
             conn.commit()
+    if "project_sessions" in tables and "users" in tables:
+        fallback_user = conn.execute(
+            "SELECT id, username FROM users ORDER BY is_admin DESC, created_date ASC LIMIT 1"
+        ).fetchone()
+        if fallback_user:
+            conn.execute(
+                """
+                UPDATE project_sessions
+                SET user_id=?,
+                    username=CASE WHEN TRIM(COALESCE(username, ''))='' THEN ? ELSE username END
+                WHERE user_id IS NULL OR TRIM(user_id)=''
+                """,
+                (fallback_user["id"], fallback_user["username"]),
+            )
+            conn.commit()
     if "annotations" in tables:
         annotation_cols = [r["name"] for r in conn.execute("PRAGMA table_info(annotations)").fetchall()]
         if "user_id" not in annotation_cols:
@@ -1087,6 +1102,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id       ON sessions (user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at    ON sessions (expires_at);
         CREATE INDEX IF NOT EXISTS idx_project_sessions_rid   ON project_sessions (recipe_id);
+        CREATE INDEX IF NOT EXISTS idx_project_sessions_user  ON project_sessions (recipe_id, user_id, finished_at);
         CREATE INDEX IF NOT EXISTS idx_project_feedback_rid   ON project_feedback (recipe_id);
         CREATE INDEX IF NOT EXISTS idx_project_feedback_sid   ON project_feedback (session_id);
         CREATE INDEX IF NOT EXISTS idx_yarns_name             ON yarns (name);
@@ -1901,7 +1917,44 @@ def _generate_thumbnail(recipe_dir: Path, file_type: str) -> str:
     return ""
 
 
-def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
+def _project_scope_is_global(current_user: Optional[dict], project_scope: str = "user") -> bool:
+    return bool(current_user and current_user.get("is_admin")) or project_scope == "global"
+
+
+def _project_owner_filter(current_user: Optional[dict], alias: str = "ps", project_scope: str = "user") -> tuple[str, list]:
+    if _project_scope_is_global(current_user, project_scope) or not current_user:
+        return "", []
+    return f" AND {alias}.user_id=?", [current_user["id"]]
+
+
+def _apply_project_status(recipe: dict, sessions: list[dict]) -> None:
+    active = next((s for s in reversed(sessions) if not s["finished_at"]), None)
+    latest_finished = next((s for s in reversed(sessions) if s["finished_at"]), None)
+    recipe["active_session_id"] = None
+    recipe["active_started_at"] = None
+    recipe["active_user_id"] = None
+    recipe["active_username"] = ""
+    recipe["finished_session_id"] = None
+    recipe["finished_at"] = None
+    recipe["finished_user_id"] = None
+    recipe["finished_username"] = ""
+    if active:
+        recipe["project_status"]    = "active"
+        recipe["active_session_id"] = active["id"]
+        recipe["active_started_at"] = active["started_at"]
+        recipe["active_user_id"] = active.get("user_id")
+        recipe["active_username"] = active.get("username", "") or ""
+    elif latest_finished:
+        recipe["project_status"] = "finished"
+        recipe["finished_session_id"] = latest_finished["id"]
+        recipe["finished_at"] = latest_finished["finished_at"]
+        recipe["finished_user_id"] = latest_finished.get("user_id")
+        recipe["finished_username"] = latest_finished.get("username", "") or ""
+    else:
+        recipe["project_status"] = "none"
+
+
+def _get_recipe_full(recipe_id: str, conn, current_user: Optional[dict] = None, project_scope: str = "user") -> Optional[dict]:
     row = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
     if not row:
         return None
@@ -1940,14 +1993,15 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
         recipe["images"] = image_names
     else:
         recipe["images"] = []
+    owner_sql, owner_params = _project_owner_filter(current_user, "ps", project_scope)
     sessions = conn.execute(
         """SELECT ps.id, ps.user_id, ps.username, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id,
                   y.name as yarn_name, yc.name as yarn_colour
            FROM project_sessions ps
            LEFT JOIN yarns y        ON ps.yarn_id=y.id
            LEFT JOIN yarn_colours yc ON ps.yarn_colour_id=yc.id
-           WHERE ps.recipe_id=? ORDER BY ps.started_at ASC""",
-        (recipe_id,)
+           WHERE ps.recipe_id=?""" + owner_sql + " ORDER BY ps.started_at ASC",
+        (recipe_id, *owner_params)
     ).fetchall()
     session_list = []
     for s in sessions:
@@ -1958,9 +2012,10 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
         ).fetchall()]
         session_list.append(sd)
     recipe["sessions"] = session_list
+    feedback_owner_sql, feedback_owner_params = _project_owner_filter(current_user, "project_feedback", project_scope)
     all_fb = conn.execute(
-        "SELECT rating_recipe, rating_difficulty, rating_result FROM project_feedback WHERE recipe_id=?",
-        (recipe_id,)
+        "SELECT rating_recipe, rating_difficulty, rating_result FROM project_feedback WHERE recipe_id=?" + feedback_owner_sql,
+        (recipe_id, *feedback_owner_params)
     ).fetchall()
     if all_fb:
         total = sum(f["rating_recipe"] + f["rating_difficulty"] + f["rating_result"] for f in all_fb)
@@ -1969,17 +2024,7 @@ def _get_recipe_full(recipe_id: str, conn) -> Optional[dict]:
     else:
         recipe["avg_score"]      = None
         recipe["feedback_count"] = 0
-    active = next((s for s in reversed(recipe["sessions"]) if not s["finished_at"]), None)
-    if active:
-        recipe["project_status"]    = "active"
-        recipe["active_session_id"] = active["id"]
-        recipe["active_started_at"] = active["started_at"]
-        recipe["active_user_id"] = active.get("user_id")
-        recipe["active_username"] = active.get("username", "") or ""
-    elif recipe["sessions"]:
-        recipe["project_status"] = "finished"
-    else:
-        recipe["project_status"] = "none"
+    _apply_project_status(recipe, recipe["sessions"])
     return recipe
 
 
@@ -4054,7 +4099,13 @@ def health():
 
 # ── Recipes ───────────────────────────────────────────────────────────────────
 
-def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
+def _get_recipes_summary(
+    conn,
+    ids: list[str],
+    current_user: Optional[dict] = None,
+    project_scope: str = "user",
+    status_context: Optional[str] = None,
+) -> list[dict]:
     """Fetch lightweight recipe summaries for the grid view.
 
     Instead of making 5+ queries per recipe (the old N+1 pattern), this
@@ -4081,6 +4132,10 @@ def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
         d["active_started_at"] = None
         d["active_user_id"] = None
         d["active_username"] = ""
+        d["finished_session_id"] = None
+        d["finished_at"] = None
+        d["finished_user_id"] = None
+        d["finished_username"] = ""
         d["avg_score"] = None
         d["feedback_count"] = 0
 
@@ -4106,40 +4161,34 @@ def _get_recipes_summary(conn, ids: list[str]) -> list[dict]:
         if row["recipe_id"] in by_id:
             by_id[row["recipe_id"]]["tags"].append(row["name"])
 
-    # 4. Project status — latest session per recipe, plus feedback averages
-    for row in conn.execute(
-        f"""SELECT recipe_id,
-                   MAX(CASE WHEN finished_at IS NULL THEN id END) as active_id,
-                   MAX(CASE WHEN finished_at IS NULL THEN started_at END) as active_started,
-                   MAX(CASE WHEN finished_at IS NULL THEN user_id END) as active_user_id,
-                   MAX(CASE WHEN finished_at IS NULL THEN username END) as active_username,
-                   COUNT(id) as session_count
-            FROM project_sessions
-            WHERE recipe_id IN ({placeholders})
-            GROUP BY recipe_id""",
-        ids
-    ).fetchall():
-        rid = row["recipe_id"]
-        if rid not in by_id:
-            continue
-        if row["active_id"]:
-            by_id[rid]["project_status"]    = "active"
-            by_id[rid]["active_session_id"] = row["active_id"]
-            by_id[rid]["active_started_at"] = row["active_started"]
-            by_id[rid]["active_user_id"] = row["active_user_id"]
-            by_id[rid]["active_username"] = row["active_username"] or ""
-        elif row["session_count"] > 0:
-            by_id[rid]["project_status"] = "finished"
+    # 4. Project status — scoped for library views, global for Home/admin.
+    owner_sql, owner_params = _project_owner_filter(current_user, "ps", project_scope)
+    session_rows = conn.execute(
+        f"""SELECT ps.recipe_id, ps.id, ps.user_id, ps.username, ps.started_at, ps.finished_at
+            FROM project_sessions ps
+            WHERE ps.recipe_id IN ({placeholders}){owner_sql}
+            ORDER BY ps.started_at ASC""",
+        (*ids, *owner_params)
+    ).fetchall()
+    sessions_by_recipe: dict[str, list[dict]] = {}
+    for row in session_rows:
+        sessions_by_recipe.setdefault(row["recipe_id"], []).append(dict(row))
+    for rid, sessions in sessions_by_recipe.items():
+        if rid in by_id:
+            if project_scope == "global" and status_context == "finished":
+                sessions = [s for s in sessions if s["finished_at"]]
+            _apply_project_status(by_id[rid], sessions)
 
     # 5. Feedback averages in one query
+    feedback_owner_sql, feedback_owner_params = _project_owner_filter(current_user, "project_feedback", project_scope)
     for row in conn.execute(
         f"""SELECT recipe_id,
                    ROUND(AVG((rating_recipe + rating_difficulty + rating_result) / 3.0), 1) as avg_score,
                    COUNT(*) as feedback_count
             FROM project_feedback
-            WHERE recipe_id IN ({placeholders})
+            WHERE recipe_id IN ({placeholders}){feedback_owner_sql}
             GROUP BY recipe_id""",
-        ids
+        (*ids, *feedback_owner_params)
     ).fetchall():
         rid = row["recipe_id"]
         if rid in by_id:
@@ -4158,6 +4207,7 @@ def list_recipes(
     tags:     Optional[str] = None,
     status:   Optional[str] = None,
     sort:     str = "default",
+    project_scope: str = "user",
     page:     int = 1,
     per_page: int = _RECIPES_PER_PAGE,
     current_user: dict = Depends(get_current_user)
@@ -4179,6 +4229,13 @@ def list_recipes(
     }
     if sort not in allowed_sorts:
         sort = "default"
+    if project_scope != "global":
+        project_scope = "user"
+    scope_all = _project_scope_is_global(current_user, project_scope)
+    session_scope_sql = "" if scope_all else " AND user_id=?"
+    feedback_scope_sql = "" if scope_all else " AND user_id=?"
+    session_scope_params = [] if scope_all else [current_user["id"]]
+    feedback_scope_params = [] if scope_all else [current_user["id"]]
 
     # Build the filtered ID list with a single query
     id_query = """
@@ -4196,25 +4253,29 @@ def list_recipes(
         LEFT JOIN recipe_tags rt       ON r.id=rt.recipe_id
         LEFT JOIN tags t               ON rt.tag_id=t.id
         LEFT JOIN (
-            SELECT DISTINCT recipe_id FROM project_sessions WHERE finished_at IS NULL
+            SELECT DISTINCT recipe_id FROM project_sessions WHERE finished_at IS NULL{session_scope_sql}
         ) active_ps ON active_ps.recipe_id = r.id
         LEFT JOIN (
-            SELECT DISTINCT recipe_id FROM project_sessions
+            SELECT DISTINCT recipe_id FROM project_sessions WHERE 1=1{session_scope_sql}
         ) any_ps ON any_ps.recipe_id = r.id
         LEFT JOIN (
             SELECT recipe_id, MAX(finished_at) AS last_completed_at
             FROM project_sessions
-            WHERE finished_at IS NOT NULL
+            WHERE finished_at IS NOT NULL{session_scope_sql}
             GROUP BY recipe_id
         ) completed_ps ON completed_ps.recipe_id = r.id
         LEFT JOIN (
             SELECT recipe_id, AVG((rating_recipe + rating_difficulty + rating_result) / 3.0) AS avg_score
             FROM project_feedback
+            WHERE 1=1{feedback_scope_sql}
             GROUP BY recipe_id
         ) rating ON rating.recipe_id = r.id
         WHERE 1=1
-    """
-    params = []
+    """.format(
+        session_scope_sql=session_scope_sql,
+        feedback_scope_sql=feedback_scope_sql,
+    )
+    params = [*session_scope_params, *session_scope_params, *session_scope_params, *feedback_scope_params]
     if search:
         like = f"%{search}%"
         id_query += " AND (r.title LIKE ? OR r.description LIKE ? OR t.name LIKE ?)"
@@ -4229,14 +4290,22 @@ def list_recipes(
     # because project_status is derived, not stored.
     if status in ("active", "started"):
         id_query += """ AND r.id IN (
-            SELECT recipe_id FROM project_sessions WHERE finished_at IS NULL
+            SELECT recipe_id FROM project_sessions WHERE finished_at IS NULL""" + session_scope_sql + """
         )"""
+        params.extend(session_scope_params)
     elif status == "finished":
-        id_query += """ AND r.id NOT IN (
-            SELECT recipe_id FROM project_sessions WHERE finished_at IS NULL
-        ) AND r.id IN (
-            SELECT recipe_id FROM project_sessions
-        )"""
+        if project_scope == "global":
+            id_query += """ AND r.id IN (
+                SELECT recipe_id FROM project_sessions WHERE finished_at IS NOT NULL""" + session_scope_sql + """
+            )"""
+            params.extend(session_scope_params)
+        else:
+            id_query += """ AND r.id NOT IN (
+                SELECT recipe_id FROM project_sessions WHERE finished_at IS NULL""" + session_scope_sql + """
+            ) AND r.id IN (
+                SELECT recipe_id FROM project_sessions WHERE 1=1""" + session_scope_sql + """
+            )"""
+            params.extend([*session_scope_params, *session_scope_params])
 
     sort_sql = {
         "default": """
@@ -4273,7 +4342,7 @@ def list_recipes(
     offset   = (page - 1) * per_page
     page_ids = all_ids[offset : offset + per_page]
 
-    result = _get_recipes_summary(conn, page_ids)
+    result = _get_recipes_summary(conn, page_ids, current_user, project_scope, status)
     conn.close()
 
     return {
@@ -4287,7 +4356,7 @@ def list_recipes(
 
 def get_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)):
     conn   = get_db()
-    recipe = _get_recipe_full(recipe_id, conn)
+    recipe = _get_recipe_full(recipe_id, conn, current_user)
     conn.close()
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -5517,7 +5586,9 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
     if not recipe_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
-    if conn.execute("SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL", (recipe_id,)).fetchone():
+    active_check_sql = "SELECT id FROM project_sessions WHERE recipe_id=? AND finished_at IS NULL AND user_id=?"
+    active_check_params = [recipe_id, current_user["id"]]
+    if conn.execute(active_check_sql, tuple(active_check_params)).fetchone():
         conn.close()
         raise HTTPException(status_code=400, detail="Project already active")
     session_id = str(uuid.uuid4())
@@ -5554,17 +5625,33 @@ def start_project(recipe_id: str, body: dict = Body(default={}), current_user: d
         metadata={"session_id": session_id},
     )
     conn.commit()
-    recipe = _get_recipe_full(recipe_id, conn)
+    recipe = _get_recipe_full(recipe_id, conn, current_user)
     conn.close()
     return recipe
 
 
-def finish_project(recipe_id: str, current_user: dict = Depends(get_current_user)):
+def finish_project(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     conn   = get_db()
-    active = conn.execute(
-        "SELECT ps.id, r.title FROM project_sessions ps JOIN recipes r ON r.id=ps.recipe_id WHERE ps.recipe_id=? AND ps.finished_at IS NULL",
-        (recipe_id,)
-    ).fetchone()
+    session_id = (data or {}).get("session_id")
+    if session_id:
+        active_sql = (
+            "SELECT ps.id, r.title FROM project_sessions ps "
+            "JOIN recipes r ON r.id=ps.recipe_id "
+            "WHERE ps.recipe_id=? AND ps.id=? AND ps.finished_at IS NULL"
+        )
+        active_params = [recipe_id, session_id]
+    else:
+        active_sql = (
+            "SELECT ps.id, r.title FROM project_sessions ps "
+            "JOIN recipes r ON r.id=ps.recipe_id "
+            "WHERE ps.recipe_id=? AND ps.finished_at IS NULL"
+        )
+        active_params = [recipe_id]
+    if not current_user.get("is_admin"):
+        active_sql += " AND ps.user_id=?"
+        active_params.append(current_user["id"])
+    active_sql += " ORDER BY ps.started_at DESC LIMIT 1"
+    active = conn.execute(active_sql, tuple(active_params)).fetchone()
     if not active:
         conn.close()
         raise HTTPException(status_code=400, detail="No active session")
@@ -5578,7 +5665,7 @@ def finish_project(recipe_id: str, current_user: dict = Depends(get_current_user
         metadata={"session_id": active["id"]},
     )
     conn.commit()
-    recipe = _get_recipe_full(recipe_id, conn)
+    recipe = _get_recipe_full(recipe_id, conn, current_user)
     conn.close()
     return recipe
 
@@ -5594,9 +5681,14 @@ def save_feedback(recipe_id: str, data: dict, current_user: dict = Depends(get_c
         if not (1 <= r <= 6):
             raise HTTPException(status_code=400, detail="Ratings must be 1–6")
     conn = get_db()
+    session_owner_sql = ""
+    session_owner_params = []
+    if not current_user.get("is_admin"):
+        session_owner_sql = " AND ps.user_id=?"
+        session_owner_params.append(current_user["id"])
     sess = conn.execute(
-        "SELECT ps.id, ps.finished_at, r.title FROM project_sessions ps JOIN recipes r ON r.id=ps.recipe_id WHERE ps.id=? AND ps.recipe_id=?",
-        (session_id, recipe_id)
+        "SELECT ps.id, ps.finished_at, r.title FROM project_sessions ps JOIN recipes r ON r.id=ps.recipe_id WHERE ps.id=? AND ps.recipe_id=?" + session_owner_sql,
+        (session_id, recipe_id, *session_owner_params)
     ).fetchone()
     if not sess:
         conn.close()
@@ -5627,13 +5719,21 @@ def save_feedback(recipe_id: str, data: dict, current_user: dict = Depends(get_c
              current_user["username"], r_recipe, r_diff, r_result, data.get("notes", "").strip(), now)
         )
     conn.commit()
-    recipe = _get_recipe_full(recipe_id, conn)
+    recipe = _get_recipe_full(recipe_id, conn, current_user)
     conn.close()
     return recipe
 
 
 def get_session_feedback(recipe_id: str, session_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db()
+    sess_sql = "SELECT id FROM project_sessions WHERE id=? AND recipe_id=?"
+    sess_params = [session_id, recipe_id]
+    if not current_user.get("is_admin"):
+        sess_sql += " AND user_id=?"
+        sess_params.append(current_user["id"])
+    if not conn.execute(sess_sql, tuple(sess_params)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Session not found")
     rows = conn.execute(
         "SELECT id, user_id, username, rating_recipe, rating_difficulty, rating_result, notes, created_date FROM project_feedback WHERE session_id=? AND recipe_id=?",
         (session_id, recipe_id)
@@ -5647,10 +5747,28 @@ def clear_sessions(recipe_id: str, current_user: dict = Depends(get_current_user
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
-    conn.execute("DELETE FROM project_feedback WHERE recipe_id=?", (recipe_id,))
-    conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
+    if current_user.get("is_admin"):
+        conn.execute("DELETE FROM project_feedback WHERE recipe_id=?", (recipe_id,))
+        conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
+    else:
+        session_ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM project_sessions WHERE recipe_id=? AND user_id=?",
+                (recipe_id, current_user["id"]),
+            ).fetchall()
+        ]
+        if session_ids:
+            placeholders = ",".join("?" * len(session_ids))
+            conn.execute(
+                f"DELETE FROM project_feedback WHERE recipe_id=? AND session_id IN ({placeholders})",
+                (recipe_id, *session_ids),
+            )
+            conn.execute(
+                f"DELETE FROM project_sessions WHERE recipe_id=? AND id IN ({placeholders})",
+                (recipe_id, *session_ids),
+            )
     conn.commit()
-    recipe = _get_recipe_full(recipe_id, conn)
+    recipe = _get_recipe_full(recipe_id, conn, current_user)
     conn.close()
     return recipe
 

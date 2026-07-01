@@ -40,13 +40,14 @@ export async function createFirstAdmin(username, password) {
   return data;
 }
 
-export async function fetchRecipes({ search='', category='', tags=[], status='', sort='default', page=1, per_page=60 }={}) {
+export async function fetchRecipes({ search='', category='', tags=[], status='', sort='default', project_scope='', page=1, per_page=60 }={}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (category) params.set('category', category);
   if (tags.length) params.set('tags', tags.join(','));
   if (status) params.set('status', status);
   if (sort && sort !== 'default') params.set('sort', sort);
+  if (project_scope) params.set('project_scope', project_scope);
   params.set('page', page);
   params.set('per_page', per_page);
   const res = await fetch(`${API_BASE}/recipes?${params}`, { headers: authHeaders() });
@@ -518,9 +519,11 @@ export async function startProject(recipeId, yarnId = null, yarnColourId = null,
   if (!res.ok) throw new Error('Failed to start project');
   return res.json();
 }
-export async function finishProject(recipeId) {
+export async function finishProject(recipeId, sessionId = null) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/finish`, {
-    method: 'POST', headers: authHeaders()
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(sessionId ? { session_id: sessionId } : {}),
   });
   if (!res.ok) throw new Error('Failed to finish project');
   return res.json();

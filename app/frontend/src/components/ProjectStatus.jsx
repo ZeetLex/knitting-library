@@ -235,8 +235,9 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
   const sessions = recipe.sessions || [];
   const total    = totalSeconds(sessions);
 
-  // Find the active session's yarn data
-  const activeSession = sessions.find(s => !s.finished_at);
+  // Find the active session selected by the backend; admins can see several.
+  const activeSession = sessions.find(s => s.id === recipe.active_session_id)
+    || [...sessions].reverse().find(s => !s.finished_at);
 
   const handleStartClick = () => setShowYarnPicker(true);
 
@@ -307,7 +308,6 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
 
   // Finish button clicked → find the active session ID, show feedback modal first
   const handleFinish = () => {
-    const activeSession = sessions.find(s => !s.finished_at);
     setPendingFinishSessionId(activeSession?.id || null);
     setFeedbackMode('submit');
   };
@@ -338,7 +338,7 @@ export default function ProjectStatus({ recipe, onUpdated, enableExternalControl
   const handleFeedbackSkip = async () => {
     setFeedbackMode(null);
     setLoading(true);
-    try { onUpdated(await finishProject(recipe.id)); }
+    try { onUpdated(await finishProject(recipe.id, pendingFinishSessionId)); }
     catch (e) { alert(e.message); }
     finally { setLoading(false); setPendingFinishSessionId(null); }
   };
