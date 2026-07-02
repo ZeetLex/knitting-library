@@ -532,9 +532,11 @@
 }
 
 .mobile-nav--recipe .mobile-nav-item-main {
+  align-self: center;
   justify-self: center;
   width: 100%;
   max-width: 62px;
+  height: 36px;
   border-radius: 13px;
   gap: 2px;
 }
