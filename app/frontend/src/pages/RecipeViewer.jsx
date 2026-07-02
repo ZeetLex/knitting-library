@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
@@ -94,6 +94,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   // Mobile bottom sheet: null = closed, 'info' | 'actions' = open panel.
   // The global AppShell mobile nav dispatches events to open these panels.
   const [mobilePanel, setMobilePanel] = useState(null);
+  const [toolOpen, setToolOpen] = useState(false);
   const [mobileImageEditing, setMobileImageEditing] = useState(false);
   const [mobileImagesVisible, setMobileImagesVisible] = useState(initialState.mobileImagesVisible);
   const [panelDragY, setPanelDragY] = useState(0);
@@ -112,10 +113,22 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     const openPanel = (event) => {
       setPanelDragY(0);
       setMobileImageEditing(false);
+      setToolOpen(false);
       setMobilePanel(prev => prev === event.detail ? null : event.detail);
     };
+    const openTools = () => {
+      setPanelDragY(0);
+      setMobileImageEditing(false);
+      setMobilePanel(null);
+      setMobileImagesVisible(false);
+      setToolOpen(true);
+    };
     window.addEventListener('knitting-recipe-mobile-panel', openPanel);
-    return () => window.removeEventListener('knitting-recipe-mobile-panel', openPanel);
+    window.addEventListener('knitting-recipe-open-tools', openTools);
+    return () => {
+      window.removeEventListener('knitting-recipe-mobile-panel', openPanel);
+      window.removeEventListener('knitting-recipe-open-tools', openTools);
+    };
   }, []);
 
   useEffect(() => {
@@ -126,12 +139,14 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       }
       setPanelDragY(0);
       setMobileImageEditing(false);
+      setToolOpen(false);
       setMobileImagesVisible(false);
       setMobilePanel(panel => panel === 'info' ? null : 'info');
     };
     const handleImageToggle = () => {
       if (recipe?.file_type !== 'images' || (recipe.images || []).length <= 1) return;
       setMobileImageEditing(false);
+      setToolOpen(false);
       setMobilePanel(null);
       setMobileImagesVisible(visible => !visible);
     };
@@ -527,14 +542,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         projectStatus: recipe?.project_status || 'none',
         hasImages: recipe?.file_type === 'images' && (recipe.images || []).length > 1,
         imagesVisible: mobileImagesVisible,
+        toolOpen,
       },
     }));
     return () => {
       window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
-        detail: { projectStatus: 'none', hasImages: false, imagesVisible: false },
+        detail: { projectStatus: 'none', hasImages: false, imagesVisible: false, toolOpen: false },
       }));
     };
-  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length, mobileImagesVisible]);
+  }, [recipe?.project_status, recipe?.file_type, recipe?.images?.length, mobileImagesVisible, toolOpen]);
 
   const handleDelete = async () => {
     try { await deleteRecipe(recipeId); onDeleted(); }
@@ -555,7 +571,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   );
 
   return (
-    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${viewMode === 'review' && reviewSession?.exists ? 'viewer--review-active' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
+    <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${viewMode === 'review' && reviewSession?.exists ? 'viewer--review-active' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${toolOpen ? 'viewer--tool-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
       <div className="viewer-topbar">
         <button className="viewer-back" onClick={onBack}>
           <ArrowLeft size={20} /><span>{t('backToLibrary')}</span>
@@ -577,6 +593,14 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               aria-pressed={!desktopInfoOpen}
             >
               {desktopInfoOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+            <button
+              className="viewer-action-btn"
+              onClick={() => setToolOpen(true)}
+              title={t('toolbarTitle')}
+              aria-label={t('toolbarTitle')}
+            >
+              <Wrench size={18} />
             </button>
             <a
               className="viewer-action-btn"
@@ -964,8 +988,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         />
       )}
 
-      {/* ── Knitting tools remain available on desktop through their floating button. ── */}
-      <KnittingToolbar recipeId={recipeId} t={t} />
+      <KnittingToolbar recipeId={recipeId} t={t} open={toolOpen} onClose={() => setToolOpen(false)} />
 
       {isRecipeStarted && (
         <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
@@ -974,7 +997,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </div>
       )}
 
-      {mobilePanel !== 'info' && (
+      {!toolOpen && mobilePanel !== 'info' && (
         <ProjectStatus
           recipe={recipe}
           onUpdated={setRecipe}

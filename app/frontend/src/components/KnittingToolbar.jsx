@@ -1,158 +1,103 @@
-/**
- * KnittingToolbar.js  — Row counter + Notes panel
- * Two tabs only: Row (with save points) and Notes.
- */
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Wrench, X, Plus, Minus, Lock, Unlock,
-  Trash2, StickyNote, Bookmark, Pencil, ChevronDown, ChevronUp,
+  Bookmark, Calculator, ChevronDown, ChevronUp, Minus, Pencil, Plus, RotateCcw,
+  Save, StickyNote, Trash2, Wrench, X,
 } from 'lucide-react';
+import { fetchKnittingTools, saveKnittingTools } from '../utils/api';
 import './KnittingToolbar.css';
 
-/* ─── localStorage ──────────────────────────────────────────────────────── */
-const storageKey = (id) => `knitting-toolbar-${id}`;
+const clamp0 = value => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
+
 function defaultState() {
-  return { row: 0, rowLocked: false, saves: [], notes: [] };
-}
-function loadState(recipeId) {
-  // Merge with defaultState so any fields added in newer versions
-  // (like 'saves') are never undefined — avoids .length crashes.
-  try {
-    const r = localStorage.getItem(storageKey(recipeId));
-    if (r) return { ...defaultState(), ...JSON.parse(r) };
-  } catch (_) {}
-  return defaultState();
-}
-function persistState(recipeId, state) {
-  try { localStorage.setItem(storageKey(recipeId), JSON.stringify(state)); } catch (_) {}
-}
-const clamp0 = (v) => Math.max(0, v);
-
-/* ═══════════════════════════════════════════════════════════
-   SaveModal
-═══════════════════════════════════════════════════════════ */
-/* ─── Saved-category suggestions store ──────────────────────────────────────
-   We keep a running list of every category the user has ever typed in
-   localStorage so they get autocomplete suggestions on future saves.
-   This is completely separate from the recipe categories on the backend.
-────────────────────────────────────────────────────────────────────────── */
-const CATS_STORE_KEY = 'knitting-toolbar-categories';
-function loadSavedCats() {
-  try { const r = localStorage.getItem(CATS_STORE_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  return [];
-}
-function addSavedCat(cat) {
-  if (!cat) return;
-  const existing = loadSavedCats();
-  if (!existing.includes(cat)) {
-    try { localStorage.setItem(CATS_STORE_KEY, JSON.stringify([...existing, cat])); } catch (_) {}
-  }
-}
-
-/* ─── PillInput ─────────────────────────────────────────────────────────────
-   Inline pill-tag input: type and press Space / Enter / comma to confirm.
-   Shows a dropdown of suggestions from previously used values.
-────────────────────────────────────────────────────────────────────────── */
-function PillInput({ values, allOptions, onChange, placeholder }) {
-  const [input, setInput] = React.useState('');
-  const filtered = allOptions.filter(
-    o => o.toLowerCase().includes(input.toLowerCase()) && !values.includes(o)
-  );
-  const add = (val) => {
-    const v = val.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
-    setInput('');
+  return {
+    currentRow: 0,
+    completedRounds: 0,
+    saves: [],
+    noteSheet: '',
+    calculator: { current: 80, target: 100 },
   };
-  const remove = (v) => onChange(values.filter(x => x !== v));
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <div className="kt-pill-wrap" onClick={e => e.currentTarget.querySelector('input')?.focus()}>
-        {values.map(v => (
-          <span key={v} className="kt-pill-token">
-            {v}
-            <button type="button" className="kt-pill-token-x" onClick={() => remove(v)}>×</button>
-          </span>
-        ))}
-        <input
-          type="text"
-          className="kt-pill-bare-input"
-          placeholder={values.length === 0 ? placeholder : ''}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            if ((e.key === ' ' || e.key === 'Enter' || e.key === ',') && input.trim()) {
-              e.preventDefault();
-              add(input);
-            }
-            if (e.key === 'Backspace' && !input && values.length) remove(values[values.length - 1]);
-          }}
-        />
-      </div>
-      {input && filtered.length > 0 && (
-        <ul className="kt-pill-suggestions">
-          {filtered.map(s => <li key={s} onMouseDown={() => add(s)}>{s}</li>)}
-        </ul>
-      )}
-    </div>
-  );
 }
 
-function SaveModal({ currentRow, existingSave, onConfirm, onClose, t }) {
-  const [name,     setName]     = useState(existingSave?.name     ?? '');
-  const [category, setCategory] = useState(existingSave?.category ?? '');
-  const [note,     setNote]     = useState(existingSave?.note     ?? '');
-  const [allCats,  setAllCats]  = useState(loadSavedCats);
+function normalizeState(raw) {
+  const base = defaultState();
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    ...raw,
+    currentRow: clamp0(raw.currentRow ?? raw.row ?? 0),
+    completedRounds: clamp0(raw.completedRounds ?? 0),
+    saves: Array.isArray(raw.saves) ? raw.saves : [],
+    noteSheet: typeof raw.noteSheet === 'string' ? raw.noteSheet : '',
+    calculator: {
+      ...base.calculator,
+      ...(raw.calculator && typeof raw.calculator === 'object' ? raw.calculator : {}),
+    },
+  };
+}
+
+function buildEvenInstructions(current, target, t) {
+  const start = Math.max(0, Math.floor(Number(current) || 0));
+  const end = Math.max(0, Math.floor(Number(target) || 0));
+  const diff = Math.abs(end - start);
+  const action = end > start ? 'increase' : end < start ? 'decrease' : 'same';
+  if (!start || !end) return { action, summary: t('toolCalcEnterValues') || 'Enter stitch counts to calculate.' };
+  if (action === 'same') return { action, summary: t('toolCalcNoChange') || 'No increases or decreases needed.' };
+
+  const base = Math.floor(start / diff);
+  const extra = start % diff;
+  const intervals = Array.from({ length: diff }, (_, index) => base + (index < extra ? 1 : 0));
+  const grouped = intervals.reduce((acc, interval) => {
+    acc[interval] = (acc[interval] || 0) + 1;
+    return acc;
+  }, {});
+  const parts = Object.entries(grouped)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([interval, count]) => {
+      const key = action === 'increase' ? 'toolCalcIncreasePart' : 'toolCalcDecreasePart';
+      return (t(key) || '{count} times: work {interval} stitches, then change 1 stitch')
+        .replace('{count}', count)
+        .replace('{interval}', interval);
+    });
+  const summaryKey = action === 'increase' ? 'toolCalcIncreaseSummary' : 'toolCalcDecreaseSummary';
+  return {
+    action,
+    summary: (t(summaryKey) || '{diff} changes from {current} to {target} stitches.')
+      .replace('{diff}', diff)
+      .replace('{current}', start)
+      .replace('{target}', end),
+    parts,
+  };
+}
+
+function SaveModal({ currentCount, existingSave, onConfirm, onClose, t }) {
+  const [name, setName] = useState(existingSave?.name || '');
+  const [category, setCategory] = useState(existingSave?.category || '');
+  const [note, setNote] = useState(existingSave?.note || '');
 
   return (
     <div className="kt-modal-overlay" onClick={onClose}>
-      <div className="kt-modal" onClick={e => e.stopPropagation()}>
+      <div className="kt-modal" onClick={event => event.stopPropagation()}>
         <div className="kt-modal-header">
-          <span className="kt-modal-title">
-            {existingSave ? (t('toolSaveEdit') || 'Edit save') : (t('toolSaveNew') || 'Save row')}
-          </span>
-          <button className="kt-close" onClick={onClose}><X size={18} /></button>
+          <span className="kt-modal-title">{existingSave ? t('toolSaveEdit') : t('toolSaveNew')}</span>
+          <button className="kt-close" onClick={onClose} aria-label={t('cancel')}><X size={18} /></button>
         </div>
-
-        <div className="kt-modal-row-badge">
-          {t('toolRow') || 'Row'} {existingSave?.row ?? currentRow}
-        </div>
-
+        <div className="kt-modal-count-badge">{t('toolCompletedRounds') || 'Completed rounds'} {existingSave?.count ?? currentCount}</div>
         <div className="kt-modal-body">
-          <label className="kt-modal-label">{t('toolSaveName') || 'Name'} *</label>
-          <input
-            className="kt-modal-input"
-            placeholder={t('toolSaveNamePlaceholder') || 'e.g. Start of sleeve decrease'}
-            value={name}
-            onChange={e => setName(e.target.value)}
-            autoFocus
-          />
-
-          <label className="kt-modal-label">{t('toolSaveCategory') || 'Category'}</label>
-          <PillInput
-            values={category ? [category] : []}
-            allOptions={allCats}
-            onChange={vals => setCategory(vals[vals.length - 1] ?? '')}
-            placeholder={t('toolSaveCategoryPlaceholder') || 'Type a category, press Space…'}
-          />
-
-          <label className="kt-modal-label">{t('toolSaveNote') || 'Note'}</label>
-          <textarea
-            className="kt-modal-input kt-modal-textarea"
-            placeholder={t('toolSaveNotePlaceholder') || 'Optional notes for this save…'}
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            rows={3}
-          />
+          <label className="kt-modal-label">{t('toolSaveName')} *</label>
+          <input className="kt-modal-input" value={name} onChange={event => setName(event.target.value)} placeholder={t('toolSaveNamePlaceholder')} autoFocus />
+          <label className="kt-modal-label">{t('toolSaveCategory')}</label>
+          <input className="kt-modal-input" value={category} onChange={event => setCategory(event.target.value)} placeholder={t('toolSaveCategoryPlaceholder')} />
+          <label className="kt-modal-label">{t('toolSaveNote')}</label>
+          <textarea className="kt-modal-input kt-modal-textarea" value={note} onChange={event => setNote(event.target.value)} placeholder={t('toolSaveNotePlaceholder')} rows={3} />
         </div>
-
         <div className="kt-modal-footer">
-          <button className="kt-btn kt-btn--ghost kt-btn--sm" onClick={onClose}>
-            {t('cancel') || 'Cancel'}
-          </button>
-          <button className="kt-btn kt-btn--accent" onClick={() => { if (name.trim()) onConfirm({ name: name.trim(), category, note: note.trim() }); }} disabled={!name.trim()}>
-            {t('toolSaveConfirm') || 'Save'}
+          <button className="kt-btn kt-btn--ghost" onClick={onClose}>{t('cancel')}</button>
+          <button
+            className="kt-btn kt-btn--accent"
+            disabled={!name.trim()}
+            onClick={() => onConfirm({ name: name.trim(), category: category.trim(), note: note.trim() })}
+          >
+            {t('toolSaveConfirm')}
           </button>
         </div>
       </div>
@@ -160,40 +105,28 @@ function SaveModal({ currentRow, existingSave, onConfirm, onClose, t }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SaveCard
-═══════════════════════════════════════════════════════════ */
 function SaveCard({ save, onEdit, onDelete, t }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   return (
     <div className="kt-save-card">
-      <button className="kt-save-card-main" onClick={() => setExpanded(e => !e)}>
-        <div className="kt-save-card-left">
-          <span className="kt-save-card-name">{save.name}</span>
-          {save.category && <span className="kt-save-card-cat">{save.category}</span>}
-        </div>
-        <div className="kt-save-card-right">
-          <span className="kt-save-card-row">{t('toolRow') || 'Row'} <strong>{save.row}</strong></span>
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </div>
+      <button className="kt-save-card-main" onClick={() => setOpen(value => !value)}>
+        <span className="kt-save-count">{save.count}</span>
+        <span className="kt-save-copy">
+          <strong>{save.name}</strong>
+          {save.category && <small>{save.category}</small>}
+        </span>
+        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
-      {expanded && (
+      {open && (
         <div className="kt-save-card-detail">
-          {save.note
-            ? <p className="kt-save-card-note">{save.note}</p>
-            : <p className="kt-save-card-note kt-save-card-note--empty">{t('toolSaveNoNote') || 'No note'}</p>
-          }
+          <dl>
+            <div><dt>{t('toolSaveName')}</dt><dd>{save.name}</dd></div>
+            <div><dt>{t('toolSaveCategory')}</dt><dd>{save.category || '-'}</dd></div>
+            <div><dt>{t('toolSaveNote')}</dt><dd>{save.note || t('toolSaveNoNote')}</dd></div>
+          </dl>
           <div className="kt-save-card-actions">
-            <span className="kt-save-card-ts">
-              {new Date(save.ts).toLocaleString(
-                t('language') === 'no' ? 'nb-NO' : 'en-US',
-                { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-              )}
-            </span>
-            <div className="kt-save-card-btns">
-              <button className="kt-icon-btn" onClick={() => onEdit(save)} title="Edit"><Pencil size={13} /></button>
-              <button className="kt-icon-btn kt-icon-btn--danger" onClick={() => onDelete(save.id)} title="Delete"><Trash2 size={13} /></button>
-            </div>
+            <button className="kt-icon-btn" onClick={() => onEdit(save)} aria-label={t('edit')}><Pencil size={14} /></button>
+            <button className="kt-icon-btn kt-icon-btn--danger" onClick={() => onDelete(save.id)} aria-label={t('delete')}><Trash2 size={14} /></button>
           </div>
         </div>
       )}
@@ -201,190 +134,230 @@ function SaveCard({ save, onEdit, onDelete, t }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Main component
-═══════════════════════════════════════════════════════════ */
-export default function KnittingToolbar({ recipeId, t, mobileOpen, onMobileClose }) {
-  // Controlled mode: when mobileOpen prop is provided, parent owns the open state.
-  // Used by the mobile bottom tab bar in RecipeViewer.
-  const isControlled = mobileOpen !== undefined;
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = isControlled ? mobileOpen : internalOpen;
-  const handleClose = isControlled ? (onMobileClose || (() => {})) : () => setInternalOpen(false);
-
-  const [tab,   setTab]   = useState('row');
-  const [state, setState] = useState(() => loadState(recipeId) ?? defaultState());
+export default function KnittingToolbar({ recipeId, t, open = false, onClose }) {
+  const [tab, setTab] = useState('counter');
+  const [state, setState] = useState(defaultState);
+  const [loading, setLoading] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [editingSave,   setEditingSave]   = useState(null);
-  const [noteText,  setNoteText]  = useState('');
-  const [attachRow, setAttachRow] = useState(false);
+  const [editingSave, setEditingSave] = useState(null);
+  const [error, setError] = useState('');
+  const saveTimerRef = useRef(null);
+  const loadedRef = useRef(false);
+  const stateRef = useRef(state);
+  const longPressRef = useRef(null);
+  const longPressTriggeredRef = useRef(false);
 
-  useEffect(() => { persistState(recipeId, state); }, [recipeId, state]);
-  useEffect(() => { setState(loadState(recipeId) ?? defaultState()); }, [recipeId]);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
-  const update = useCallback((patch) => setState(prev => ({ ...prev, ...patch })), []);
+  useEffect(() => {
+    let cancelled = false;
+    loadedRef.current = false;
+    setLoading(true);
+    setError('');
+    setState(defaultState());
+    fetchKnittingTools(recipeId)
+      .then(result => {
+        if (!cancelled) {
+          setState(normalizeState(result?.data));
+          loadedRef.current = true;
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError(t('toolLoadError') || 'Could not load tools.');
+          loadedRef.current = true;
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      if (loadedRef.current) saveKnittingTools(recipeId, stateRef.current).catch(() => {});
+    };
+  }, [recipeId, t]);
 
-  const rowUp    = () => { if (!state.rowLocked) update({ row: state.row + 1 }); };
-  const rowDown  = () => { if (!state.rowLocked) update({ row: clamp0(state.row - 1) }); };
-  const rowReset = () => { if (!state.rowLocked) update({ row: 0 }); };
+  useEffect(() => {
+    if (!loadedRef.current) return undefined;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveKnittingTools(recipeId, state).catch(() => setError(t('toolSaveError') || 'Could not save tools.'));
+    }, 450);
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [recipeId, state, t]);
+
+  const update = useCallback(patch => {
+    setState(previous => ({ ...previous, ...patch }));
+  }, []);
+
+  const incrementCompleted = () => update({ completedRounds: state.completedRounds + 1 });
+  const decrementCompleted = () => update({ completedRounds: clamp0(state.completedRounds - 1) });
+
+  const beginCenterPress = () => {
+    longPressTriggeredRef.current = false;
+    if (longPressRef.current) window.clearTimeout(longPressRef.current);
+    longPressRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      decrementCompleted();
+    }, 600);
+  };
+
+  const endCenterPress = () => {
+    if (longPressRef.current) window.clearTimeout(longPressRef.current);
+    if (!longPressTriggeredRef.current) incrementCompleted();
+    longPressRef.current = null;
+  };
 
   const handleSaveConfirm = ({ name, category, note }) => {
     if (editingSave) {
-      update({ saves: state.saves.map(s => s.id === editingSave.id ? { ...s, name, category, note } : s) });
+      update({ saves: state.saves.map(save => save.id === editingSave.id ? { ...save, name, category, note } : save) });
     } else {
-      update({ saves: [{ id: Date.now(), name, category, note, row: state.row, ts: new Date().toISOString() }, ...state.saves] });
+      update({
+        saves: [{
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name,
+          category,
+          note,
+          count: state.completedRounds,
+          row: state.currentRow,
+          ts: new Date().toISOString(),
+        }, ...state.saves],
+      });
     }
-    setSaveModalOpen(false);
     setEditingSave(null);
+    setSaveModalOpen(false);
   };
 
-  const addNote = () => {
-    const text = noteText.trim();
-    if (!text) return;
-    update({ notes: [{ id: Date.now(), text, row: attachRow ? state.row : null, ts: new Date().toISOString() }, ...state.notes] });
-    setNoteText('');
+  const resetCounter = () => {
+    if (!window.confirm(t('toolResetConfirm') || 'Reset the counter?')) return;
+    update({ currentRow: 0, completedRounds: 0 });
   };
+
+  const handleClose = () => {
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    if (loadedRef.current) saveKnittingTools(recipeId, stateRef.current).catch(() => {});
+    onClose?.();
+  };
+
+  const calc = useMemo(
+    () => buildEvenInstructions(state.calculator.current, state.calculator.target, t),
+    [state.calculator.current, state.calculator.target, t]
+  );
 
   return (
     <>
-      {/* FAB — hidden when parent controls the open state (mobile tab bar mode) */}
-      {!isControlled && (
-        <button
-          className={`kt-fab ${open ? 'kt-fab--active' : ''}`}
-          onClick={() => setInternalOpen(o => !o)}
-          aria-label="Toggle knitting tools"
-        >
-          {open ? <X size={22} /> : <Wrench size={22} />}
-        </button>
-      )}
-
-      {!isControlled && open && (
-        <div className="kt-backdrop" onClick={() => setInternalOpen(false)} aria-hidden="true" />
-      )}
-
-      <div className={`kt-panel ${open ? 'kt-panel--open' : ''} ${isControlled ? 'kt-panel--controlled' : ''}`} role="dialog">
+      <aside className={`kt-panel ${open ? 'kt-panel--open' : ''}`} role="dialog" aria-modal="true" aria-label={t('toolbarTitle')}>
         <div className="kt-panel-header">
-          <span className="kt-panel-title"><Wrench size={16} />{t('toolbarTitle') || 'Knitting Tools'}</span>
-          <button className="kt-close" onClick={handleClose}><X size={18} /></button>
+          <span className="kt-panel-title"><Wrench size={16} />{t('toolbarTitle')}</span>
+          <button className="kt-close" onClick={handleClose} aria-label={t('cancel')}><X size={18} /></button>
         </div>
 
         <div className="kt-tabs" role="tablist">
-          <TabBtn id="row"   label={t('toolRow')   || 'Row'}   icon={<Minus size={14}/>}      active={tab} setTab={setTab} />
-          <TabBtn id="notes" label={t('toolNotes') || 'Notes'} icon={<StickyNote size={14}/>} active={tab} setTab={setTab}
-            badge={state.notes.length > 0 ? state.notes.length : null} />
+          <TabBtn id="counter" label={t('toolCounter') || t('toolRow')} icon={<Minus size={15} />} active={tab} setTab={setTab} />
+          <TabBtn id="shape" label={t('toolShape') || 'Increase/decrease'} icon={<Calculator size={15} />} active={tab} setTab={setTab} />
+          <TabBtn id="notes" label={t('toolNotes')} icon={<StickyNote size={15} />} active={tab} setTab={setTab} />
         </div>
 
         <div className="kt-body">
+          {loading && <div className="kt-loading">{t('loading')}</div>}
+          {error && <p className="kt-error">{error}</p>}
 
-          {/* ── ROW ── */}
-          {tab === 'row' && (
-            <div className="kt-tool">
-              <div className="kt-counter-display">
-                <span className="kt-counter-label">{t('toolRowLabel') || 'Current Row'}</span>
-                <span className="kt-counter-number">{state.row}</span>
-              </div>
-
-              <div className="kt-counter-btns">
-                <button className="kt-btn kt-btn--lg kt-btn--down" onClick={rowDown}
-                  disabled={state.rowLocked || state.row === 0}><Minus size={26} /></button>
-                <button className="kt-btn kt-btn--lg kt-btn--up" onClick={rowUp}
-                  disabled={state.rowLocked}><Plus size={26} /></button>
-              </div>
-
-              <div className="kt-counter-actions">
+          {!loading && tab === 'counter' && (
+            <div className="kt-tool kt-tool--counter">
+              <div className="kt-counter-stage">
+                <button className="kt-counter-side" onClick={() => update({ currentRow: clamp0(state.currentRow - 1) })} disabled={state.currentRow === 0} aria-label={t('decrease') || 'Decrease'}>
+                  <Minus size={34} />
+                </button>
                 <button
-                  className={`kt-btn kt-btn--sm ${state.rowLocked ? 'kt-btn--locked' : 'kt-btn--ghost'}`}
-                  onClick={() => update({ rowLocked: !state.rowLocked })}
+                  className="kt-counter-center"
+                  onPointerDown={beginCenterPress}
+                  onPointerUp={endCenterPress}
+                  onPointerLeave={() => {
+                    if (longPressRef.current) window.clearTimeout(longPressRef.current);
+                    longPressRef.current = null;
+                  }}
                 >
-                  {state.rowLocked ? <Lock size={14} /> : <Unlock size={14} />}
-                  <span>{state.rowLocked ? (t('unlock') || 'Unlock') : (t('lock') || 'Lock')}</span>
+                  <span className="kt-counter-number">{state.currentRow}</span>
+                  <span className="kt-counter-help">{t('toolCounterTapHint')}</span>
                 </button>
-                <button className="kt-btn kt-btn--sm kt-btn--ghost" onClick={rowReset} disabled={state.rowLocked}>
-                  <Trash2 size={14} /><span>{t('reset') || 'Reset'}</span>
-                </button>
-                <button className="kt-btn kt-btn--sm kt-btn--save"
-                  onClick={() => { setEditingSave(null); setSaveModalOpen(true); }}>
-                  <Bookmark size={14} /><span>{t('toolSaveBtn') || 'Save'}</span>
+                <button className="kt-counter-side" onClick={() => update({ currentRow: state.currentRow + 1 })} aria-label={t('increase') || 'Increase'}>
+                  <Plus size={36} />
                 </button>
               </div>
 
-              {state.rowLocked && (
-                <p className="kt-locked-notice">🔒 {t('rowLockedNotice') || 'Row counter is locked — tap Unlock to edit'}</p>
-              )}
-
-              {state.saves.length > 0 && (
-                <div className="kt-saves-section">
-                  <span className="kt-saves-heading">
-                    {t('toolSavedRows') || 'Saved rows'}
-                    <span className="kt-saves-count">{state.saves.length}</span>
-                  </span>
-                  <div className="kt-saves-list">
-                    {state.saves.map(save => (
-                      <SaveCard key={save.id} save={save}
-                        onEdit={s => { setEditingSave(s); setSaveModalOpen(true); }}
-                        onDelete={id => update({ saves: state.saves.filter(s => s.id !== id) })}
-                        t={t} />
-                    ))}
-                  </div>
+              <div className="kt-counter-bottom">
+                <div className="kt-completed-box">
+                  <span>{state.completedRounds}</span>
+                  <small>{t('toolCompletedRounds')}</small>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* ── NOTES ── */}
-          {tab === 'notes' && (
-            <div className="kt-tool kt-tool--notes">
-              <div className="kt-note-compose">
-                <textarea className="kt-note-input"
-                  placeholder={t('toolNotesPlaceholder') || 'Write a quick note…'}
-                  value={noteText} onChange={e => setNoteText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }}
-                  rows={3} />
-                <div className="kt-note-compose-footer">
-                  <label className="kt-attach-label">
-                    <input type="checkbox" checked={attachRow} onChange={e => setAttachRow(e.target.checked)} />
-                    <span>{t('toolNotesAttachRow') || 'Attach to row'}{attachRow ? ` ${state.row}` : ''}</span>
-                  </label>
-                  <button className="kt-btn kt-btn--accent" onClick={addNote} disabled={!noteText.trim()}>
-                    {t('toolNotesSave') || 'Add Note'}
-                  </button>
-                </div>
+                <button className="kt-btn kt-btn--save" onClick={() => { setEditingSave(null); setSaveModalOpen(true); }}>
+                  <Bookmark size={15} />{t('toolSaveBtn')}
+                </button>
+                <button className="kt-btn kt-btn--ghost" onClick={resetCounter}>
+                  <RotateCcw size={15} />{t('discard') || t('reset')}
+                </button>
               </div>
-              <div className="kt-notes-list">
-                {state.notes.length === 0 ? (
-                  <p className="kt-notes-empty">
-                    <StickyNote size={28} style={{ opacity: 0.3 }} />
-                    <span>{t('toolNotesEmpty') || 'No notes yet'}</span>
-                  </p>
+
+              <div className="kt-saves-section">
+                {state.saves.length === 0 ? (
+                  <p className="kt-empty-line">{t('toolSavedRowsEmpty') || 'No saved counts yet.'}</p>
                 ) : (
-                  state.notes.map(note => (
-                    <div key={note.id} className="kt-note-card">
-                      {note.row !== null && <span className="kt-note-row-badge">{t('toolRow') || 'Row'} {note.row}</span>}
-                      <p className="kt-note-text">{note.text}</p>
-                      <div className="kt-note-meta">
-                        <span className="kt-note-ts">
-                          {new Date(note.ts).toLocaleString(
-                            t('language') === 'no' ? 'nb-NO' : 'en-US',
-                            { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-                          )}
-                        </span>
-                        <button className="kt-note-delete" onClick={() => update({ notes: state.notes.filter(n => n.id !== note.id) })}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
+                  state.saves.map(save => (
+                    <SaveCard
+                      key={save.id}
+                      save={save}
+                      t={t}
+                      onEdit={item => { setEditingSave(item); setSaveModalOpen(true); }}
+                      onDelete={id => update({ saves: state.saves.filter(save => save.id !== id) })}
+                    />
                   ))
                 )}
               </div>
             </div>
           )}
 
+          {!loading && tab === 'shape' && (
+            <div className="kt-tool kt-tool--shape">
+              <label className="kt-field">
+                <span>{t('toolCalcCurrent')}</span>
+                <input type="number" min="0" value={state.calculator.current} onChange={event => update({ calculator: { ...state.calculator, current: event.target.value } })} />
+              </label>
+              <label className="kt-field">
+                <span>{t('toolCalcTarget')}</span>
+                <input type="number" min="0" value={state.calculator.target} onChange={event => update({ calculator: { ...state.calculator, target: event.target.value } })} />
+              </label>
+              <div className={`kt-calc-result kt-calc-result--${calc.action}`}>
+                <strong>{calc.summary}</strong>
+                {calc.parts?.map(part => <p key={part}>{part}</p>)}
+              </div>
+              <p className="kt-calc-help">{t('toolCalcManualHelp')}</p>
+            </div>
+          )}
+
+          {!loading && tab === 'notes' && (
+            <div className="kt-tool kt-tool--notes">
+              <textarea
+                className="kt-note-sheet"
+                value={state.noteSheet}
+                onChange={event => update({ noteSheet: event.target.value })}
+                placeholder={t('toolNotesSheetPlaceholder') || t('toolNotesPlaceholder')}
+              />
+              <span className="kt-autosave"><Save size={13} />{t('toolAutosaves') || 'Auto-saves'}</span>
+            </div>
+          )}
         </div>
-      </div>
+      </aside>
+
+      {open && <button className="kt-screen-backdrop" onClick={handleClose} aria-label={t('cancel')} />}
 
       {saveModalOpen && (
         <SaveModal
-          currentRow={state.row}
+          currentCount={state.completedRounds}
           existingSave={editingSave}
           onConfirm={handleSaveConfirm}
           onClose={() => { setSaveModalOpen(false); setEditingSave(null); }}
@@ -395,13 +368,10 @@ export default function KnittingToolbar({ recipeId, t, mobileOpen, onMobileClose
   );
 }
 
-function TabBtn({ id, label, icon, active, setTab, badge }) {
+function TabBtn({ id, label, icon, active, setTab }) {
   return (
-    <button role="tab" aria-selected={active === id}
-      className={`kt-tab ${active === id ? 'kt-tab--active' : ''}`}
-      onClick={() => setTab(id)}>
+    <button role="tab" aria-selected={active === id} className={`kt-tab ${active === id ? 'kt-tab--active' : ''}`} onClick={() => setTab(id)}>
       {icon}<span>{label}</span>
-      {badge != null && <span className="kt-tab-badge">{badge}</span>}
     </button>
   );
 }

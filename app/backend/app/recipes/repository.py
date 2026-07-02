@@ -630,6 +630,64 @@ def save_recipe_viewer_progress(recipe_id: str, data: dict = Body(default={}), c
     return _viewer_progress_dict(row)
 
 
+def _knitting_tools_dict(row) -> dict:
+    if not row:
+        return {"exists": False, "data": {}, "updatedAt": ""}
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        data = {}
+    return {
+        "exists": True,
+        "data": data if isinstance(data, dict) else {},
+        "updatedAt": row["updated_at"],
+    }
+
+
+def get_recipe_knitting_tools(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    row = conn.execute(
+        "SELECT data_json, updated_at FROM recipe_knitting_tools WHERE recipe_id=? AND user_id=?",
+        (recipe_id, current_user["id"])
+    ).fetchone()
+    conn.close()
+    return _knitting_tools_dict(row)
+
+
+def save_recipe_knitting_tools(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    payload = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+    if not isinstance(payload, dict):
+        payload = {}
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(payload_json.encode("utf-8")) > 200_000:
+        raise HTTPException(status_code=413, detail="Tool data is too large")
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    conn.execute(
+        """
+        INSERT INTO recipe_knitting_tools (recipe_id,user_id,data_json,updated_at)
+        VALUES (?,?,?,?)
+        ON CONFLICT(recipe_id,user_id) DO UPDATE SET
+            data_json=excluded.data_json,
+            updated_at=excluded.updated_at
+        """,
+        (recipe_id, current_user["id"], payload_json, now)
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT data_json, updated_at FROM recipe_knitting_tools WHERE recipe_id=? AND user_id=?",
+        (recipe_id, current_user["id"])
+    ).fetchone()
+    conn.close()
+    return _knitting_tools_dict(row)
+
+
 async def check_duplicate(
     files: List[UploadFile] = File(...),
     title: str = Form(""),
@@ -791,6 +849,7 @@ def delete_recipe(recipe_id: str, current_user: dict = Depends(get_current_user)
     conn.execute("DELETE FROM project_sessions  WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM annotations       WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_viewer_progress WHERE recipe_id=?", (recipe_id,))
+    conn.execute("DELETE FROM recipe_knitting_tools WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
     conn.execute("DELETE FROM recipe_charts WHERE recipe_id=?", (recipe_id,))
