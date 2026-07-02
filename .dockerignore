@@ -1,18 +1,16 @@
-# Developer tools and scripts
-*.bat
+# Start closed: only send files required by Dockerfile COPY commands.
+*
 
-# Data volumes (never bake personal data into an image)
-data/
-data-test/
-data-codex-test/
+!Dockerfile
+!entrypoint.sh
 
-# Logs
-logs/
-logs-test/
-logs-codex-test/
-*.log
+!app/
+!app/backend/
+!app/backend/**
+!app/frontend/
+!app/frontend/**
 
-# Frontend build artifacts and dependencies (rebuilt fresh inside Docker)
+# Frontend build artifacts and dependencies are rebuilt fresh inside Docker.
 app/frontend/node_modules/
 app/frontend/build/
 app/frontend/dist/
@@ -23,30 +21,25 @@ app/frontend/dist/
 **/*.pyo
 **/*.pyd
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Git
-.git/
-.gitignore
-
-# Test compose files
-docker-compose.test*.yml
-docker-compose.test*.yaml
-
-# Documentation (no value inside the image)
-README.md
-CODE_OF_CONDUCT.md
-LICENSE
-agent.md
-CLAUDE.md
-MEMORY.md
-
-# Environment files (secrets come via runtime env vars, never baked in)
+# Local and generated files that should never enter the Docker context.
+data/
+data-test/
+data-codex-test/
+data-codex-ocr-charts/
+logs/
+logs-test/
+logs-codex-test/
+logs-codex-ocr-charts/
+*.log
 .env
 .env.local
-
-# AI tooling
+.git/
+.gitignore
 .claude/
+*.bat
+docker-compose.test*.yml
+docker-compose.test*.yaml
+CHANGELOG.md
+changelog.md
 CHANGES-unreleased.md
+changes-unreleased.md
