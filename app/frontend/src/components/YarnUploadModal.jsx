@@ -35,6 +35,8 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
   const [urlError, setUrlError]     = useState('');
   const [urlSuccess, setUrlSuccess] = useState(false);
 
+  const hasExistingImage = isEdit && !!editYarn.image_path && !imageFile;
+
   // Close on Escape
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -46,8 +48,13 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
 
   const handleImage = (file) => {
     if (!file) return;
+    if (!file.type?.startsWith('image/')) {
+      setError(t('invalidImageFile'));
+      return;
+    }
     setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    setImagePreview(file.name || 'image');
+    setError('');
   };
 
   const onDrop = (e) => {
@@ -161,8 +168,14 @@ export default function YarnUploadModal({ onClose, onSuccess, editYarn, allowSto
             onDrop={onDrop}
             onClick={() => fileRef.current?.click()}
           >
-            {imagePreview ? (
-              <img src={imagePreview} alt="Yarn preview" className="yum-image-preview" />
+            {hasExistingImage ? (
+              <img src={yarnImageUrl(editYarn.id)} alt="Yarn preview" className="yum-image-preview" />
+            ) : imagePreview ? (
+              <div className="yum-image-placeholder">
+                <ImagePlus size={32} />
+                <span>{t('uploadImage')}</span>
+                <span className="yum-image-hint">{imagePreview}</span>
+              </div>
             ) : (
               <div className="yum-image-placeholder">
                 <ImagePlus size={32} />
