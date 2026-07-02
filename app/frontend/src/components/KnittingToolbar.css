@@ -188,7 +188,8 @@
 }
 
 .kt-counter-side {
-  height: 66px;
+  align-self: stretch;
+  min-height: 142px;
   display: grid;
   place-items: center;
   border-radius: 14px;
