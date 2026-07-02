@@ -410,9 +410,9 @@
 }
 
 .mobile-nav--recipe {
-  grid-template-columns: 1fr 1fr 96px 1fr 1fr;
-  height: 58px;
-  padding: 6px 7px;
+  grid-template-columns: 52px 62px minmax(134px, 1fr) 58px 66px;
+  height: 56px;
+  padding: 5px 7px;
   border-radius: 20px;
   animation: recipeNavIn 0.22s ease both;
 }
@@ -532,16 +532,25 @@
 }
 
 .mobile-nav--recipe .mobile-nav-item-main {
-  border-radius: 14px;
+  justify-self: center;
+  width: 100%;
+  max-width: 62px;
+  border-radius: 13px;
+  gap: 2px;
 }
 
 .mobile-nav--recipe .mobile-nav-item-main svg {
-  width: 19px;
-  height: 19px;
+  width: 18px;
+  height: 18px;
 }
 
 .mobile-nav--recipe .mobile-nav-item-main span {
-  font-size: 9.5px;
+  font-size: 9px;
+  line-height: 1.05;
+}
+
+.mobile-nav--recipe .mobile-nav-item-main.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .mobile-nav-item-main.active {
@@ -597,16 +606,16 @@
 .mobile-nav-recipe-split {
   align-self: center;
   justify-self: center;
-  width: 104px;
-  height: 58px;
+  width: min(146px, 100%);
+  height: 56px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
-  border-radius: 17px;
+  border-radius: 18px;
   background: var(--card-bg);
   box-shadow: 0 10px 26px rgba(196, 113, 74, 0.23);
-  transform: translateY(-8px);
+  transform: translateY(-7px);
 }
 
 .mobile-nav-recipe-split-btn {
@@ -615,11 +624,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 900;
   cursor: pointer;
 }
@@ -629,7 +638,7 @@
 }
 
 .mobile-nav-recipe-split-btn span {
-  max-width: 46px;
+  max-width: 62px;
   overflow: hidden;
   text-align: center;
   text-overflow: ellipsis;

@@ -3,23 +3,47 @@
   inset: 0;
   z-index: 178;
   border: 0;
-  background: rgba(0, 0, 0, 0.24);
+  background: rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   cursor: pointer;
 }
 
 .kt-panel {
   position: fixed;
-  inset: 0 0 0 auto;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  right: max(8px, env(safe-area-inset-right, 0px));
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
   z-index: 220;
   width: min(420px, 94vw);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid var(--border);
-  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 22px 0 0 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 90%, transparent), color-mix(in srgb, var(--card-bg) 82%, transparent)),
+    var(--app-background-color, var(--card-bg));
   box-shadow: -18px 0 48px rgba(26, 26, 46, 0.26);
   transform: translateX(110%);
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  isolation: isolate;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.kt-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--app-background-color, transparent);
+  background-image: var(--app-background-image, none);
+  background-size: var(--app-background-size, cover);
+  background-position: var(--app-background-position, center);
+  background-repeat: var(--app-background-repeat, no-repeat);
+  opacity: 0.18;
 }
 
 .kt-panel--open {
@@ -33,7 +57,9 @@
   gap: 12px;
   padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--card-bg);
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   flex-shrink: 0;
 }
 
@@ -65,8 +91,10 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
   flex-shrink: 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .kt-tab {
@@ -99,7 +127,7 @@
 
 .kt-tab--active {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
+  background: color-mix(in srgb, var(--accent) 13%, var(--card-bg));
 }
 
 .kt-tab--active::after {
@@ -152,10 +180,11 @@
 .kt-counter-side,
 .kt-counter-center {
   border: 2px solid var(--border);
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
   color: var(--text-primary);
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .kt-counter-side {
@@ -184,9 +213,20 @@
   gap: 10px;
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   border-radius: 24px;
-  background: var(--card-bg);
+  background: color-mix(in srgb, var(--card-bg) 90%, transparent);
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   touch-action: manipulation;
+}
+
+.kt-counter-center *,
+.kt-counter-side * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 .kt-counter-number {
@@ -223,7 +263,7 @@
   gap: 2px;
   border: 2px solid var(--border);
   border-radius: 12px;
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
 }
 
 .kt-completed-box span {
@@ -276,7 +316,7 @@
 .kt-save-card {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
   overflow: hidden;
 }
 
@@ -446,7 +486,7 @@
   resize: vertical;
   border: 1.5px solid var(--border);
   border-radius: 8px;
-  background: var(--input-bg);
+  background: color-mix(in srgb, var(--input-bg) 90%, transparent);
   color: var(--text-primary);
   padding: 14px;
   font: 15px/1.55 'DM Sans', sans-serif;
@@ -556,7 +596,11 @@
 
 @media (max-width: 420px) {
   .kt-panel {
-    width: 100vw;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(100vw, 420px);
+    border-radius: 18px 0 0 18px;
   }
 
   .kt-counter-stage {

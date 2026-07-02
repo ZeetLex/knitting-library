@@ -195,7 +195,7 @@ export default function KnittingToolbar({ recipeId, t, open = false, onClose }) 
     setState(previous => ({ ...previous, ...patch }));
   }, []);
 
-  const incrementCompleted = () => update({ completedRounds: state.completedRounds + 1 });
+  const incrementCompleted = () => update({ completedRounds: state.completedRounds + 1, currentRow: 0 });
   const decrementCompleted = () => update({ completedRounds: clamp0(state.completedRounds - 1) });
 
   const beginCenterPress = () => {
@@ -277,6 +277,7 @@ export default function KnittingToolbar({ recipeId, t, open = false, onClose }) 
                   className="kt-counter-center"
                   onPointerDown={beginCenterPress}
                   onPointerUp={endCenterPress}
+                  onContextMenu={event => event.preventDefault()}
                   onPointerLeave={() => {
                     if (longPressRef.current) window.clearTimeout(longPressRef.current);
                     longPressRef.current = null;
