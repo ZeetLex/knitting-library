@@ -66,6 +66,7 @@ function useSections(t) {
         { key: 'helpS4Intro' },
         { labelKey: 'helpLabelAnnotations', key: 'helpS4Annotate' },
         { labelKey: 'helpLabelRowCounter',  key: 'helpS4RowCounter' },
+        { labelKey: 'helpLabelIncreaseDecrease', key: 'helpS4IncreaseDecrease' },
         { labelKey: 'helpLabelSavedRows',   key: 'helpS4SaveRow' },
         { labelKey: 'toolNotes',            key: 'helpS4Notes' },
       ],

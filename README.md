@@ -10,7 +10,7 @@ The project started as a practical home tool: a private place to keep knitting p
 
 - Stores PDF patterns and scanned image recipes with generated thumbnails.
 - Provides searchable recipe browsing, categories, tags, and project status filters.
-- Supports page annotations, recipe text versions, and image cleanup tools.
+- Supports page annotations, recipe text versions, image cleanup tools, and per-recipe knitting tools for counters, increase/decrease calculations, and notes.
 - Tracks active and finished projects per user, with shared household visibility.
 - Manages yarn and thread references, color variants, stock, needles, tools, and notions.
 - Includes user accounts, optional TOTP two-factor authentication, per-user appearance settings, and admin tools.
