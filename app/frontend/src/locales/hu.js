@@ -10,6 +10,8 @@ export const language = {
 const hu = {
     // App
     appName: "Knitting Library",
+    appLogoMain: "Knitting",
+    appLogoSub: "Library",
     navHome: "Kezdőlap",
     navAdd: "Hozzáadás",
     navAddSomething: "Valami hozzáadása",

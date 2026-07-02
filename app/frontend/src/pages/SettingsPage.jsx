@@ -12,7 +12,7 @@ import {
   Pencil, AtSign, Palette, Bot, ExternalLink, Github,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
-import { LANGUAGE_OPTIONS } from '../utils/translations';
+import { getLanguageLocale, LANGUAGE_OPTIONS } from '../utils/translations';
 import {
   changePassword, fetchUsers, createUser, deleteUser, adminResetPassword, exportLibrary,
   fetchLogs, fetchMailSettings, saveMailSettings, testMail, testMailTemplate,
@@ -1259,7 +1259,7 @@ function AnnouncementsSection() {
   useEffect(() => { load(); }, []);
 
   const formatDate = (iso) => {
-    try { return new Date(iso).toLocaleDateString(language === 'no' ? 'nb-NO' : undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return iso; }
+    try { return new Date(iso).toLocaleDateString(getLanguageLocale(language), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return iso; }
   };
 
   const handleSync = async () => {

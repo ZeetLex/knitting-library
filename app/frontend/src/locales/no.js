@@ -10,6 +10,8 @@ export const language = {
 const no = {
     // App
     appName: "Strikkebibliotek",
+    appLogoMain: "Strikke",
+    appLogoSub: "Bibliotek",
     navHome: "Hjem",
     navAdd: "Legg til",
     navAddSomething: "Legg til",

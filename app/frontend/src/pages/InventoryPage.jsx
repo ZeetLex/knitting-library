@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Minus, Package, Pencil, Trash2, Clock, ChevronDown, ChevronUp, X, Search } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import { getLanguageLocale } from '../utils/translations';
 import {
   fetchInventory, createInventoryItem, updateInventoryItem,
   adjustInventory, deleteInventoryItem, fetchInventoryLog,
@@ -23,7 +24,7 @@ const TOOL_CATEGORIES = ['needle', 'tool', 'notion', 'other'];
 // ── Helper: format date ───────────────────────────────────────────────────────
 function fmtDate(iso, lang) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(lang === 'no' ? 'nb-NO' : lang === 'hu' ? 'hu-HU' : 'en-US', {
+  return new Date(iso).toLocaleDateString(getLanguageLocale(lang), {
     year: 'numeric', month: 'short', day: 'numeric'
   });
 }

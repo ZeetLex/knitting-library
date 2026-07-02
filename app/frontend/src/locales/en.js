@@ -10,6 +10,8 @@ export const language = {
 const en = {
     // App
     appName: "Knitting Library",
+    appLogoMain: "Knitting",
+    appLogoSub: "Library",
     navHome: "Home",
     navAdd: "Add",
     navAddSomething: "Add something",
