@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, Clock, RotateCcw, Trash2, X, Search, Minus, Plus, Settings, Save } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import { getLanguageLocale } from '../utils/translations';
 import {
   startProject,
   finishProject,
@@ -37,7 +38,7 @@ function formatDuration(seconds, t) {
 function formatDateTime(iso, lang) {
   if (!iso) return '—';
   // Compact format: "9 Mar, 06:29" — saves significant horizontal space
-  return new Date(iso).toLocaleString(lang === 'no' ? 'nb-NO' : 'en-GB', {
+  return new Date(iso).toLocaleString(getLanguageLocale(lang), {
     day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit',
   });

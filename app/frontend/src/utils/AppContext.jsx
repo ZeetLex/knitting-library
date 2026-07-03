@@ -1,7 +1,7 @@
 /**
  * AppContext.js
  * Global state that every component in the app can read.
- * Stores: logged-in user, theme (light/dark), language (en/no/hu), currency (NOK/USD/GBP/HUF/EUR), background
+ * Stores: logged-in user, theme (light/dark), language, currency (NOK/USD/GBP/HUF/EUR), background
  *
  * Usage in any component:
  *   const { user, theme, language, currency, currencySymbol, t, login, logout } = useApp();

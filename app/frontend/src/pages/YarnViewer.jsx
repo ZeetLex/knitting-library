@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Pencil, Trash2, Plus, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import { getLanguageLocale } from '../utils/translations';
 import {
   fetchYarn, deleteYarn, yarnImageUrl,
   addYarnColour, deleteYarnColour, yarnColourImageUrl
@@ -15,7 +16,7 @@ import CurrencyInput from '../components/CurrencyInput';
 import './YarnViewer.css';
 
 export default function YarnViewer({ yarnId, onBack, onDeleted }) {
-  const { t, currencySymbol } = useApp();
+  const { t, currencySymbol, language } = useApp();
   const [yarn, setYarn]             = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
@@ -241,7 +242,7 @@ export default function YarnViewer({ yarnId, onBack, onDeleted }) {
           </div>
 
           <p className="yv-date">
-            {t('yarnAdded')} {new Date(yarn.created_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+            {t('yarnAdded')} {new Date(yarn.created_date).toLocaleDateString(getLanguageLocale(language), { year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
       </div>

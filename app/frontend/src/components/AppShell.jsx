@@ -148,6 +148,7 @@ function MobileNav({
   recipeImagesVisible,
   recipeReviewMode,
   recipeReviewSaving,
+  recipeToolOpen,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
@@ -156,6 +157,7 @@ function MobileNav({
   onRecipeBack,
   onRecipeActions,
   onRecipeProjectAction,
+  onRecipeTools,
   onRecipeImagesToggle,
   onReviewApprove,
   onReviewPause,
@@ -240,6 +242,10 @@ function MobileNav({
     );
   }
 
+  if (recipeMode && recipeToolOpen) {
+    return null;
+  }
+
   if (recipeMode) {
     return (
       <nav className="mobile-nav mobile-nav--recipe" aria-label="Recipe">
@@ -266,14 +272,24 @@ function MobileNav({
           <ArrowLeft size={21} />
           <span>{t('backToLibrary')}</span>
         </button>
-        <button
-          className={`mobile-nav-recipe-project ${projectStarted ? 'mobile-nav-recipe-project--status' : ''}`}
-          onClick={onRecipeProjectAction}
-          aria-label={projectStarted ? (t('status') || 'Status') : t('startProject')}
-        >
-          {projectStarted ? <CheckCircle2 size={21} /> : <Play size={21} />}
-          <span>{projectStarted ? (t('status') || 'Status') : (t('start') || t('startProject'))}</span>
-        </button>
+        <div className="mobile-nav-recipe-split" aria-label={t('toolbarTitle') || 'Recipe tools'}>
+          <button
+            className={`mobile-nav-recipe-split-btn ${projectStarted ? 'mobile-nav-recipe-split-btn--status' : ''}`}
+            onClick={onRecipeProjectAction}
+            aria-label={projectStarted ? (t('status') || 'Status') : t('startProject')}
+          >
+            {projectStarted ? <CheckCircle2 size={19} /> : <Play size={19} />}
+            <span>{projectStarted ? (t('status') || 'Status') : (t('start') || t('startProject'))}</span>
+          </button>
+          <button
+            className="mobile-nav-recipe-split-btn mobile-nav-recipe-split-btn--tools"
+            onClick={onRecipeTools}
+            aria-label={t('toolbarTitle') || 'Tools'}
+          >
+            <Wrench size={19} />
+            <span>{t('toolNavLabel') || t('toolbarTitle') || 'Tools'}</span>
+          </button>
+        </div>
         <button
           className={`mobile-nav-item-main ${recipeImagesVisible ? 'active' : ''}`}
           onClick={onRecipeImagesToggle}
@@ -444,6 +460,7 @@ export default function AppShell({
     imagesVisible: false,
     reviewMode: false,
     reviewSaving: false,
+    toolOpen: false,
   });
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
     try {
@@ -544,6 +561,7 @@ export default function AppShell({
         recipeImagesVisible={recipeMobileState.imagesVisible}
         recipeReviewMode={recipeMobileState.reviewMode}
         recipeReviewSaving={recipeMobileState.reviewSaving}
+        recipeToolOpen={recipeMobileState.toolOpen}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}
@@ -552,6 +570,7 @@ export default function AppShell({
         onRecipeBack={onRecipeBack}
         onRecipeActions={() => window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-panel', { detail: 'actions' }))}
         onRecipeProjectAction={() => window.dispatchEvent(new CustomEvent('knitting-recipe-project-action'))}
+        onRecipeTools={() => window.dispatchEvent(new CustomEvent('knitting-recipe-open-tools'))}
         onRecipeImagesToggle={() => window.dispatchEvent(new CustomEvent('knitting-recipe-toggle-images'))}
         onReviewApprove={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-approve'))}
         onReviewPause={() => window.dispatchEvent(new CustomEvent('knitting-review-mobile-pause'))}

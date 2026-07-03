@@ -290,6 +290,23 @@ export async function saveViewerProgress(recipeId, progress) {
   return data;
 }
 
+export async function fetchKnittingTools(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/knitting-tools`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load knitting tools');
+  return res.json();
+}
+
+export async function saveKnittingTools(recipeId, data) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/knitting-tools`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ data }),
+  });
+  const response = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(response.detail || 'Failed to save knitting tools');
+  return response;
+}
+
 export async function saveTextVersion(recipeId, contentMarkdown, language) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, {
     method: 'PUT',

@@ -21,6 +21,7 @@
   },
   "scripts": {
     "start": "vite",
+    "validate:locales": "node scripts/validate-locales.mjs",
     "build": "vite build",
     "preview": "vite preview"
   }

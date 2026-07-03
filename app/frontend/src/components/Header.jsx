@@ -11,8 +11,7 @@ export default function Header({
   // Sub-tab props — only used when activeTab === 'yarns'
   yarnSubTab, onYarnSubTabChange,
 }) {
-  const { t, language } = useApp();
-  const appSub = language === 'no' ? 'Bibliotek' : 'Library';
+  const { t } = useApp();
   const showSubTabs = activeTab === 'yarns';
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef(null);
@@ -52,8 +51,8 @@ export default function Header({
         <button className="header-logo" onClick={onLogoClick} aria-label={t('headerGoToLibrary')}>
           <span className="header-logo-icon">🧶</span>
           <span className="header-logo-text">
-            <span className="header-logo-main">{language === 'no' ? 'Strikke' : 'Knitting'}</span>
-            <span className="header-logo-sub">{appSub}</span>
+            <span className="header-logo-main">{t('appLogoMain')}</span>
+            <span className="header-logo-sub">{t('appLogoSub')}</span>
           </span>
         </button>
 

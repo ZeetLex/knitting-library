@@ -470,6 +470,19 @@ def get_db() -> sqlite3.Connection:
             )
         """)
         conn.commit()
+    if "recipe_knitting_tools" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_knitting_tools (
+                recipe_id  TEXT NOT NULL,
+                user_id    TEXT NOT NULL,
+                data_json  TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (recipe_id, user_id),
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id),
+                FOREIGN KEY (user_id)   REFERENCES users(id)
+            )
+        """)
+        conn.commit()
     if "user_action_log" not in tables:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_action_log (
@@ -793,6 +806,15 @@ def init_db():
             data_json  TEXT NOT NULL DEFAULT '{}',
             updated_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS recipe_knitting_tools (
+            recipe_id  TEXT NOT NULL,
+            user_id    TEXT NOT NULL,
+            data_json  TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (recipe_id, user_id),
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id),
+            FOREIGN KEY (user_id)   REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS yarns (
             id              TEXT PRIMARY KEY,

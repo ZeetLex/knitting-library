@@ -105,6 +105,16 @@ Generated text is persistent for the whole server, not private per user. AI outp
 
 Draw or highlight directly on recipe pages. Brush, opacity, and color are adjustable. Strokes are saved per page to the database and persist across sessions.
 
+## Recipe Knitting Tools
+
+Open **Verktøy** / **Tools** from the recipe action bar on mobile, or the wrench tool entry in recipe view, to use tools that stay attached to the current recipe and current user.
+
+The **Counter** tab tracks the current row with plus and minus controls. Tapping the large counter finishes an `omgang`/round, increases the completed-round count, and resets the large row counter to `0`. Long-pressing the large counter undoes one completed round. Saved counts can include a name, category, and note.
+
+The **Increase/decrease** tab calculates how to distribute stitch increases or decreases evenly from the current stitch count to the desired stitch count.
+
+The **Notes** tab is one large recipe note sheet. It auto-saves through the backend, so notes are private to the signed-in user and specific to the recipe being viewed.
+
 ## Project Tracking
 
 Recipes can be marked active or finished per user account. Other users can start and finish the same recipe separately without changing your own project state.
@@ -123,9 +133,9 @@ Inventory tracks yarn/thread samples, yarn stock, needles, tools, and notions. Y
 
 User accounts use username/password login with bcrypt hashing, login rate limiting, optional TOTP two-factor authentication, and per-user settings.
 
-Appearance options include light/dark mode, multiple color themes, and per-user background choices.
+Appearance options include light/dark mode, multiple color themes, per-user background choices, and per-user interface language.
 
-The interface is available in English, Norwegian, and Hungarian. Prices and inventory values can be shown in NOK, USD, GBP, HUF, or EUR.
+The interface is available in English, Norwegian, Hungarian, French, German, and Spanish. Prices and inventory values can be shown in NOK, USD, GBP, HUF, or EUR.
 
 The admin panel includes user management, API/container logs, SMTP mail configuration, AI text recognition settings, 2FA status management, update notes, and all-user project session inspection.
 
