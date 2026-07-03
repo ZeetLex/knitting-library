@@ -133,9 +133,9 @@ Inventory tracks yarn/thread samples, yarn stock, needles, tools, and notions. Y
 
 User accounts use username/password login with bcrypt hashing, login rate limiting, optional TOTP two-factor authentication, and per-user settings.
 
-Appearance options include light/dark mode, multiple color themes, and per-user background choices.
+Appearance options include light/dark mode, multiple color themes, per-user background choices, and per-user interface language.
 
-The interface is available in English, Norwegian, and Hungarian. Prices and inventory values can be shown in NOK, USD, GBP, HUF, or EUR.
+The interface is available in English, Norwegian, Hungarian, French, German, and Spanish. Prices and inventory values can be shown in NOK, USD, GBP, HUF, or EUR.
 
 The admin panel includes user management, API/container logs, SMTP mail configuration, AI text recognition settings, 2FA status management, update notes, and all-user project session inspection.
 

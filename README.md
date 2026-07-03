@@ -14,6 +14,7 @@ The project started as a practical home tool: a private place to keep knitting p
 - Tracks active and finished projects per user, with shared household visibility.
 - Manages yarn and thread references, color variants, stock, needles, tools, and notions.
 - Includes user accounts, optional TOTP two-factor authentication, per-user appearance settings, and admin tools.
+- Offers the interface in English, Norwegian, Hungarian, French, German, and Spanish.
 - Runs locally with SQLite-backed storage in mounted `data/` and `logs/` folders.
 
 ## Status
