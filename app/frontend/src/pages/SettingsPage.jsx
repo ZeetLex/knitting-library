@@ -9,7 +9,7 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign, Palette, Bot, ExternalLink, Github,
+  Pencil, AtSign, Palette, Bot, ExternalLink, Github, ImagePlus, RotateCcw,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import { getLanguageLocale, LANGUAGE_OPTIONS } from '../utils/translations';
@@ -19,6 +19,7 @@ import {
   fetch2FAStatus, adminReset2FA, setup2FA, verify2FASetup, disable2FA,
   listReleases, syncReleases,
   updateUserEmail, sendWelcomeMail, fetchAISettings, saveAISettings, fetchAIModels, testAISettings,
+  saveBrandingTitle, uploadBrandingIcon, deleteBrandingIcon, resetBranding,
 } from '../utils/api';
 import './SettingsPage.css';
 
@@ -219,8 +220,246 @@ function AppearancePickerHeader({ title, onBack }) {
   );
 }
 
+const BRANDING_CROP_SIZE = 280;
+
+function IconCropModal({ sourceUrl, onCancel, onSave, saving }) {
+  const { t } = useApp();
+  const imageRef = useRef(null);
+  const dragRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [naturalSize, setNaturalSize] = useState({ width: 1, height: 1 });
+
+  const geometry = React.useMemo(() => {
+    const baseScale = Math.max(
+      BRANDING_CROP_SIZE / naturalSize.width,
+      BRANDING_CROP_SIZE / naturalSize.height
+    );
+    const scale = baseScale * zoom;
+    const width = naturalSize.width * scale;
+    const height = naturalSize.height * scale;
+    const maxX = Math.max(0, (width - BRANDING_CROP_SIZE) / 2);
+    const maxY = Math.max(0, (height - BRANDING_CROP_SIZE) / 2);
+    return {
+      scale,
+      width,
+      height,
+      x: Math.max(-maxX, Math.min(maxX, offset.x)),
+      y: Math.max(-maxY, Math.min(maxY, offset.y)),
+    };
+  }, [naturalSize, offset, zoom]);
+
+  const startDrag = (event) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { x: event.clientX, y: event.clientY, offset: { x: geometry.x, y: geometry.y } };
+  };
+  const moveDrag = (event) => {
+    if (!dragRef.current) return;
+    setOffset({
+      x: dragRef.current.offset.x + event.clientX - dragRef.current.x,
+      y: dragRef.current.offset.y + event.clientY - dragRef.current.y,
+    });
+  };
+  const endDrag = () => { dragRef.current = null; };
+
+  const createCrop = async () => {
+    const image = imageRef.current;
+    if (!image) return;
+    const sourceSize = BRANDING_CROP_SIZE / geometry.scale;
+    const sourceX = (naturalSize.width - sourceSize) / 2 - geometry.x / geometry.scale;
+    const sourceY = (naturalSize.height - sourceSize) / 2 - geometry.y / geometry.scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, 512, 512);
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 512, 512);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (blob) onSave(blob);
+  };
+
+  return (
+    <div className="branding-crop-overlay" role="dialog" aria-modal="true" aria-labelledby="branding-crop-title">
+      <div className="branding-crop-modal">
+        <div className="branding-crop-heading">
+          <h4 id="branding-crop-title">{t('brandingCropTitle')}</h4>
+          <button className="modal-close" onClick={onCancel} aria-label={t('cancel')}><X size={18} /></button>
+        </div>
+        <p className="settings-row-sub">{t('brandingCropSub')}</p>
+        <div
+          className="branding-crop-frame"
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <img
+            ref={imageRef}
+            src={sourceUrl}
+            alt=""
+            draggable="false"
+            onLoad={event => setNaturalSize({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            })}
+            style={{
+              width: geometry.width,
+              height: geometry.height,
+              transform: `translate(calc(-50% + ${geometry.x}px), calc(-50% + ${geometry.y}px))`,
+            }}
+          />
+        </div>
+        <label className="branding-zoom">
+          <span>{t('brandingZoom')}</span>
+          <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.01"
+            value={zoom}
+            onChange={event => setZoom(Number(event.target.value))}
+          />
+        </label>
+        <div className="branding-actions">
+          <button className="btn-secondary" onClick={onCancel} disabled={saving}>{t('cancel')}</button>
+          <button className="btn-primary" onClick={createCrop} disabled={saving}>
+            {saving ? t('brandingSaving') : t('brandingUseIcon')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrandingSettings() {
+  const { branding, applyBranding, t } = useApp();
+  const fileRef = useRef(null);
+  const [title, setTitle] = useState(branding.title);
+  const [cropUrl, setCropUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => setTitle(branding.title), [branding.title]);
+  useEffect(() => () => { if (cropUrl) URL.revokeObjectURL(cropUrl); }, [cropUrl]);
+
+  const run = async (operation, successKey) => {
+    setSaving(true);
+    setStatus('');
+    try {
+      const next = await operation();
+      applyBranding(next);
+      setStatus(successKey);
+      return true;
+    } catch (error) {
+      setStatus(`error:${error.message}`);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const chooseFile = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setStatus(`error:${t('brandingImageTypeError')}`);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStatus(`error:${t('brandingImageSizeError')}`);
+      return;
+    }
+    if (cropUrl) URL.revokeObjectURL(cropUrl);
+    setCropUrl(URL.createObjectURL(file));
+    setStatus('');
+  };
+
+  const saveIcon = async (blob) => {
+    const ok = await run(() => uploadBrandingIcon(blob), 'iconSaved');
+    if (ok) {
+      URL.revokeObjectURL(cropUrl);
+      setCropUrl('');
+    }
+  };
+
+  return (
+    <div className="branding-settings-card">
+      <div className="settings-row-info">
+        <p className="settings-row-label">{t('brandingTitle')}</p>
+        <p className="settings-row-sub">{t('brandingSub')}</p>
+      </div>
+      <div className="branding-title-row">
+        <input
+          className="form-input"
+          value={title}
+          maxLength={60}
+          onChange={event => setTitle(event.target.value)}
+          aria-label={t('brandingAppTitle')}
+        />
+        <button
+          className="btn-primary"
+          disabled={saving || !title.trim() || title.trim() === branding.title}
+          onClick={() => run(() => saveBrandingTitle(title), 'titleSaved')}
+        >
+          {saving ? t('brandingSaving') : t('save')}
+        </button>
+        <button
+          className="btn-secondary"
+          disabled={saving || !branding.has_custom_title}
+          onClick={() => run(() => saveBrandingTitle(''), 'titleReset')}
+        >
+          {t('reset')}
+        </button>
+      </div>
+
+      <div className="branding-icon-editor">
+        <img src={branding.icon_url} alt={t('brandingIconPreview')} />
+        <div className="branding-icon-copy">
+          <strong>{t('brandingAppIcon')}</strong>
+          <small>{t('brandingIconSub')}</small>
+          <div className="branding-actions">
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={chooseFile} />
+            <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={saving}>
+              <ImagePlus size={16} /> {t('brandingChooseImage')}
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => run(deleteBrandingIcon, 'iconReset')}
+              disabled={saving || !branding.has_custom_icon}
+            >
+              <RotateCcw size={16} /> {t('reset')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {(branding.has_custom_title || branding.has_custom_icon) && (
+        <button
+          className="branding-reset-all"
+          disabled={saving}
+          onClick={() => run(resetBranding, 'brandingReset')}
+        >
+          {t('brandingResetAll')}
+        </button>
+      )}
+      {status && !status.startsWith('error:') && <p className="status-success">{t(status)}</p>}
+      {status.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
+
+      {cropUrl && (
+        <IconCropModal
+          sourceUrl={cropUrl}
+          saving={saving}
+          onCancel={() => { URL.revokeObjectURL(cropUrl); setCropUrl(''); }}
+          onSave={saveIcon}
+        />
+      )}
+    </div>
+  );
+}
+
 function AppearanceSection() {
-  const { theme, colourTheme, background, language, currency, t, updateSettings } = useApp();
+  const { user, theme, colourTheme, background, language, currency, t, updateSettings } = useApp();
   const [mobilePicker, setMobilePicker] = useState(null);
   const normalizedBackground = normalizeBackgroundId(background);
   const selectedTheme = COLOUR_THEMES.find(ct => ct.id === colourTheme) || COLOUR_THEMES[0];
@@ -270,6 +509,7 @@ function AppearanceSection() {
   return (
     <div className="settings-section">
       <h3 className="section-heading">{t('appearance')}</h3>
+      {user?.is_admin && <BrandingSettings />}
 
       <div className="appearance-mobile-options">
         <button className="appearance-option-row" onClick={() => setMobilePicker('themes')}>

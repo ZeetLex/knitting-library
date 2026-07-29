@@ -9,6 +9,7 @@ from importlib import import_module
 SERVICE_MODULES = [
     "app.core.foundation",
     "app.core.service",
+    "app.core.branding",
     "app.core.static",
     "app.auth.service",
     "app.admin.service",

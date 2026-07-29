@@ -8,6 +8,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../utils/AppContext';
 import { verify2FAChallenge, forgotPassword } from '../utils/api';
+import AppBrand from '../components/AppBrand';
 import './LoginPage.css';
 
 export default function LoginPage() {
@@ -98,8 +99,7 @@ export default function LoginPage() {
       <div className="login-page">
         <div className="login-card">
           <div className="login-logo">
-            <span className="login-logo-icon">🧶</span>
-            <h1 className="login-app-name">Knitting Library</h1>
+            <AppBrand variant="login" />
           </div>
           <p className="login-subtitle">{t('forgotPassword')}</p>
           {forgotSent ? (
@@ -144,8 +144,7 @@ export default function LoginPage() {
       <div className="login-page">
         <div className="login-card">
           <div className="login-logo">
-            <span className="login-logo-icon">🧶</span>
-            <h1 className="login-app-name">Knitting Library</h1>
+            <AppBrand variant="login" />
           </div>
           <p className="login-subtitle">Two-factor authentication</p>
           <p className="login-2fa-hint">
@@ -195,8 +194,7 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <span className="login-logo-icon">🧶</span>
-          <h1 className="login-app-name">Knitting Library</h1>
+          <AppBrand variant="login" />
         </div>
         <p className="login-subtitle">Sign in to your library</p>
         <form className="login-form" onSubmit={handleSubmit}>

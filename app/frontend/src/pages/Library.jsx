@@ -13,8 +13,37 @@ import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchCategories, fetchTags, deleteRecipe, bulkUpdateRecipes } from '../utils/api';
 import './Library.css';
 
+const LIBRARY_RETURN_PREFIX = 'library_return_state_v1';
+
+function libraryReturnKey(user) {
+  return `${LIBRARY_RETURN_PREFIX}_${user?.id || user?.username || 'guest'}`;
+}
+
+function readLibraryReturnState(user) {
+  try {
+    const raw = sessionStorage.getItem(libraryReturnKey(user));
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    return {
+      search: typeof saved.search === 'string' ? saved.search : '',
+      category: typeof saved.category === 'string' ? saved.category : '',
+      activeTags: Array.isArray(saved.activeTags)
+        ? saved.activeTags.filter(tag => typeof tag === 'string')
+        : [],
+      statusFilter: typeof saved.statusFilter === 'string' ? saved.statusFilter : '',
+      filtersOpen: Boolean(saved.filtersOpen),
+      currentPage: Math.max(1, Number.parseInt(saved.currentPage, 10) || 1),
+      scrollY: Math.max(0, Number(saved.scrollY) || 0),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const { t, user } = useApp();
+  const [returnState] = useState(() => readLibraryReturnState(user));
+  const pendingReturnState = useRef(returnState);
 
   const GRID_SIZES = {
     small:  { label: t('gridSmall'),  icon: <Grid2X2 size={16} />,    cols: 'grid-small'  },
@@ -33,10 +62,10 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   const [totalCount, setTotalCount]   = useState(0);
 
   // ── Filters ───────────────────────────────────────────────────────────────
-  const [search, setSearch]           = useState('');
-  const [category, setCategory]       = useState('');
-  const [activeTags, setActiveTags]   = useState([]);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch]           = useState(() => returnState?.search || '');
+  const [category, setCategory]       = useState(() => returnState?.category || '');
+  const [activeTags, setActiveTags]   = useState(() => returnState?.activeTags || []);
+  const [statusFilter, setStatusFilter] = useState(() => returnState?.statusFilter || '');
   const [categories, setCategories]   = useState([]);
   const [allTags, setAllTags]         = useState([]);
   const sortStorageKey = `library_recipe_sort_${user?.id || user?.username || 'guest'}`;
@@ -74,7 +103,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
       return 'medium';
     }
   });
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(() => returnState?.filtersOpen || false);
 
   useEffect(() => {
     try {
@@ -156,24 +185,41 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
   }, []);
 
   // ── Scroll restoration ────────────────────────────────────────────────────
-  const SCROLL_KEY = 'library_scroll_y';
-
-  // Save scroll position when a recipe card is opened, then restore it on return
+  // Save the complete list context when a recipe card is opened. Library is
+  // unmounted while the viewer is shown, so component state alone cannot retain
+  // filters or the number of result pages that had been loaded.
   const handleRecipeClick = useCallback((id) => {
-    sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    try {
+      sessionStorage.setItem(libraryReturnKey(user), JSON.stringify({
+        search,
+        category,
+        activeTags,
+        statusFilter,
+        filtersOpen,
+        currentPage,
+        scrollY: window.scrollY,
+      }));
+    } catch (_) {}
     onRecipeClick(id);
-  }, [onRecipeClick]);
+  }, [
+    user,
+    search,
+    category,
+    activeTags,
+    statusFilter,
+    filtersOpen,
+    currentPage,
+    onRecipeClick,
+  ]);
 
-  // Restore scroll after the recipe list has loaded and been painted
+  // Restore scroll after the same filtered result pages have loaded and painted.
   useEffect(() => {
-    if (!loading && recipes.length > 0) {
-      const saved = sessionStorage.getItem(SCROLL_KEY);
-      if (saved) {
-        sessionStorage.removeItem(SCROLL_KEY);
-        // Wait one animation frame so the grid is fully painted before scrolling
-        requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)));
-      }
-    }
+    if (loading || !pendingReturnState.current) return;
+    const saved = pendingReturnState.current;
+    pendingReturnState.current = null;
+    try { sessionStorage.removeItem(libraryReturnKey(user)); } catch (_) {}
+    // Wait one animation frame so the rebuilt grid is fully painted.
+    requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
   }, [loading]); // intentionally omits recipes.length — only run after load completes
 
   // ── Selection state ───────────────────────────────────────────────────────
@@ -211,10 +257,24 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
     setSelectedIds(new Set());
     setDeleteConfirm(false);
     try {
-      const data = await fetchRecipes({ search, category, tags: activeTags, status: statusFilter, sort: sortBy, page: 1 });
-      setRecipes(data.recipes);
-      setTotalPages(data.pages);
-      setTotalCount(data.total);
+      const requestedPages = pendingReturnState.current?.currentPage || 1;
+      const pageResults = await Promise.all(
+        Array.from({ length: requestedPages }, (_, index) => (
+          fetchRecipes({
+            search,
+            category,
+            tags: activeTags,
+            status: statusFilter,
+            sort: sortBy,
+            page: index + 1,
+          })
+        ))
+      );
+      const firstPage = pageResults[0];
+      setRecipes(pageResults.flatMap(result => result.recipes));
+      setCurrentPage(Math.min(requestedPages, firstPage.pages));
+      setTotalPages(firstPage.pages);
+      setTotalCount(firstPage.total);
     } catch (e) {
       setError('Could not load recipes. Make sure the server is running.');
     } finally {

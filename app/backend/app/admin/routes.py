@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.admin import service as services
+from app.core import branding
 
 router = APIRouter()
 
@@ -25,5 +26,9 @@ router.add_api_route('/api/admin/2fa/status', services.get_2fa_status, methods=[
 router.add_api_route('/api/admin/2fa/{user_id}', services.admin_reset_2fa, methods=['DELETE'])  # legacy line 7170
 router.add_api_route('/api/admin/announcements', services.create_announcement, methods=['POST'])  # legacy line 7359
 router.add_api_route('/api/admin/announcements', services.list_announcements, methods=['GET'])  # legacy line 7396
+router.add_api_route('/api/admin/branding', branding.update_branding_title, methods=['PUT'])
+router.add_api_route('/api/admin/branding/icon', branding.upload_branding_icon, methods=['POST'])
+router.add_api_route('/api/admin/branding/icon', branding.delete_branding_icon, methods=['DELETE'])
+router.add_api_route('/api/admin/branding/reset', branding.reset_branding, methods=['POST'])
 router.add_api_route('/api/announcements/pending', services.get_pending_announcements, methods=['GET'])  # legacy line 7407
 router.add_api_route('/api/announcements/{ann_id}/dismiss', services.dismiss_announcement, methods=['POST'])  # legacy line 7423
