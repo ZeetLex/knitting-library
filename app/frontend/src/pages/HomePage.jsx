@@ -6,6 +6,7 @@ import {
 import { useApp } from '../utils/AppContext';
 import { fetchRecipes, fetchStats, thumbnailUrl } from '../utils/api';
 import { getLanguageLocale } from '../utils/translations';
+import AppBrand from '../components/AppBrand';
 import './HomePage.css';
 
 function fmtDate(iso, language) {
@@ -185,11 +186,7 @@ export default function HomePage({ onOpenRecipe, onNavigate, onAddRecipe, latest
       <section className="home-hero">
         <MobileLatestRelease release={latestRelease} />
         <div className="home-brand-hero">
-          <img className="home-brand-logo" src="/brand-logo.png" alt="" aria-hidden="true" />
-          <div className="home-wordmark">
-            <span>Knitting</span>
-            <span>Library</span>
-          </div>
+          <AppBrand variant="home" />
         </div>
         <div className="home-botanical home-botanical--desktop" aria-hidden="true">
           <span className="home-stem home-stem--one" />

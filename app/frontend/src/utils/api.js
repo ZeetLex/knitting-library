@@ -55,6 +55,61 @@ export async function fetchRecipes({ search='', category='', tags=[], status='',
   // Returns { recipes, total, page, per_page, pages }
   return res.json();
 }
+
+// ── Instance branding ────────────────────────────────────────────────────────
+export async function fetchBranding() {
+  const res = await fetch(`${API_BASE}/branding`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to load app branding');
+  return res.json();
+}
+
+export async function saveBrandingTitle(title) {
+  const res = await fetch(`${API_BASE}/admin/branding`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ title }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save app title');
+  return data;
+}
+
+export async function uploadBrandingIcon(blob) {
+  const form = new FormData();
+  form.append('icon', blob, 'app-icon.png');
+  const res = await fetch(`${API_BASE}/admin/branding/icon`, {
+    method: 'POST',
+    headers: authHeaders(),
+    credentials: 'include',
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to save app icon');
+  return data;
+}
+
+export async function deleteBrandingIcon() {
+  const res = await fetch(`${API_BASE}/admin/branding/icon`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reset app icon');
+  return data;
+}
+
+export async function resetBranding() {
+  const res = await fetch(`${API_BASE}/admin/branding/reset`, {
+    method: 'POST',
+    headers: authHeaders(),
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to reset app branding');
+  return data;
+}
 export async function fetchRecipe(id) {
   const res = await fetch(`${API_BASE}/recipes/${id}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Recipe not found');

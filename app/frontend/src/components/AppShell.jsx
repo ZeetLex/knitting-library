@@ -5,19 +5,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
+import AppBrand from './AppBrand';
 import './AppShell.css';
-
-function BrandMark({ compact = false }) {
-  return (
-    <div className={`app-brand ${compact ? 'app-brand--compact' : ''}`}>
-      <img className="app-brand-logo" src="/brand-logo.png" alt="" aria-hidden="true" />
-      <div className="app-brand-text">
-        <span className="app-brand-main">Knitting</span>
-        <span className="app-brand-sub">Library</span>
-      </div>
-    </div>
-  );
-}
 
 function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAddTool }) {
   const { t } = useApp();
@@ -358,7 +347,7 @@ function MobileNav({
 }
 
 function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
-  const { t } = useApp();
+  const { t, branding } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
     { key: 'recipes', icon: <BookOpen size={19} />, label: t('tabRecipes') },
@@ -373,8 +362,8 @@ function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapse
   return (
     <aside className={`desktop-sidebar ${collapsed ? 'desktop-sidebar--collapsed' : ''}`}>
       <div className="desktop-sidebar-top">
-        <button className="desktop-brand-button" onClick={() => onNavigate('home')} title={collapsed ? 'Knitting Library' : undefined}>
-          <BrandMark compact={collapsed} />
+        <button className="desktop-brand-button" onClick={() => onNavigate('home')} title={collapsed ? branding.title : undefined}>
+          <AppBrand compact={collapsed} />
         </button>
         <button
           className="desktop-sidebar-toggle"

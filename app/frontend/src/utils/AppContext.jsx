@@ -9,8 +9,18 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { isSupportedLanguage, useT } from './translations';
+import { fetchBranding } from './api';
 
 const AppContext = createContext(null);
+const DEFAULT_BRANDING = {
+  title: 'Knitting Library',
+  icon_url: '/brand-logo.png',
+  favicon_url: '/favicon-32.png',
+  apple_touch_icon_url: '/apple-touch-icon.png',
+  has_custom_title: false,
+  has_custom_icon: false,
+  version: 'default',
+};
 
 // Map currency code → symbol
 export const CURRENCY_SYMBOLS = { NOK: 'kr', USD: '$', GBP: '£', HUF: 'Ft', EUR: '€' };
@@ -52,6 +62,8 @@ export function AppProvider({ children }) {
   const [language, setLanguage]       = useState('en');
   const [currency, setCurrency]       = useState('NOK');
   const [loading, setLoading]         = useState(true);
+  const [brandingLoading, setBrandingLoading] = useState(true);
+  const [branding, setBranding]       = useState(DEFAULT_BRANDING);
   const [setupRequired, setSetupRequired] = useState(false);
 
   const t = useT(language);
@@ -72,6 +84,39 @@ export function AppProvider({ children }) {
   useEffect(() => {
     document.documentElement.setAttribute('data-background', background);
   }, [background]);
+
+  const applyBranding = useCallback((next) => {
+    setBranding({ ...DEFAULT_BRANDING, ...(next || {}) });
+  }, []);
+
+  const refreshBranding = useCallback(async () => {
+    const next = await fetchBranding();
+    applyBranding(next);
+    return next;
+  }, [applyBranding]);
+
+  useEffect(() => {
+    refreshBranding()
+      .catch(() => applyBranding(DEFAULT_BRANDING))
+      .finally(() => setBrandingLoading(false));
+  }, [refreshBranding, applyBranding]);
+
+  useEffect(() => {
+    document.title = branding.title || DEFAULT_BRANDING.title;
+    const updateLink = (id, rel, href, sizes) => {
+      let link = document.getElementById(id);
+      if (!link) {
+        link = document.createElement('link');
+        link.id = id;
+        link.rel = rel;
+        document.head.appendChild(link);
+      }
+      link.href = href;
+      if (sizes) link.sizes = sizes;
+    };
+    updateLink('app-favicon', 'icon', branding.favicon_url, '32x32');
+    updateLink('app-apple-touch-icon', 'apple-touch-icon', branding.apple_touch_icon_url, '180x180');
+  }, [branding]);
 
   useEffect(() => {
     const token = localStorage.getItem('knitting_token');
@@ -162,7 +207,8 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       user, theme, colourTheme, background, language, currency, currencySymbol, t,
-      loading, setupRequired, login, logout, updateSettings
+      branding, refreshBranding, applyBranding,
+      loading: loading || brandingLoading, setupRequired, login, logout, updateSettings
     }}>
       {children}
     </AppContext.Provider>

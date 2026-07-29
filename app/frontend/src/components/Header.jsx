@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Settings, BarChart2, HelpCircle, ChevronDown, FolderDown, FileUp, Menu, X } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
+import AppBrand from './AppBrand';
 import './Header.css';
 
 export default function Header({
@@ -11,7 +12,7 @@ export default function Header({
   // Sub-tab props — only used when activeTab === 'yarns'
   yarnSubTab, onYarnSubTabChange,
 }) {
-  const { t } = useApp();
+  const { t, branding } = useApp();
   const showSubTabs = activeTab === 'yarns';
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef(null);
@@ -48,12 +49,8 @@ export default function Header({
     <header className={`header ${showSubTabs ? 'header--with-subtabs' : ''}`} ref={mobileMenuRef}>
       {/* ── Main row ── */}
       <div className="header-inner">
-        <button className="header-logo" onClick={onLogoClick} aria-label={t('headerGoToLibrary')}>
-          <span className="header-logo-icon">🧶</span>
-          <span className="header-logo-text">
-            <span className="header-logo-main">{t('appLogoMain')}</span>
-            <span className="header-logo-sub">{t('appLogoSub')}</span>
-          </span>
+        <button className="header-logo" onClick={onLogoClick} aria-label={`${branding.title}: ${t('headerGoToLibrary')}`}>
+          <AppBrand variant="header" />
         </button>
 
         {/* Desktop tabs — hidden on mobile */}

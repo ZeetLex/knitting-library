@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../utils/AppContext';
 import { createFirstAdmin } from '../utils/api';
+import AppBrand from '../components/AppBrand';
 import './LoginPage.css';
 
 export default function SetupPage() {
@@ -40,8 +41,7 @@ export default function SetupPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <span className="login-logo-icon">🧶</span>
-          <h1 className="login-app-name">Knitting Library</h1>
+          <AppBrand variant="login" />
         </div>
         <p className="login-subtitle">Create your first admin account</p>
         <form className="login-form" onSubmit={handleSubmit}>

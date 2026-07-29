@@ -1450,6 +1450,11 @@ def export_library(current_user: dict = Depends(get_current_user)):
                         for file in d.rglob("*"):
                             if file.is_file():
                                 zf.write(str(file), arcname=f"{prefix}/{file.relative_to(directory)}")
+        branding_dir = Path("/data/branding")
+        if branding_dir.exists():
+            for file in branding_dir.iterdir():
+                if file.is_file():
+                    zf.write(str(file), arcname=f"branding/{file.name}")
     buf.seek(0)
     filename = f"knitting-library-export-{datetime.now().strftime('%Y-%m-%d')}.zip"
     return StreamingResponse(
