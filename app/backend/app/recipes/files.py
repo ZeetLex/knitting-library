@@ -1,38 +1,396 @@
 """Recipe file, image, PDF, thumbnail, and text-version handlers."""
 from app.core.foundation import *
 from app.auth.service import get_current_user, require_admin, _verify_token_param
+import threading
+import hmac
+import functools
+import asyncio
+from starlette.background import BackgroundTask
+
+GENERATED_PDF_MANIFEST = ".generated-pdf.json"
+PDF_PAGES_DIR = "pdf-pages"
+PDF_PAGES_MANIFEST = ".pdf-identity.json"
+MAX_IMAGE_PDF_PAGES = 80
+MAX_IMAGE_PDF_SOURCE_PIXELS = 50_000_000
+MAX_IMAGE_PDF_PIXELS = 80_000_000
+MAX_ADD_IMAGE_FILES = 80
+MAX_ADD_IMAGE_TOTAL_BYTES = 200 * 1024 * 1024
+MAX_PDF_RENDER_PAGES = 200
+MAX_PDF_RENDER_OUTPUT_BYTES = 500 * 1024 * 1024
+MAX_PDF_RENDER_DECODED_PIXELS = 300_000_000
+MAX_PDF_RENDER_TEMP_BYTES = 1024 * 1024 * 1024
+MAX_PDF_RENDER_SECONDS = 120
+IMAGE_PDF_CONVERSION_LOCK = threading.RLock()
+
+
+def _serialized_recipe_source_mutation(func):
+    """Serialize source mutations with generated-PDF conversion/publication."""
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        with IMAGE_PDF_CONVERSION_LOCK:
+            return func(*args, **kwargs)
+    return wrapped
+
+
+def _source_image_names(recipe_dir: Path, image_order_json: str = "") -> list[str]:
+    """Return editable source images in their saved display order."""
+    if not recipe_dir.exists():
+        return []
+    image_names = sorted(
+        path.name
+        for path in recipe_dir.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in IMAGE_EXTS
+        and path.name != "thumbnail.jpg"
+    )
+    if not image_order_json:
+        return image_names
+    try:
+        saved_order = json.loads(image_order_json)
+        if not isinstance(saved_order, list):
+            return image_names
+        existing = set(image_names)
+        ordered = [name for name in saved_order if isinstance(name, str) and name in existing]
+        ordered_set = set(ordered)
+        ordered.extend(name for name in image_names if name not in ordered_set)
+        return ordered
+    except (TypeError, json.JSONDecodeError):
+        return image_names
+
+
+def _discover_pdf_pages(recipe_dir: Path) -> list[Path]:
+    """Return only page artifacts bound to the current PDF identity."""
+    with IMAGE_PDF_CONVERSION_LOCK:
+        isolated_dir = recipe_dir / PDF_PAGES_DIR
+        if isolated_dir.is_dir():
+            if not _pdf_page_dir_matches_pdf(recipe_dir, isolated_dir):
+                return []
+            return sorted(isolated_dir.glob("page-*.jpg"))
+        if not _pdf_page_dir_matches_pdf(recipe_dir, recipe_dir):
+            return []
+        return sorted(recipe_dir.glob("page-*.jpg"))
+
+
+def _normalise_pdf_page(path: Path):
+    from PIL import Image as PILImage, ImageOps
+
+    try:
+        with PILImage.open(path) as source:
+            if source.width * source.height > MAX_IMAGE_PDF_SOURCE_PIXELS:
+                raise ValueError(f"Could not read image {path.name}: source image is too large")
+            source.draft("RGB", (2200, 3100))
+            image = ImageOps.exif_transpose(source)
+            if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+                rgba = image.convert("RGBA")
+                flattened = PILImage.new("RGB", rgba.size, "white")
+                flattened.paste(rgba, mask=rgba.getchannel("A"))
+                image = flattened
+            else:
+                image = image.convert("RGB")
+            image.thumbnail((2200, 3100), PILImage.Resampling.LANCZOS)
+            return image.copy()
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"Could not read image {path.name}: {exc}") from exc
+
+
+def _convert_images_to_pdf(recipe_dir: Path, image_names: list[str]) -> Path:
+    """Build recipe.pdf atomically from ordered source images."""
+    if not image_names:
+        raise ValueError("No source images found")
+    if len(image_names) > MAX_IMAGE_PDF_PAGES:
+        raise ValueError(f"A PDF can contain at most {MAX_IMAGE_PDF_PAGES} pages")
+    temp_pdf = recipe_dir / "recipe.pdf.tmp"
+    final_pdf = recipe_dir / "recipe.pdf"
+    pages = []
+    total_pixels = 0
+    try:
+        for name in image_names:
+            safe_name = Path(name).name
+            if safe_name != name or Path(name).suffix.lower() not in IMAGE_EXTS:
+                raise ValueError(f"Invalid image filename: {name}")
+            path = recipe_dir / safe_name
+            if not path.is_file():
+                raise ValueError(f"Image not found: {safe_name}")
+            page = _normalise_pdf_page(path)
+            total_pixels += page.width * page.height
+            if total_pixels > MAX_IMAGE_PDF_PIXELS:
+                page.close()
+                raise ValueError("Recipe images are too large to convert safely")
+            pages.append(page)
+        pages[0].save(
+            temp_pdf,
+            format="PDF",
+            save_all=True,
+            append_images=pages[1:],
+            resolution=150,
+            quality=92,
+        )
+        with temp_pdf.open("rb") as handle:
+            os.fsync(handle.fileno())
+        from pdf2image import pdfinfo_from_path
+        page_count = int(pdfinfo_from_path(str(temp_pdf)).get("Pages", 0))
+        if page_count != len(pages):
+            raise ValueError(f"Generated PDF has {page_count} pages; expected {len(pages)}")
+        os.replace(temp_pdf, final_pdf)
+        return final_pdf
+    except Exception:
+        temp_pdf.unlink(missing_ok=True)
+        raise
+    finally:
+        for page in pages:
+            page.close()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _pdf_identity(pdf_path: Path) -> dict:
+    stat = pdf_path.stat()
+    return {"sha256": _file_sha256(pdf_path), "size": stat.st_size}
+
+
+def _pdf_page_dir_matches_pdf(recipe_dir: Path, pages_dir: Path) -> bool:
+    manifest = pages_dir / PDF_PAGES_MANIFEST
+    pdf_path = recipe_dir / "recipe.pdf"
+    if not manifest.is_file() or not pdf_path.is_file():
+        return False
+    try:
+        expected = json.loads(manifest.read_text(encoding="utf-8"))
+        return isinstance(expected, dict) and expected == _pdf_identity(pdf_path)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _generated_manifest_matches_pdf(recipe_dir: Path) -> bool:
+    pdf_path = recipe_dir / "recipe.pdf"
+    manifest_path = recipe_dir / GENERATED_PDF_MANIFEST
+    if not pdf_path.is_file() or not manifest_path.is_file():
+        return False
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        identity = payload.get("pdf_identity") if isinstance(payload, dict) else None
+        if not isinstance(identity, dict):
+            return False
+        expected_hash = identity.get("sha256")
+        expected_size = identity.get("size")
+        if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+            return False
+        if not isinstance(expected_size, int) or expected_size < 1:
+            return False
+        stat = pdf_path.stat()
+        return stat.st_size == expected_size and hmac.compare_digest(_file_sha256(pdf_path), expected_hash)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _remove_generated_pdf_unlocked(recipe_dir: Path) -> bool:
+    if not _generated_manifest_matches_pdf(recipe_dir):
+        return False
+    manifest = recipe_dir / GENERATED_PDF_MANIFEST
+    (recipe_dir / "recipe.pdf").unlink(missing_ok=True)
+    manifest.unlink(missing_ok=True)
+    shutil.rmtree(recipe_dir / PDF_PAGES_DIR, ignore_errors=True)
+    return True
+
+
+def _invalidate_generated_pdf(recipe_dir: Path) -> bool:
+    """Remove stale derived PDF assets, but never remove a manually supplied PDF."""
+    with IMAGE_PDF_CONVERSION_LOCK:
+        return _remove_generated_pdf_unlocked(recipe_dir)
+
+
+def _write_generated_pdf_manifest(recipe_dir: Path, image_names: list[str]) -> None:
+    fingerprint = hashlib.sha256()
+    for name in image_names:
+        path = recipe_dir / name
+        stat = path.stat()
+        fingerprint.update(f"{name}:{stat.st_size}:{stat.st_mtime_ns}|".encode())
+    payload = {
+        "source_fingerprint": fingerprint.hexdigest(),
+        "pdf_identity": _pdf_identity(recipe_dir / "recipe.pdf"),
+        "images": image_names,
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+    temp = recipe_dir / f"{GENERATED_PDF_MANIFEST}.tmp"
+    temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    os.replace(temp, recipe_dir / GENERATED_PDF_MANIFEST)
+
+
+def _pdf_is_app_generated(recipe_dir: Path) -> bool:
+    return _generated_manifest_matches_pdf(recipe_dir)
+
 
 def _convert_pdf_to_pages(recipe_dir: Path):
     """Convert recipe.pdf to page-001.jpg, page-002.jpg, etc.
-    Intentionally single-threaded so the function is fully synchronous —
-    using thread_count>1 causes convert_from_path to return before worker
-    threads finish writing files, creating a race condition."""
+    Poppler writes directly into a staging directory so multi-page PDFs are not
+    retained as a large list of decoded images in backend memory."""
+    with IMAGE_PDF_CONVERSION_LOCK:
+        return _convert_pdf_to_pages_unlocked(recipe_dir)
+
+
+def _convert_pdf_to_pages_unlocked(recipe_dir: Path):
     pdf_path = recipe_dir / "recipe.pdf"
     if not pdf_path.exists():
-        return
+        return []
+    source_identity = _pdf_identity(pdf_path)
+    temp_dir = None
+    old_output = None
     try:
-        from pdf2image import convert_from_path
-        pages = convert_from_path(str(pdf_path), dpi=200, fmt="jpeg")
-        for i, page in enumerate(pages):
-            out = recipe_dir / f"page-{i+1:03d}.jpg"
-            with open(str(out), "wb") as f:
-                page.save(f, "JPEG", quality=90)
+        from pdf2image import convert_from_path, pdfinfo_from_path
+        output_dir = recipe_dir / PDF_PAGES_DIR
+        page_count = int(pdfinfo_from_path(str(pdf_path)).get("Pages", 0))
+        if page_count < 1 or page_count > MAX_PDF_RENDER_PAGES:
+            return []
+        temp_dir = recipe_dir / f".{PDF_PAGES_DIR}-{uuid.uuid4().hex}.tmp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        rendered_paths = convert_from_path(
+            str(pdf_path),
+            dpi=180,
+            fmt="jpeg",
+            jpegopt={"quality": 90},
+            output_folder=str(temp_dir),
+            output_file="rendered",
+            paths_only=True,
+            thread_count=1,
+            timeout=MAX_PDF_RENDER_SECONDS,
+        )
+        for i, rendered_path in enumerate(rendered_paths):
+            out = temp_dir / f"page-{i+1:03d}.jpg"
+            os.replace(rendered_path, out)
+            with out.open("rb") as f:
                 f.flush()
                 os.fsync(f.fileno())
         # Retry pages that are suspiciously small — indicates a blank render
         # from a poppler font-cache miss on first conversion.
-        blank = [i+1 for i in range(len(pages)) if (recipe_dir / f"page-{i+1:03d}.jpg").stat().st_size < 10_000]
+        blank = [i+1 for i in range(len(rendered_paths)) if (temp_dir / f"page-{i+1:03d}.jpg").stat().st_size < 10_000]
         for page_num in blank:
-            retry = convert_from_path(str(pdf_path), dpi=250, first_page=page_num, last_page=page_num, fmt="jpeg")
+            retry = convert_from_path(
+                str(pdf_path), dpi=250, first_page=page_num, last_page=page_num,
+                fmt="jpeg", timeout=MAX_PDF_RENDER_SECONDS,
+            )
             if retry:
-                out = recipe_dir / f"page-{page_num:03d}.jpg"
+                out = temp_dir / f"page-{page_num:03d}.jpg"
                 with open(str(out), "wb") as f:
                     retry[0].save(f, "JPEG", quality=90)
                     f.flush()
                     os.fsync(f.fileno())
-        print(f"PDF converted: {len(pages)} pages → {recipe_dir}")
+        temp_bytes = sum(path.stat().st_size for path in temp_dir.iterdir() if path.is_file())
+        output_bytes = sum(path.stat().st_size for path in temp_dir.glob("page-*.jpg"))
+        decoded_pixels = 0
+        from PIL import Image as PILImage
+        for page_path in temp_dir.glob("page-*.jpg"):
+            with PILImage.open(page_path) as image:
+                decoded_pixels += image.width * image.height
+        if (
+            temp_bytes > MAX_PDF_RENDER_TEMP_BYTES
+            or output_bytes > MAX_PDF_RENDER_OUTPUT_BYTES
+            or decoded_pixels > MAX_PDF_RENDER_DECODED_PIXELS
+        ):
+            raise ValueError("Rendered PDF pages exceed resource limits")
+        if not pdf_path.is_file() or _pdf_identity(pdf_path) != source_identity:
+            raise RuntimeError("PDF changed while pages were being rendered")
+        (temp_dir / PDF_PAGES_MANIFEST).write_text(json.dumps(source_identity), encoding="utf-8")
+        old_output = recipe_dir / f".{PDF_PAGES_DIR}-{uuid.uuid4().hex}.old"
+        if output_dir.exists():
+            os.replace(output_dir, old_output)
+        os.replace(temp_dir, output_dir)
+        shutil.rmtree(old_output, ignore_errors=True)
+        print(f"PDF converted: {len(rendered_paths)} pages → {output_dir}")
+        return sorted(output_dir.glob("page-*.jpg"))
     except Exception as e:
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        if old_output is not None and old_output.exists() and not (recipe_dir / PDF_PAGES_DIR).exists():
+            os.replace(old_output, recipe_dir / PDF_PAGES_DIR)
         print(f"PDF conversion failed: {e}")
+        return []
+
+
+def _pdf_pages_signature(path: Path) -> list[tuple[str, int]]:
+    if not path.is_dir():
+        return []
+    return [(page.name, page.stat().st_size) for page in sorted(path.glob("page-*.jpg"))]
+
+
+def _create_generated_pdf_backup(recipe_dir: Path) -> Optional[Path]:
+    """Create and verify a complete backup before exposing it to rollback code."""
+    if not _pdf_is_app_generated(recipe_dir):
+        return None
+    staging = recipe_dir / f".pdf-conversion-backup-{uuid.uuid4().hex}.tmp"
+    backup = recipe_dir / staging.name.removesuffix(".tmp")
+    try:
+        staging.mkdir()
+        shutil.copy2(recipe_dir / "recipe.pdf", staging / "recipe.pdf")
+        shutil.copy2(recipe_dir / GENERATED_PDF_MANIFEST, staging / GENERATED_PDF_MANIFEST)
+        pages = recipe_dir / PDF_PAGES_DIR
+        if pages.is_dir():
+            shutil.copytree(pages, staging / PDF_PAGES_DIR)
+        if not _generated_manifest_matches_pdf(staging):
+            raise RuntimeError("Generated PDF backup identity verification failed")
+        if _pdf_pages_signature(pages) != _pdf_pages_signature(staging / PDF_PAGES_DIR):
+            raise RuntimeError("Generated PDF page backup verification failed")
+        if pages.is_dir() and not _pdf_page_dir_matches_pdf(staging, staging / PDF_PAGES_DIR):
+            raise RuntimeError("Generated PDF page identity backup verification failed")
+        os.replace(staging, backup)
+        return backup
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def _restore_generated_pdf_backup(recipe_dir: Path, backup: Path) -> bool:
+    """Restore from a verified staging copy; retain backup on any failure."""
+    staging = recipe_dir / f".pdf-conversion-restore-{uuid.uuid4().hex}.tmp"
+    old_pages = recipe_dir / f".{PDF_PAGES_DIR}-{uuid.uuid4().hex}.restore-old"
+    try:
+        shutil.copytree(backup, staging)
+        if not _generated_manifest_matches_pdf(staging):
+            raise RuntimeError("Generated PDF restore identity verification failed")
+        expected_pages = _pdf_pages_signature(staging / PDF_PAGES_DIR)
+        os.replace(staging / "recipe.pdf", recipe_dir / "recipe.pdf")
+        os.replace(staging / GENERATED_PDF_MANIFEST, recipe_dir / GENERATED_PDF_MANIFEST)
+        output_pages = recipe_dir / PDF_PAGES_DIR
+        if output_pages.exists():
+            os.replace(output_pages, old_pages)
+        if (staging / PDF_PAGES_DIR).is_dir():
+            os.replace(staging / PDF_PAGES_DIR, output_pages)
+        if not _generated_manifest_matches_pdf(recipe_dir):
+            raise RuntimeError("Restored generated PDF identity does not match")
+        if expected_pages != _pdf_pages_signature(output_pages):
+            raise RuntimeError("Restored generated PDF pages do not match")
+        if output_pages.is_dir() and not _pdf_page_dir_matches_pdf(recipe_dir, output_pages):
+            raise RuntimeError("Restored generated PDF page identity does not match")
+        shutil.rmtree(old_pages, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
+        return True
+    except Exception as exc:
+        # A restore spans three filesystem entries and cannot be published as
+        # one atomic rename. If any publication step fails, expose none of the
+        # set rather than a PDF, manifest, and pages from different identities.
+        (recipe_dir / "recipe.pdf").unlink(missing_ok=True)
+        (recipe_dir / GENERATED_PDF_MANIFEST).unlink(missing_ok=True)
+        shutil.rmtree(recipe_dir / PDF_PAGES_DIR, ignore_errors=True)
+        shutil.rmtree(old_pages, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
+        print(f"Generated PDF rollback backup retained at {backup}: {exc}")
+        return False
+
+
+def _rollback_generated_pdf_conversion(recipe_dir: Path, backup: Optional[Path]) -> None:
+    if backup is not None:
+        if _restore_generated_pdf_backup(recipe_dir, backup):
+            shutil.rmtree(backup, ignore_errors=True)
+        return
+    (recipe_dir / "recipe.pdf").unlink(missing_ok=True)
+    (recipe_dir / GENERATED_PDF_MANIFEST).unlink(missing_ok=True)
+    shutil.rmtree(recipe_dir / PDF_PAGES_DIR, ignore_errors=True)
 
 
 def _generate_thumbnail(recipe_dir: Path, file_type: str) -> str:
@@ -105,12 +463,32 @@ def get_thumbnail(recipe_id: str, request: Request, token: Optional[str] = None)
     raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 
+def _pdf_snapshot_response(pdf_path: Path, media_type: str, headers: Optional[dict] = None) -> FileResponse:
+    """Serve an immutable PDF copy so lazy response reads cannot race replacement."""
+    snapshot_dir = None
+    try:
+        with IMAGE_PDF_CONVERSION_LOCK:
+            if not pdf_path.is_file():
+                raise HTTPException(status_code=404, detail="PDF not found")
+            snapshot_dir = Path(tempfile.mkdtemp(prefix="knitting-pdf-download-"))
+            snapshot = snapshot_dir / "recipe.pdf"
+            shutil.copy2(pdf_path, snapshot)
+        return FileResponse(
+            str(snapshot),
+            media_type=media_type,
+            headers=headers,
+            background=BackgroundTask(shutil.rmtree, snapshot_dir, ignore_errors=True),
+        )
+    except Exception:
+        if snapshot_dir is not None:
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
+        raise
+
+
 def get_pdf(recipe_id: str, request: Request, token: Optional[str] = None):
     _verify_token_param(request, token)
     pdf = DATA_DIR / recipe_id / "recipe.pdf"
-    if pdf.exists():
-        return FileResponse(str(pdf), media_type="application/pdf")
-    raise HTTPException(status_code=404, detail="PDF not found")
+    return _pdf_snapshot_response(pdf, media_type="application/pdf")
 
 
 def get_image(recipe_id: str, filename: str, request: Request, token: Optional[str] = None):
@@ -123,7 +501,7 @@ def get_image(recipe_id: str, filename: str, request: Request, token: Optional[s
 
 
 def get_pdf_pages(recipe_id: str, current_user: dict = Depends(get_current_user)):
-    pages = sorted((DATA_DIR / recipe_id).glob("page-*.jpg"))
+    pages = _discover_pdf_pages(DATA_DIR / recipe_id)
     return {"pages": [p.name for p in pages]}
 
 
@@ -133,16 +511,87 @@ def convert_pdf(recipe_id: str, current_user: dict = Depends(get_current_user)):
     if not (recipe_dir / "recipe.pdf").exists():
         raise HTTPException(status_code=404, detail="No PDF found for this recipe")
     _convert_pdf_to_pages(recipe_dir)
-    pages = sorted(recipe_dir.glob("page-*.jpg"))
+    pages = _discover_pdf_pages(recipe_dir)
     return {"pages": [p.name for p in pages]}
+
+
+def convert_images_to_pdf(recipe_id: str, current_user: dict = Depends(get_current_user)):
+    """Create a non-destructive PDF from an image recipe's saved page order."""
+    conn = get_db()
+    lock_acquired = False
+    conversion_started = False
+    backup_dir = None
+    recipe_dir = DATA_DIR / recipe_id
+    try:
+        lock_acquired = IMAGE_PDF_CONVERSION_LOCK.acquire(blocking=False)
+        if not lock_acquired:
+            raise HTTPException(status_code=429, detail="Another image-to-PDF conversion is already running")
+
+        row = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        if row["file_type"] != "images":
+            raise HTTPException(status_code=400, detail="Recipe is not image-based")
+        image_names = _source_image_names(recipe_dir, row["image_order"] or "")
+        if not image_names:
+            raise HTTPException(status_code=400, detail="No source images found")
+
+        if (recipe_dir / "recipe.pdf").is_file() and not _pdf_is_app_generated(recipe_dir):
+            raise HTTPException(status_code=409, detail="This recipe has a manually supplied PDF that will not be overwritten")
+        backup_dir = _create_generated_pdf_backup(recipe_dir)
+
+        conversion_started = True
+        try:
+            _convert_images_to_pdf(recipe_dir, image_names)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        pages = _convert_pdf_to_pages(recipe_dir)
+        if len(pages) != len(image_names):
+            raise RuntimeError("Could not render every generated PDF page")
+        _write_generated_pdf_manifest(recipe_dir, image_names)
+        from app.recipes.repository import _get_recipe_full
+        recipe = _get_recipe_full(recipe_id, conn, current_user)
+        if backup_dir is not None:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            backup_dir = None
+        return {"status": "converted", "recipe": recipe, "pages": [p.name for p in pages]}
+    except HTTPException:
+        if conversion_started:
+            _rollback_generated_pdf_conversion(recipe_dir, backup_dir)
+            backup_dir = None
+        raise
+    except Exception as exc:
+        if conversion_started:
+            _rollback_generated_pdf_conversion(recipe_dir, backup_dir)
+            backup_dir = None
+        print(f"Image-to-PDF conversion failed for {recipe_id}: {exc}")
+        raise HTTPException(status_code=500, detail="PDF conversion failed")
+    finally:
+        if lock_acquired:
+            IMAGE_PDF_CONVERSION_LOCK.release()
+        conn.close()
+
+
+def _read_pdf_page_bytes(recipe_dir: Path, filename: str) -> Optional[bytes]:
+    safe = Path(filename).name
+    if not (safe.startswith("page-") and safe.endswith(".jpg")):
+        return None
+    with IMAGE_PDF_CONVERSION_LOCK:
+        pages_dir = recipe_dir / PDF_PAGES_DIR
+        if pages_dir.is_dir():
+            if not _pdf_page_dir_matches_pdf(recipe_dir, pages_dir):
+                return None
+            path = pages_dir / safe
+        else:
+            path = recipe_dir / safe
+        return path.read_bytes() if path.is_file() else None
 
 
 def get_pdf_page_image(recipe_id: str, filename: str, request: Request, token: Optional[str] = None):
     _verify_token_param(request, token)
-    safe = Path(filename).name
-    path = DATA_DIR / recipe_id / safe
-    if path.exists() and safe.startswith("page-") and safe.endswith(".jpg"):
-        return FileResponse(str(path), media_type="image/jpeg")
+    page_data = _read_pdf_page_bytes(DATA_DIR / recipe_id, filename)
+    if page_data is not None:
+        return Response(content=page_data, media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Page not found")
 
 
@@ -158,10 +607,15 @@ def set_thumbnail(recipe_id: str, data: dict = Body(...), current_user: dict = D
     filename = Path(data.get("filename", "")).name  # sanitise — strip any path traversal
 
     recipe_dir = DATA_DIR / recipe_id
-    src_path   = recipe_dir / filename
+    src_path = recipe_dir / filename
+    page_data = None
+    if source == "pdf_page":
+        page_data = _read_pdf_page_bytes(recipe_dir, filename)
 
     # Validate: file must exist in the recipe dir
-    if not src_path.exists() or not src_path.is_file():
+    if source == "pdf_page" and page_data is None:
+        raise HTTPException(status_code=400, detail="File not found in this recipe")
+    if source != "pdf_page" and (not src_path.exists() or not src_path.is_file()):
         raise HTTPException(status_code=400, detail="File not found in this recipe")
 
     # For PDF pages, filename must match page-NNN.jpg pattern
@@ -174,7 +628,7 @@ def set_thumbnail(recipe_id: str, data: dict = Body(...), current_user: dict = D
 
     try:
         from PIL import Image, ImageOps
-        img = Image.open(str(src_path))
+        img = Image.open(io.BytesIO(page_data) if page_data is not None else str(src_path))
         img = ImageOps.exif_transpose(img)  # honour camera rotation metadata
         img = img.convert("RGB")
         img.thumbnail((600, 600))
@@ -199,6 +653,7 @@ def set_thumbnail(recipe_id: str, data: dict = Body(...), current_user: dict = D
     return {"message": "Thumbnail updated", "thumbnail_version": new_version}
 
 
+@_serialized_recipe_source_mutation
 def set_image_order(recipe_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """Save a custom display order for image-type recipes."""
     order = data.get("order", [])
@@ -211,9 +666,11 @@ def set_image_order(recipe_id: str, data: dict = Body(...), current_user: dict =
     conn.execute("UPDATE recipes SET image_order=? WHERE id=?", (json.dumps(order), recipe_id))
     conn.commit()
     conn.close()
-    return {"status": "ok", "order": order}
+    pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
+    return {"status": "ok", "order": order, "pdf_invalidated": pdf_invalidated}
 
 
+@_serialized_recipe_source_mutation
 def delete_recipe_image(recipe_id: str, filename: str, current_user: dict = Depends(get_current_user)):
     """Delete a single image from an image-type recipe, update order, clear annotations, regenerate thumbnail."""
     safe_name = Path(filename).name  # strip any path traversal
@@ -236,6 +693,7 @@ def delete_recipe_image(recipe_id: str, filename: str, current_user: dict = Depe
 
     # Delete the image file
     img_path.unlink(missing_ok=True)
+    pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
 
     # Remove from image_order if present
     image_order_json = recipe["image_order"] or ""
@@ -264,7 +722,53 @@ def delete_recipe_image(recipe_id: str, filename: str, current_user: dict = Depe
 
     conn.commit()
     conn.close()
-    return {"status": "deleted", "filename": safe_name, "thumbnail_version": new_version}
+    return {"status": "deleted", "filename": safe_name, "thumbnail_version": new_version, "pdf_invalidated": pdf_invalidated}
+
+
+def _commit_added_images(recipe_id: str, uploads: list[tuple[str, str, bytes]], current_user: dict):
+    """Commit validated uploads in a worker thread under the conversion lock."""
+    with IMAGE_PDF_CONVERSION_LOCK:
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Recipe not found")
+            recipe = dict(row)
+            if recipe["file_type"] != "images":
+                raise HTTPException(status_code=400, detail="Recipe is not an image-type recipe")
+
+            recipe_dir = DATA_DIR / recipe_id
+            existing_order: list = []
+            if recipe.get("image_order"):
+                try:
+                    existing_order = json.loads(recipe["image_order"])
+                except (TypeError, json.JSONDecodeError):
+                    existing_order = []
+
+            added = []
+            for base, ext, file_data in uploads:
+                dest = f"{base}{ext}"
+                counter = 1
+                while (recipe_dir / dest).exists():
+                    dest = f"{base}_{counter}{ext}"
+                    counter += 1
+                with open(recipe_dir / dest, "wb") as handle:
+                    handle.write(file_data)
+                added.append(dest)
+
+            _remove_generated_pdf_unlocked(recipe_dir)
+            new_order = existing_order + added
+            thumb = _generate_thumbnail(recipe_dir, "images")
+            new_version = (recipe.get("thumbnail_version") or 0) + 1
+            conn.execute(
+                "UPDATE recipes SET image_order=?, thumbnail_path=?, thumbnail_version=? WHERE id=?",
+                (json.dumps(new_order), thumb, new_version, recipe_id)
+            )
+            conn.commit()
+            from app.recipes.repository import _get_recipe_full
+            return _get_recipe_full(recipe_id, conn, current_user)
+        finally:
+            conn.close()
 
 
 async def add_images_to_recipe(
@@ -272,65 +776,35 @@ async def add_images_to_recipe(
     files: List[UploadFile] = File(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """Append one or more image files to an existing image-type recipe."""
-    conn = get_db()
-    row = conn.execute("SELECT * FROM recipes WHERE id=?", (recipe_id,)).fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    recipe = dict(row)
-    if recipe["file_type"] != "images":
-        conn.close()
-        raise HTTPException(status_code=400, detail="Recipe is not an image-type recipe")
+    """Append a bounded batch of image files to an existing image recipe."""
+    if len(files) > MAX_ADD_IMAGE_FILES:
+        raise HTTPException(status_code=413, detail=f"Too many image files; maximum is {MAX_ADD_IMAGE_FILES}")
 
-    recipe_dir = DATA_DIR / recipe_id
-    existing_order: list = []
-    if recipe.get("image_order"):
-        try:
-            existing_order = json.loads(recipe["image_order"])
-        except Exception:
-            existing_order = []
-
-    added = []
+    uploads = []
+    total_bytes = 0
     for upload in files:
-        ext = Path(upload.filename).suffix.lower()
+        filename = upload.filename or ""
+        ext = Path(filename).suffix.lower()
         if ext not in IMAGE_EXTS:
             continue
         file_data = await upload.read()
         if len(file_data) > MAX_IMAGE_BYTES:
-            conn.close()
-            raise HTTPException(status_code=413, detail=f"File too large: {upload.filename}")
+            raise HTTPException(status_code=413, detail=f"File too large: {filename}")
+        total_bytes += len(file_data)
+        if total_bytes > MAX_ADD_IMAGE_TOTAL_BYTES:
+            raise HTTPException(status_code=413, detail="Combined image total upload size is too large")
         if not _validate_file_magic(file_data, ext):
-            conn.close()
-            raise HTTPException(status_code=400, detail=f"File content does not match extension: {upload.filename}")
-        # Normalise name, avoid collisions
-        base = Path(upload.filename).stem.lower()
-        dest = f"{base}{ext}"
-        counter = 1
-        while (recipe_dir / dest).exists():
-            dest = f"{base}_{counter}{ext}"
-            counter += 1
-        with open(recipe_dir / dest, "wb") as f:
-            f.write(file_data)
-        added.append(dest)
+            raise HTTPException(status_code=400, detail=f"File content does not match extension: {filename}")
+        uploads.append((Path(filename).stem.lower(), ext, file_data))
 
-    if not added:
-        conn.close()
+    if not uploads:
         raise HTTPException(status_code=400, detail="No valid image files were uploaded")
 
-    new_order = existing_order + added
-    thumb = _generate_thumbnail(recipe_dir, "images")
-    new_version = (recipe.get("thumbnail_version") or 0) + 1
-    conn.execute(
-        "UPDATE recipes SET image_order=?, thumbnail_path=?, thumbnail_version=? WHERE id=?",
-        (json.dumps(new_order), thumb, new_version, recipe_id)
-    )
-    conn.commit()
-    result = _get_recipe_full(recipe_id, conn)
-    conn.close()
-    return result
+    # Lock acquisition and all synchronous filesystem/SQLite work run off-loop.
+    return await asyncio.to_thread(_commit_added_images, recipe_id, uploads, current_user)
 
 
+@_serialized_recipe_source_mutation
 def rotate_image(recipe_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """Rotate a single image 90° CW or CCW in place, then regenerate the thumbnail."""
     filename  = Path(data.get("filename", "")).name   # strip any path traversal
@@ -354,6 +828,7 @@ def rotate_image(recipe_id: str, data: dict = Body(...), current_user: dict = De
         else:
             img = img.transpose(PILImage.ROTATE_90)
         img.save(str(img_path), "JPEG", quality=95)
+        pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Rotation failed: {e}")
 
@@ -373,9 +848,10 @@ def rotate_image(recipe_id: str, data: dict = Body(...), current_user: dict = De
         new_version = row["thumbnail_version"] if row else None
     conn.commit()
     conn.close()
-    return {"status": "rotated", "filename": filename, "thumbnail_version": new_version}
+    return {"status": "rotated", "filename": filename, "thumbnail_version": new_version, "pdf_invalidated": pdf_invalidated}
 
 
+@_serialized_recipe_source_mutation
 def crop_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """Perspective-correct crop a single image using 4 corner points, then regenerate the thumbnail.
 
@@ -421,6 +897,7 @@ def crop_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), cur
         quad_data = (tl[0], tl[1], bl[0], bl[1], br[0], br[1], tr[0], tr[1])
         result = img.transform((out_w, out_h), PILImage.QUAD, quad_data, PILImage.BICUBIC)
         result.save(str(img_path), "JPEG", quality=95)
+        pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crop failed: {e}")
 
@@ -440,9 +917,10 @@ def crop_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), cur
         new_version = row["thumbnail_version"] if row else None
     conn.commit()
     conn.close()
-    return {"status": "cropped", "filename": filename, "thumbnail_version": new_version}
+    return {"status": "cropped", "filename": filename, "thumbnail_version": new_version, "pdf_invalidated": pdf_invalidated}
 
 
+@_serialized_recipe_source_mutation
 def adjust_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """Apply non-geometric image quality adjustments and keep an original backup."""
     img_path, safe_name = _image_file_for_recipe(recipe_id, filename)
@@ -489,6 +967,7 @@ def adjust_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), c
             table = [max(0, min(255, int(((i / 255) ** inv) * 255))) for i in range(256)]
             img = img.point(table * 3)
         img.save(str(img_path), "JPEG", quality=95)
+        pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=f"Image adjustment failed: {e}")
@@ -496,9 +975,10 @@ def adjust_recipe_image(recipe_id: str, filename: str, data: dict = Body(...), c
     new_version = _bump_recipe_thumbnail(conn, recipe_id)
     conn.commit()
     conn.close()
-    return {"status": "adjusted", "filename": safe_name, "thumbnail_version": new_version, "has_original": True}
+    return {"status": "adjusted", "filename": safe_name, "thumbnail_version": new_version, "has_original": True, "pdf_invalidated": pdf_invalidated}
 
 
+@_serialized_recipe_source_mutation
 def restore_original_recipe_image(recipe_id: str, filename: str, current_user: dict = Depends(get_current_user)):
     """Restore an image from the original backup created by quality adjustments."""
     img_path, safe_name = _image_file_for_recipe(recipe_id, filename)
@@ -509,11 +989,12 @@ def restore_original_recipe_image(recipe_id: str, filename: str, current_user: d
     try:
         _ensure_image_recipe(recipe_id, conn)
         shutil.copy2(backup_path, img_path)
+        pdf_invalidated = _invalidate_generated_pdf(DATA_DIR / recipe_id)
         new_version = _bump_recipe_thumbnail(conn, recipe_id)
         conn.commit()
     finally:
         conn.close()
-    return {"status": "restored", "filename": safe_name, "thumbnail_version": new_version}
+    return {"status": "restored", "filename": safe_name, "thumbnail_version": new_version, "pdf_invalidated": pdf_invalidated}
 
 
 def get_recipe_text_version(recipe_id: str, current_user: dict = Depends(get_current_user)):
@@ -570,12 +1051,11 @@ def download_recipe(recipe_id: str, request: Request, token: Optional[str] = Non
     # Build a safe filename (strip special characters)
     safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_") or "recipe"
 
-    if file_type == "pdf":
-        pdf_path = DATA_DIR / recipe_id / "recipe.pdf"
-        if not pdf_path.exists():
-            raise HTTPException(status_code=404, detail="PDF not found")
-        return FileResponse(
-            str(pdf_path),
+    recipe_dir = DATA_DIR / recipe_id
+    pdf_path = recipe_dir / "recipe.pdf"
+    if pdf_path.is_file():
+        return _pdf_snapshot_response(
+            pdf_path,
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{safe_title}.pdf"'},
         )
@@ -584,11 +1064,8 @@ def download_recipe(recipe_id: str, request: Request, token: Optional[str] = Non
         # Use iterdir + suffix.lower() so files with uppercase extensions
         # (e.g. .JPG, .PNG from cameras/scanners) are found on Linux where
         # glob() is case-sensitive.
-        recipe_dir = DATA_DIR / recipe_id
-        images = sorted(
-            f for f in recipe_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTS and f.name != "thumbnail.jpg"
-        )
+        image_names = _source_image_names(recipe_dir)
+        images = [recipe_dir / name for name in image_names]
         if not images:
             raise HTTPException(status_code=404, detail="No images found")
         buf = io.BytesIO()

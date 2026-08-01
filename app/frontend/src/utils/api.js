@@ -334,11 +334,12 @@ export async function fetchViewerProgress(recipeId) {
   return res.json();
 }
 
-export async function saveViewerProgress(recipeId, progress) {
+export async function saveViewerProgress(recipeId, progress, { keepalive = false } = {}) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/viewer-progress`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(progress),
+    keepalive,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Failed to save viewer progress');
@@ -571,6 +572,14 @@ export async function convertPdf(recipeId) {
   });
   if (!res.ok) throw new Error('Conversion failed');
   return res.json();
+}
+export async function convertImagesToPdf(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/convert-images-to-pdf`, {
+    method: 'POST', headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'PDF conversion failed');
+  return data;
 }
 export function pdfPageUrl(recipeId, filename) {
   return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}`;

@@ -3,6 +3,8 @@ from app.core.foundation import *
 from app.auth.service import get_current_user, require_admin, _verify_token_param
 from app.ai.prompts import *
 from app.ai.ocr import *
+from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, _convert_pdf_to_pages, _discover_pdf_pages
+from app.recipes.repository import _get_recipe_full, _source_fingerprint
 
 def _ai_settings(conn, reveal_secret: bool = False) -> dict:
     rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
@@ -31,27 +33,29 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
 
 
 def _collect_recipe_image_paths(recipe_id: str, conn, max_pages: int) -> list[Path]:
-    recipe = _get_recipe_full(recipe_id, conn)
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    recipe_dir = DATA_DIR / recipe_id
-    if recipe["file_type"] == "pdf":
-        pages = sorted(recipe_dir.glob("page-*.jpg"))
-        if not pages and (recipe_dir / "recipe.pdf").exists():
-            _convert_pdf_to_pages(recipe_dir)
-            pages = sorted(recipe_dir.glob("page-*.jpg"))
-        paths = pages
-    else:
-        paths = [recipe_dir / name for name in recipe["images"]]
-    paths = [p for p in paths if p.exists() and p.suffix.lower() in IMAGE_EXTS][:max(1, max_pages)]
-    if not paths:
-        raise HTTPException(status_code=400, detail="No recipe images available for text generation")
-    return paths
+    with IMAGE_PDF_CONVERSION_LOCK:
+        recipe = _get_recipe_full(recipe_id, conn)
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        recipe_dir = DATA_DIR / recipe_id
+        if recipe["file_type"] == "pdf":
+            pages = _discover_pdf_pages(recipe_dir)
+            if not pages and (recipe_dir / "recipe.pdf").exists():
+                _convert_pdf_to_pages(recipe_dir)
+                pages = _discover_pdf_pages(recipe_dir)
+            paths = pages
+        else:
+            paths = [recipe_dir / name for name in recipe["images"]]
+        paths = [p for p in paths if p.exists() and p.suffix.lower() in IMAGE_EXTS][:max(1, max_pages)]
+        if not paths:
+            raise HTTPException(status_code=400, detail="No recipe images available for text generation")
+        return paths
 
 
 def _image_payload_for_path(path: Path) -> dict:
-    with open(path, "rb") as f:
-        data = base64.b64encode(f.read()).decode("ascii")
+    with IMAGE_PDF_CONVERSION_LOCK:
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
     mime = "image/png" if path.suffix.lower() == ".png" else "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
     return {
         "type": "image_url",
@@ -464,10 +468,14 @@ def _chart_source_for_recipe(recipe_id: str, page_key: str, conn) -> Path:
         raise HTTPException(status_code=404, detail="Recipe not found")
     recipe_dir = DATA_DIR / recipe_id
     if recipe["file_type"] == "pdf":
-        path = recipe_dir / page_key
-        if not path.exists():
+        safe_name = Path(page_key).name
+        if safe_name != page_key:
+            raise HTTPException(status_code=404, detail="PDF page image not found")
+        path = next((candidate for candidate in _discover_pdf_pages(recipe_dir) if candidate.name == safe_name), None)
+        if path is None:
             _convert_pdf_to_pages(recipe_dir)
-        if not path.exists():
+            path = next((candidate for candidate in _discover_pdf_pages(recipe_dir) if candidate.name == safe_name), None)
+        if path is None:
             raise HTTPException(status_code=404, detail="PDF page image not found")
         return path
     safe_name = Path(page_key).name

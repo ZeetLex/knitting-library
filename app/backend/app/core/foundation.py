@@ -443,11 +443,14 @@ def get_db() -> sqlite3.Connection:
                 recipe_id             TEXT NOT NULL,
                 user_id               TEXT NOT NULL,
                 view_mode             TEXT NOT NULL DEFAULT 'original',
+                source_mode           TEXT NOT NULL DEFAULT '',
                 image_index           INTEGER NOT NULL DEFAULT 0,
                 zoom                  REAL NOT NULL DEFAULT 1,
                 scroll_y              INTEGER NOT NULL DEFAULT 0,
+                pdf_scroll_y          INTEGER NOT NULL DEFAULT 0,
                 text_scroll_y         INTEGER NOT NULL DEFAULT 0,
                 mobile_images_visible INTEGER NOT NULL DEFAULT 0,
+                revision              INTEGER NOT NULL DEFAULT 0,
                 updated_at            TEXT NOT NULL,
                 PRIMARY KEY (recipe_id, user_id),
                 FOREIGN KEY (recipe_id) REFERENCES recipes(id),
@@ -459,6 +462,15 @@ def get_db() -> sqlite3.Connection:
         progress_cols = [r["name"] for r in conn.execute("PRAGMA table_info(recipe_viewer_progress)").fetchall()]
         if "text_scroll_y" not in progress_cols:
             conn.execute("ALTER TABLE recipe_viewer_progress ADD COLUMN text_scroll_y INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        if "source_mode" not in progress_cols:
+            conn.execute("ALTER TABLE recipe_viewer_progress ADD COLUMN source_mode TEXT NOT NULL DEFAULT ''")
+            conn.commit()
+        if "pdf_scroll_y" not in progress_cols:
+            conn.execute("ALTER TABLE recipe_viewer_progress ADD COLUMN pdf_scroll_y INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        if "revision" not in progress_cols:
+            conn.execute("ALTER TABLE recipe_viewer_progress ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
             conn.commit()
     if "app_navigation_progress" not in tables:
         conn.execute("""
@@ -791,11 +803,14 @@ def init_db():
             recipe_id             TEXT NOT NULL,
             user_id               TEXT NOT NULL,
             view_mode             TEXT NOT NULL DEFAULT 'original',
+            source_mode           TEXT NOT NULL DEFAULT '',
             image_index           INTEGER NOT NULL DEFAULT 0,
             zoom                  REAL NOT NULL DEFAULT 1,
             scroll_y              INTEGER NOT NULL DEFAULT 0,
+            pdf_scroll_y          INTEGER NOT NULL DEFAULT 0,
             text_scroll_y         INTEGER NOT NULL DEFAULT 0,
             mobile_images_visible INTEGER NOT NULL DEFAULT 0,
+            revision              INTEGER NOT NULL DEFAULT 0,
             updated_at            TEXT NOT NULL,
             PRIMARY KEY (recipe_id, user_id),
             FOREIGN KEY (recipe_id) REFERENCES recipes(id),
