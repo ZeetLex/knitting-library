@@ -30,6 +30,7 @@ __pycache__/
 
 # Local development and deployment scripts
 *.bat
+app/backend/fix_oversized_pdf_thumbnails.py
 
 # Local test compose file
 docker-compose.test*.yml

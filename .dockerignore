@@ -21,6 +21,9 @@ app/frontend/dist/
 **/*.pyo
 **/*.pyd
 
+# One-off local maintenance scripts — not part of the shipped image
+app/backend/fix_oversized_pdf_thumbnails.py
+
 # Local and generated files that should never enter the Docker context.
 data/
 data-test/
