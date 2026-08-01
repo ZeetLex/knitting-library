@@ -1273,6 +1273,21 @@ a.viewer-action-btn { text-decoration: none; }
 }
 .pdf-download-btn:hover { background: rgba(255,255,255,0.2); }
 
+.pdf-repair-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pdf-repair-btn:hover { background: rgba(255,255,255,0.2); }
+
 /* ── Image Viewer ───────────────────────────────────────────────────────────── */
 .image-viewer {
   position: relative;

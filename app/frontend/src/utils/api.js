@@ -584,6 +584,14 @@ export async function convertImagesToPdf(recipeId) {
 export function pdfPageUrl(recipeId, filename) {
   return `${API_BASE}/recipes/${recipeId}/pdf-pages/${filename}`;
 }
+export async function finalizeRecipeUpload(recipeId) {
+  const res = await fetch(`${API_BASE}/recipes/${recipeId}/finalize-upload`, {
+    method: 'POST', headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to finalize upload');
+  return data;
+}
 
 // Project sessions
 export async function startProject(recipeId, yarnId = null, yarnColourId = null, inventoryItemId = null, skeinsUsed = 0) {
@@ -1001,6 +1009,44 @@ export async function testAISettings(data) {
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.detail || 'AI test failed');
   return result;
+}
+
+// ── Admin: recipe PDF settings ──────────────────────────────────────────────────
+export async function fetchRecipeSettings() {
+  const res = await fetch(`${API_BASE}/admin/recipes`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load recipe settings');
+  return res.json();
+}
+export async function saveRecipeSettings(data) {
+  const res = await fetch(`${API_BASE}/admin/recipes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to save recipe settings');
+  return result;
+}
+export async function startPdfMigration() {
+  const res = await fetch(`${API_BASE}/admin/recipes/migrate-to-pdf`, {
+    method: 'POST', headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to start migration');
+  return data;
+}
+export async function fetchPdfMigrationStatus() {
+  const res = await fetch(`${API_BASE}/admin/recipes/migrate-to-pdf/status`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load migration status');
+  return res.json();
+}
+export async function cancelPdfMigration() {
+  const res = await fetch(`${API_BASE}/admin/recipes/migrate-to-pdf/cancel`, {
+    method: 'POST', headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Failed to cancel migration');
+  return data;
 }
 
 // ── Admin: 2FA management ─────────────────────────────────────────────────────

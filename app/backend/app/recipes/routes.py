@@ -28,6 +28,7 @@ router.add_api_route('/api/recipes/{recipe_id}/images/{filename}', services.get_
 router.add_api_route('/api/recipes/{recipe_id}/pdf-pages', services.get_pdf_pages, methods=['GET'])  # legacy line 4711
 router.add_api_route('/api/recipes/{recipe_id}/convert-pdf', services.convert_pdf, methods=['POST'])  # legacy line 4717
 router.add_api_route('/api/recipes/{recipe_id}/convert-images-to-pdf', services.convert_images_to_pdf, methods=['POST'])
+router.add_api_route('/api/recipes/{recipe_id}/finalize-upload', services.finalize_recipe_upload, methods=['POST'])
 router.add_api_route('/api/recipes/{recipe_id}/pdf-pages/{filename}', services.get_pdf_page_image, methods=['GET'])  # legacy line 4728
 router.add_api_route('/api/recipes/{recipe_id}/set-thumbnail', services.set_thumbnail, methods=['POST'])  # legacy line 4738
 router.add_api_route('/api/recipes/{recipe_id}/image-order', services.set_image_order, methods=['PUT'])  # legacy line 4792

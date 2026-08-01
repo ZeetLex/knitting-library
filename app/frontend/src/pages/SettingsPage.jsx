@@ -9,7 +9,7 @@ import {
   Sun, Moon, Globe, Lock, Users, Plus, Trash2, KeyRound, X,
   ChevronLeft, ChevronRight, Download, LogOut, Terminal, Mail, ShieldCheck,
   RefreshCw, Send, CheckCircle, XCircle, Smartphone, Megaphone,
-  Pencil, AtSign, Palette, Bot, ExternalLink, Github, ImagePlus, RotateCcw,
+  Pencil, AtSign, Palette, Bot, ExternalLink, Github, ImagePlus, RotateCcw, FileText,
 } from 'lucide-react';
 import { CURRENCIES, useApp } from '../utils/AppContext';
 import { getLanguageLocale, LANGUAGE_OPTIONS } from '../utils/translations';
@@ -20,6 +20,8 @@ import {
   listReleases, syncReleases,
   updateUserEmail, sendWelcomeMail, fetchAISettings, saveAISettings, fetchAIModels, testAISettings,
   saveBrandingTitle, uploadBrandingIcon, deleteBrandingIcon, resetBranding,
+  fetchRecipeSettings, saveRecipeSettings,
+  startPdfMigration, fetchPdfMigrationStatus, cancelPdfMigration,
 } from '../utils/api';
 import './SettingsPage.css';
 
@@ -37,6 +39,7 @@ export default function SettingsPage({ onBack }) {
       { id: 'logs',          icon: <Terminal size={18} />,    label: t('adminLogs'), sub: t('settingsLogsSub') },
       { id: 'mail',          icon: <Mail size={18} />,        label: t('adminMail'), sub: t('settingsMailSub') },
       { id: 'ai',            icon: <Bot size={18} />,         label: t('adminAI'), sub: t('settingsAISub') },
+      { id: 'recipes',       icon: <FileText size={18} />,    label: t('adminRecipes'), sub: t('settingsRecipesSub') },
       { id: 'twofa',         icon: <ShieldCheck size={18} />, label: t('admin2FA'), sub: t('settingsTwoFASub') },
       { id: 'announcements', icon: <Megaphone size={18} />,   label: t('updateNotes'), sub: t('settingsAnnouncementsSub') },
     ] : []),
@@ -111,6 +114,7 @@ export default function SettingsPage({ onBack }) {
           {user?.is_admin && activeSection === 'logs'          && <LogsSection />}
           {user?.is_admin && activeSection === 'mail'          && <MailSection />}
           {user?.is_admin && activeSection === 'ai'            && <AISection />}
+          {user?.is_admin && activeSection === 'recipes'       && <RecipesSection />}
           {user?.is_admin && activeSection === 'twofa'         && <TwoFASection />}
           {user?.is_admin && activeSection === 'announcements' && <AnnouncementsSection />}
         </div>
@@ -1562,6 +1566,170 @@ function AnnouncementsSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Recipes Section (Admin: PDF settings + bulk migration) ─────────────── */
+function RecipesSection() {
+  const { t } = useApp();
+  const [cfg, setCfg]       = useState({ recipes_auto_convert_to_pdf: 'false' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [status, setStatus]   = useState(null);
+  const [job, setJob]         = useState(null);
+  const [jobError, setJobError] = useState('');
+  const [starting, setStarting] = useState(false);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    fetchRecipeSettings()
+      .then(data => setCfg(prev => ({ ...prev, ...data })))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const f = (key, value) => setCfg(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = async () => {
+    setSaving(true); setStatus(null);
+    try {
+      await saveRecipeSettings(cfg);
+      setStatus('saved');
+    } catch (e) { setStatus('error:' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const loadJobStatus = useCallback(async () => {
+    try {
+      const result = await fetchPdfMigrationStatus();
+      setJob(result.job || null);
+    } catch (e) {
+      setJobError(e.message || t('migrationStatusError'));
+    }
+  }, [t]);
+
+  useEffect(() => { loadJobStatus(); }, [loadJobStatus]);
+
+  useEffect(() => {
+    if (job?.status !== 'running') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    if (pollRef.current) return undefined;
+    pollRef.current = setInterval(loadJobStatus, 2000);
+    return () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
+  }, [job?.status, loadJobStatus]);
+
+  const handleStartMigration = async () => {
+    setStarting(true); setJobError('');
+    try {
+      const result = await startPdfMigration();
+      setJob(result.job || result);
+    } catch (e) {
+      setJobError(e.message || t('migrationStartError'));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleCancelMigration = async () => {
+    try {
+      await cancelPdfMigration();
+      await loadJobStatus();
+    } catch (e) {
+      setJobError(e.message || t('migrationCancelError'));
+    }
+  };
+
+  const running = job?.status === 'running';
+  let results = [];
+  try { results = JSON.parse(job?.results_json || '[]'); } catch { /* ignore malformed results */ }
+
+  if (loading) return <div className="settings-section"><p className="loading-text">Loading…</p></div>;
+
+  return (
+    <div className="settings-section">
+      <h3 className="section-heading">{t('adminRecipes')}</h3>
+      <p className="settings-row-sub" style={{ marginBottom: '1.5rem' }}>{t('adminRecipesDesc')}</p>
+
+      <div className="form-stack">
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <p className="settings-row-label">{t('autoConvertToPdf')}</p>
+            <p className="settings-row-sub">{t('autoConvertToPdfSub')}</p>
+          </div>
+          <button className={`theme-toggle ${cfg.recipes_auto_convert_to_pdf === 'true' ? 'dark' : ''}`}
+            onClick={() => f('recipes_auto_convert_to_pdf', cfg.recipes_auto_convert_to_pdf === 'true' ? 'false' : 'true')}>
+            <span className="theme-toggle-knob" />
+          </button>
+        </div>
+
+        {status === 'saved' && <p className="status-success">{t('saved')}</p>}
+        {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}
+
+        <button className="btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? t('saving') : t('saveSettings')}
+        </button>
+
+        <div className="settings-divider" />
+
+        <div className="section-heading-row">
+          <h4 className="section-subheading">{t('migratePdfTitle')}</h4>
+          {running ? (
+            <button className="btn-secondary btn-icon-label" onClick={handleCancelMigration}>
+              <XCircle size={15} /> {t('cancelMigration')}
+            </button>
+          ) : (
+            <button className="btn-primary btn-icon-label" onClick={handleStartMigration} disabled={starting}>
+              <RotateCcw size={15} className={starting ? 'spin-icon' : ''} />
+              {starting ? t('startingMigration') : t('migratePdfButton')}
+            </button>
+          )}
+        </div>
+        <p className="settings-row-sub" style={{ marginBottom: '1rem' }}>{t('migratePdfSub')}</p>
+        <p className="settings-row-sub migration-caveat">{t('migratePdfCaveat')}</p>
+
+        {jobError && <p className="status-error">{jobError}</p>}
+
+        {job && (
+          <div className="migration-status-card">
+            {running && (
+              <>
+                <p className="settings-row-sub">
+                  {t('migrationProgress')}: {job.processed}/{job.total}
+                  {job.current_recipe_title ? ` — ${job.current_recipe_title}` : ''}
+                </p>
+                <div className="migration-progress-bar">
+                  <div
+                    className="migration-progress-fill"
+                    style={{ width: `${job.total ? Math.round((job.processed / job.total) * 100) : 0}%` }}
+                  />
+                </div>
+              </>
+            )}
+            {!running && job.status && job.status !== 'interrupted' && (
+              <p className="settings-row-sub">
+                {t('migrationFinished')} — {t('migrationConverted')}: {job.converted}, {t('migrationSkipped')}: {job.skipped_up_to_date + job.skipped_manual_pdf}, {t('migrationFailed')}: {job.failed}
+              </p>
+            )}
+            {!running && job.status === 'interrupted' && (
+              <p className="status-error">{t('migrationInterrupted')}</p>
+            )}
+            {results.length > 0 && (
+              <ul className="migration-results-list">
+                {results.map((r, i) => (
+                  <li key={`${r.recipe_id}-${i}`}>
+                    <strong>{r.title || r.recipe_id}</strong> — {r.outcome === 'manual_pdf' ? t('migrationSkippedManualPdf') : (r.detail || t('migrationFailedGeneric'))}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

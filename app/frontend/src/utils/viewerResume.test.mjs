@@ -8,14 +8,19 @@ test('prefers PDF when both formats exist and no source preference is saved', ()
   assert.equal(resolveRecipeSourceMode('', recipe), 'pdf');
 });
 
-test('restores an available saved image source for the current user', () => {
+test('PDF availability always wins over a saved image preference on open', () => {
   const recipe = { has_pdf: true, has_images: true, preferred_source: 'pdf' };
-  assert.equal(resolveRecipeSourceMode('images', recipe), 'images');
+  assert.equal(resolveRecipeSourceMode('images', recipe), 'pdf');
 });
 
 test('falls back to images when a saved PDF no longer exists', () => {
   const recipe = { has_pdf: false, has_images: true, preferred_source: 'images' };
   assert.equal(resolveRecipeSourceMode('pdf', recipe), 'images');
+});
+
+test('restores a saved image source when there is no PDF at all', () => {
+  const recipe = { has_pdf: false, has_images: true };
+  assert.equal(resolveRecipeSourceMode('images', recipe), 'images');
 });
 
 test('normalizes PDF scroll and source mode safely', () => {

@@ -1,6 +1,8 @@
 """Admin users, logs, mail, AI settings, 2FA administration, and announcements."""
 from app.core.foundation import *
 from app.auth.service import get_current_user, require_admin, _verify_token_param
+import threading
+from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, convert_images_to_pdf, _pdf_is_app_generated
 
 def list_users(admin: dict = Depends(require_admin)):
     conn = get_db()
@@ -478,6 +480,166 @@ async def test_ai_settings(data: dict = Body(default={}), admin: dict = Depends(
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"AI test failed: {e}")
     return {"message": "AI test succeeded", "response": text}
+
+# ── Admin: recipe PDF settings ──────────────────────────────────────────────────
+
+RECIPE_SETTING_KEYS = {"recipes_auto_convert_to_pdf"}
+
+
+def get_recipe_settings(admin: dict = Depends(require_admin)):
+    conn = get_db()
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'recipes_%'").fetchall()
+    conn.close()
+    settings = {r["key"]: r["value"] for r in rows}
+    settings.setdefault("recipes_auto_convert_to_pdf", "false")
+    return settings
+
+
+def save_recipe_settings(data: dict, admin: dict = Depends(require_admin)):
+    conn = get_db()
+    for key, value in data.items():
+        if key not in RECIPE_SETTING_KEYS:
+            continue
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value))
+        )
+    conn.commit()
+    conn.close()
+    return {"message": "Recipe settings saved"}
+
+
+# ── Admin: bulk image-to-PDF migration ──────────────────────────────────────────
+
+def _get_pdf_migration_job(job_id: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM recipe_pdf_migration_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _latest_pdf_migration_job(conn) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM recipe_pdf_migration_jobs ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+
+
+def _run_pdf_migration_job(job_id: str, admin_user: dict) -> None:
+    """Sequentially convert every image recipe that doesn't already have an
+    up-to-date generated PDF. Runs on a dedicated thread: convert_images_to_pdf
+    is fully synchronous (Pillow + poppler subprocess work), and the whole job
+    is inherently sequential anyway because IMAGE_PDF_CONVERSION_LOCK only
+    allows one conversion at a time — a thread that just loops and calls the
+    engine directly is simpler than juggling asyncio.to_thread per item."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, title FROM recipes WHERE file_type='images' ORDER BY created_date"
+        ).fetchall()
+        recipes = [(r["id"], r["title"]) for r in rows]
+        conn.execute("UPDATE recipe_pdf_migration_jobs SET total=? WHERE id=?", (len(recipes), job_id))
+        conn.commit()
+
+        results = []
+        converted = skipped_up_to_date = skipped_manual_pdf = failed = 0
+
+        for recipe_id, title in recipes:
+            cancel_row = conn.execute(
+                "SELECT cancel_requested FROM recipe_pdf_migration_jobs WHERE id=?", (job_id,)
+            ).fetchone()
+            if cancel_row and cancel_row["cancel_requested"]:
+                break
+
+            conn.execute(
+                "UPDATE recipe_pdf_migration_jobs SET current_recipe_id=?, current_recipe_title=? WHERE id=?",
+                (recipe_id, title, job_id)
+            )
+            conn.commit()
+
+            recipe_dir = DATA_DIR / recipe_id
+            pdf_path = recipe_dir / "recipe.pdf"
+            # Hold the lock across the check-and-convert so nothing else can
+            # create/replace recipe.pdf between the check and the conversion.
+            # convert_images_to_pdf re-acquires the same RLock from this same
+            # thread, which is reentrant and therefore never self-blocks.
+            with IMAGE_PDF_CONVERSION_LOCK:
+                if pdf_path.is_file():
+                    if _pdf_is_app_generated(recipe_dir):
+                        skipped_up_to_date += 1
+                    else:
+                        skipped_manual_pdf += 1
+                        results.append({"recipe_id": recipe_id, "title": title, "outcome": "manual_pdf", "detail": ""})
+                else:
+                    try:
+                        convert_images_to_pdf(recipe_id, admin_user)
+                        converted += 1
+                    except HTTPException as exc:
+                        failed += 1
+                        results.append({"recipe_id": recipe_id, "title": title, "outcome": "failed", "detail": str(exc.detail)})
+                    except Exception as exc:
+                        failed += 1
+                        results.append({"recipe_id": recipe_id, "title": title, "outcome": "failed", "detail": str(exc)})
+
+            conn.execute(
+                """UPDATE recipe_pdf_migration_jobs
+                   SET processed=processed+1, converted=?, skipped_up_to_date=?, skipped_manual_pdf=?, failed=?, results_json=?
+                   WHERE id=?""",
+                (converted, skipped_up_to_date, skipped_manual_pdf, failed, json.dumps(results), job_id)
+            )
+            conn.commit()
+
+        conn.execute(
+            "UPDATE recipe_pdf_migration_jobs SET status='finished', current_recipe_id='', current_recipe_title='', finished_at=? WHERE id=?",
+            (datetime.utcnow().isoformat(), job_id)
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"PDF migration job {job_id} crashed: {exc}")
+        conn.execute(
+            "UPDATE recipe_pdf_migration_jobs SET status='failed', finished_at=? WHERE id=?",
+            (datetime.utcnow().isoformat(), job_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def start_pdf_migration(admin: dict = Depends(require_admin)):
+    conn = get_db()
+    existing = _latest_pdf_migration_job(conn)
+    if existing and existing["status"] == "running":
+        conn.close()
+        raise HTTPException(status_code=409, detail="A PDF migration is already running")
+    job_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO recipe_pdf_migration_jobs (id, status, started_by, started_at) VALUES (?, 'running', ?, ?)",
+        (job_id, admin.get("username", ""), datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    threading.Thread(target=_run_pdf_migration_job, args=(job_id, admin), daemon=True).start()
+    return {"job": _get_pdf_migration_job(job_id)}
+
+
+def get_pdf_migration_status(admin: dict = Depends(require_admin)):
+    conn = get_db()
+    row = _latest_pdf_migration_job(conn)
+    conn.close()
+    return {"job": dict(row) if row else None}
+
+
+def cancel_pdf_migration(admin: dict = Depends(require_admin)):
+    conn = get_db()
+    row = _latest_pdf_migration_job(conn)
+    if not row or row["status"] != "running":
+        conn.close()
+        raise HTTPException(status_code=400, detail="No migration is currently running")
+    conn.execute("UPDATE recipe_pdf_migration_jobs SET cancel_requested=1 WHERE id=?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return {"message": "Cancellation requested"}
+
 
 # ── Admin: 2FA management ─────────────────────────────────────────────────────
 

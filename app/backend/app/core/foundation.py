@@ -723,6 +723,28 @@ def get_db() -> sqlite3.Connection:
             )
         """)
         conn.commit()
+    if "recipe_pdf_migration_jobs" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_pdf_migration_jobs (
+                id                    TEXT PRIMARY KEY,
+                status                TEXT NOT NULL DEFAULT 'running',
+                total                 INTEGER NOT NULL DEFAULT 0,
+                processed             INTEGER NOT NULL DEFAULT 0,
+                converted             INTEGER NOT NULL DEFAULT 0,
+                skipped_up_to_date    INTEGER NOT NULL DEFAULT 0,
+                skipped_manual_pdf    INTEGER NOT NULL DEFAULT 0,
+                failed                INTEGER NOT NULL DEFAULT 0,
+                current_recipe_id     TEXT NOT NULL DEFAULT '',
+                current_recipe_title  TEXT NOT NULL DEFAULT '',
+                results_json          TEXT NOT NULL DEFAULT '[]',
+                cancel_requested      INTEGER NOT NULL DEFAULT 0,
+                started_by            TEXT NOT NULL DEFAULT '',
+                started_at            TEXT NOT NULL,
+                finished_at           TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_recipe_pdf_migration_started ON recipe_pdf_migration_jobs (started_at)")
+        conn.commit()
     return conn
 
 
@@ -1113,6 +1135,23 @@ def init_db():
             reset_at TEXT NOT NULL,
             reset_by TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS recipe_pdf_migration_jobs (
+            id                    TEXT PRIMARY KEY,
+            status                TEXT NOT NULL DEFAULT 'running',
+            total                 INTEGER NOT NULL DEFAULT 0,
+            processed             INTEGER NOT NULL DEFAULT 0,
+            converted             INTEGER NOT NULL DEFAULT 0,
+            skipped_up_to_date    INTEGER NOT NULL DEFAULT 0,
+            skipped_manual_pdf    INTEGER NOT NULL DEFAULT 0,
+            failed                INTEGER NOT NULL DEFAULT 0,
+            current_recipe_id     TEXT NOT NULL DEFAULT '',
+            current_recipe_title  TEXT NOT NULL DEFAULT '',
+            results_json          TEXT NOT NULL DEFAULT '[]',
+            cancel_requested      INTEGER NOT NULL DEFAULT 0,
+            started_by            TEXT NOT NULL DEFAULT '',
+            started_at            TEXT NOT NULL,
+            finished_at           TEXT NOT NULL DEFAULT ''
+        );
 
         -- Indexes: speed up the most common queries as the library grows
         CREATE INDEX IF NOT EXISTS idx_recipes_created_date   ON recipes (created_date DESC);
@@ -1145,6 +1184,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_review_pages_session ON recipe_review_pages (session_id, page_order);
         CREATE INDEX IF NOT EXISTS idx_review_diagrams_session ON recipe_review_diagrams (session_id, page_id);
         CREATE INDEX IF NOT EXISTS idx_review_legends_session ON recipe_review_legends (session_id, page_id);
+        CREATE INDEX IF NOT EXISTS idx_recipe_pdf_migration_started ON recipe_pdf_migration_jobs (started_at);
     """)
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -1175,6 +1215,14 @@ def init_db():
         SET status='queued', progress_stage='queued', started_at='', error=''
         WHERE status='running'
     """)
+    # Bulk PDF migration runs on a plain thread — if the process died mid-run,
+    # the row is left at status='running' forever. Mark it interrupted so the
+    # admin UI doesn't show a stuck spinner; re-running is safely idempotent.
+    conn.execute("""
+        UPDATE recipe_pdf_migration_jobs
+        SET status='interrupted', finished_at=?
+        WHERE status='running'
+    """, (datetime.utcnow().isoformat(),))
 
     conn.commit()
     conn.close()

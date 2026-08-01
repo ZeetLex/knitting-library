@@ -108,10 +108,12 @@ export function resolveViewerResume(localResume, serverResume) {
 export function resolveRecipeSourceMode(savedMode, recipe) {
   const hasPdf = Boolean(recipe?.has_pdf || recipe?.file_type === 'pdf');
   const hasImages = Boolean(recipe?.has_images || (recipe?.images || []).length > 0);
-  if (savedMode === 'pdf' && hasPdf) return 'pdf';
-  if (savedMode === 'images' && hasImages) return 'images';
-  if (recipe?.preferred_source === 'pdf' && hasPdf) return 'pdf';
-  if (recipe?.preferred_source === 'images' && hasImages) return 'images';
+  // PDF availability always wins on open, even over a previously saved/resumed
+  // preference — the PDF view is the better reading experience and should be
+  // the default whenever there's a PDF to show.
   if (hasPdf) return 'pdf';
-  return 'images';
+  if (savedMode === 'images' && hasImages) return 'images';
+  if (recipe?.preferred_source === 'images' && hasImages) return 'images';
+  if (hasImages) return 'images';
+  return savedMode || 'images';
 }

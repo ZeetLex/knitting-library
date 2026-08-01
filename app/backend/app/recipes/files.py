@@ -572,6 +572,40 @@ def convert_images_to_pdf(recipe_id: str, current_user: dict = Depends(get_curre
         conn.close()
 
 
+def _recipes_auto_convert_enabled(conn) -> bool:
+    row = conn.execute("SELECT value FROM app_settings WHERE key='recipes_auto_convert_to_pdf'").fetchone()
+    return bool(row) and (row["value"] or "").lower() == "true"
+
+
+def _auto_convert_images_to_pdf(recipe_id: str, current_user: dict) -> None:
+    """Best-effort background auto-conversion — must never raise into BackgroundTasks."""
+    try:
+        convert_images_to_pdf(recipe_id, current_user)
+    except HTTPException as exc:
+        print(f"Auto-convert skipped for {recipe_id}: {exc.detail}")
+    except Exception as exc:
+        print(f"Auto-convert failed for {recipe_id}: {exc}")
+
+
+def finalize_recipe_upload(recipe_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    """Called once the post-upload image review/edit step is done. If the
+    admin-configured auto-convert setting is enabled, queues a best-effort
+    image-to-PDF conversion; otherwise this is a cheap no-op."""
+    conn = get_db()
+    try:
+        if not _recipes_auto_convert_enabled(conn):
+            return {"queued": False}
+        row = conn.execute("SELECT file_type FROM recipes WHERE id=?", (recipe_id,)).fetchone()
+        if not row or row["file_type"] != "images":
+            return {"queued": False}
+        if (DATA_DIR / recipe_id / "recipe.pdf").is_file():
+            return {"queued": False}
+    finally:
+        conn.close()
+    background_tasks.add_task(_auto_convert_images_to_pdf, recipe_id, current_user)
+    return {"queued": True}
+
+
 def _read_pdf_page_bytes(recipe_dir: Path, filename: str) -> Optional[bytes]:
     safe = Path(filename).name
     if not (safe.startswith("page-") and safe.endswith(".jpg")):

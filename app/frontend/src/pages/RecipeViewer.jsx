@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
 import { clampIndex, createLatestPayloadThrottle, normalizeViewerResume, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
+import ReorderModal from '../components/ReorderModal';
+import ImageAdjustPanel from '../components/ImageAdjustPanel';
+import RepairPdfModal from '../components/RepairPdfModal';
 import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
@@ -263,23 +266,53 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     }
   };
 
+  // Shared by the inline "Rebuild PDF" button and the Repair PDF modal so the
+  // post-conversion state sync (recipe, pages, scroll, source mode) can never
+  // drift between the two entry points.
+  const applyConversionResult = (result) => {
+    setRecipe(result.recipe);
+    setPdfPages(result.pages || []);
+    pendingPdfScrollY.current = 0;
+    lastPdfScrollYRef.current = 0;
+    restoredPdfScrollRef.current = true;
+    setSourceMode('pdf');
+    setMobilePanel(null);
+    setMobileImageEditing(false);
+  };
+
   const handleConvertImagesToPdf = async () => {
     if (convertingImages || !(recipe?.images || []).length) return;
     setConvertingImages(true);
     try {
       const result = await convertImagesToPdf(recipeId);
-      setRecipe(result.recipe);
-      setPdfPages(result.pages || []);
-      pendingPdfScrollY.current = 0;
-      lastPdfScrollYRef.current = 0;
-      restoredPdfScrollRef.current = true;
-      setSourceMode('pdf');
-      setMobilePanel(null);
-      setMobileImageEditing(false);
+      applyConversionResult(result);
     } catch (err) {
       alert(err.message || t('convertImagesPdfError'));
     } finally {
       setConvertingImages(false);
+    }
+  };
+
+  const [repairOpen, setRepairOpen] = useState(false);
+
+  // Edits inside the Repair PDF modal are applied to the server immediately —
+  // there's no real "cancel". If the user closes without converting, resync
+  // with the server so a stale has_pdf/pdfPages view is never shown.
+  const handleRepairClose = async (didEdit) => {
+    setRepairOpen(false);
+    if (!didEdit) return;
+    try {
+      const fresh = await fetchRecipe(recipeId);
+      setRecipe(fresh);
+      if (fresh.has_pdf) {
+        const pages = await fetchPdfPages(recipeId);
+        setPdfPages(pages.pages || []);
+      } else {
+        setPdfPages([]);
+        setSourceMode('images');
+      }
+    } catch (_) {
+      // Best-effort resync — the next full reload will still catch up.
     }
   };
 
@@ -759,6 +792,12 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 <a href={pdfUrl(recipeId)} download className="pdf-download-btn">
                   ↓ PDF
                 </a>
+                {recipe.file_type === 'images' && (recipe.images || []).length > 0 && (
+                  <button className="pdf-repair-btn" onClick={() => setRepairOpen(true)}>
+                    <Wrench size={16} />
+                    <span>{t('repairPdf')}</span>
+                  </button>
+                )}
               </div>
 
               <div className="pdf-pages-wrap" ref={pdfPagesRef} onScroll={handlePdfPanelScroll}>
@@ -1057,6 +1096,16 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         />
       )}
 
+      {repairOpen && recipe?.file_type === 'images' && (recipe.images || []).length > 0 && (
+        <RepairPdfModal
+          t={t}
+          recipeId={recipeId}
+          recipe={recipe}
+          onClose={handleRepairClose}
+          onConverted={(result) => { applyConversionResult(result); setRepairOpen(false); }}
+        />
+      )}
+
       <KnittingToolbar recipeId={recipeId} t={t} open={toolOpen} onClose={() => setToolOpen(false)} />
 
       {isRecipeStarted && (
@@ -1274,90 +1323,6 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-const DEFAULT_ADJUSTMENTS = {
-  brightness: 0,
-  contrast: 0,
-  gamma: 1,
-  saturation: 0,
-  warmth: 0,
-  sharpness: 0,
-};
-
-function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
-  const [values, setValues] = useState(DEFAULT_ADJUSTMENTS);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const f = (key, value) => setValues(prev => ({ ...prev, [key]: Number(value) }));
-  const previewFilter = [
-    `brightness(${1 + values.brightness / 100})`,
-    `contrast(${1 + values.contrast / 100})`,
-    `saturate(${Math.max(0, 1 + values.saturation / 100)})`,
-  ].join(' ');
-
-  const handleApply = async () => {
-    setSaving(true); setError('');
-    try { await onApply(values); }
-    catch (e) { setError(e.message || t('adjustImageError')); setSaving(false); }
-  };
-
-  const handleRestore = async () => {
-    if (!window.confirm(t('restoreOriginalConfirm'))) return;
-    setSaving(true); setError('');
-    try { await onRestore(); }
-    catch (e) { setError(e.message || t('restoreOriginalError')); setSaving(false); }
-  };
-
-  const sliders = [
-    ['brightness', t('adjustBrightness'), -100, 100, 1],
-    ['contrast', t('adjustContrast'), -100, 100, 1],
-    ['gamma', t('adjustGamma'), 0.2, 3, 0.05],
-    ['saturation', t('adjustSaturation'), -100, 100, 1],
-    ['warmth', t('adjustWarmth'), -100, 100, 1],
-    ['sharpness', t('adjustSharpness'), -100, 100, 1],
-  ];
-
-  return (
-    <div className="adjust-panel-overlay" onClick={onClose}>
-      <div className="adjust-panel" onClick={e => e.stopPropagation()}>
-        <div className="adjust-panel-header">
-          <div>
-            <h3>{t('adjustImage')}</h3>
-            <p>{t('adjustImageHint')}</p>
-          </div>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="adjust-panel-body">
-          <div className="adjust-preview">
-            <img src={imageSrc} alt="" style={{ filter: previewFilter }} />
-          </div>
-          <div className="adjust-sliders">
-            {sliders.map(([key, label, min, max, step]) => (
-              <label className="adjust-slider" key={key}>
-                <span>{label}<strong>{values[key]}</strong></span>
-                <input
-                  type="range"
-                  min={min}
-                  max={max}
-                  step={step}
-                  value={values[key]}
-                  onChange={e => f(key, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-        </div>
-        {error && <p className="status-error adjust-error">{error}</p>}
-        <div className="adjust-panel-actions">
-          <button className="btn-secondary" onClick={() => setValues(DEFAULT_ADJUSTMENTS)} disabled={saving}>{t('resetSliders')}</button>
-          <button className="btn-secondary" onClick={handleRestore} disabled={saving}>{t('restoreOriginal')}</button>
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleApply} disabled={saving}>{saving ? t('saving') : t('apply')}</button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2296,122 +2261,6 @@ function EditModal({ t, recipe, onClose, onSaved }) {
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? t('saving') : t('saveChanges')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReorderModal({ t, recipeId, images, onClose, onSaved }) {
-  const [order, setOrder]           = useState([...images]);
-  const [dragIdx, setDragIdx]       = useState(null);   // which row is being dragged
-  const [dropIdx, setDropIdx]       = useState(null);   // which row the drag is over
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-
-  const moveItem = (idx, dir) => {
-    const target = idx + dir;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setOrder(next);
-  };
-
-  const handleDragStart = (e, i) => {
-    // Store the source index both in state and in dataTransfer as a fallback
-    setDragIdx(i);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(i));
-  };
-
-  const handleDragOver = (e, i) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dropIdx !== i) setDropIdx(i);
-  };
-
-  // Only commit the reorder on drop — avoids re-render mid-drag breaking the drag
-  const handleDrop = (e, i) => {
-    e.preventDefault();
-    const from = dragIdx ?? parseInt(e.dataTransfer.getData('text/plain'), 10);
-    setDragIdx(null);
-    setDropIdx(null);
-    if (isNaN(from) || from === i) return;
-    const next = [...order];
-    const [moved] = next.splice(from, 1);
-    next.splice(i, 0, moved);
-    setOrder(next);
-  };
-
-  const handleDragEnd = () => { setDragIdx(null); setDropIdx(null); };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const result = await saveImageOrder(recipeId, order);
-      setSaved(true);
-      setTimeout(() => onSaved(order, result), 700);
-    } catch (e) {
-      alert('Failed to save order.');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
-      <div className="reorder-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>{t('reorderTitle')}</h3>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <p className="reorder-help">{t('reorderHelp')}</p>
-        <div className="reorder-list">
-          {order.map((img, i) => (
-            <div
-              key={img}
-              className={`reorder-item${
-                dragIdx === i  ? ' reorder-item--dragging'    :
-                dropIdx  === i ? ' reorder-item--drop-target' : ''
-              }`}
-              draggable
-              onDragStart={e => handleDragStart(e, i)}
-              onDragOver={e  => handleDragOver(e, i)}
-              onDrop={e      => handleDrop(e, i)}
-              onDragLeave={() => setDropIdx(null)}
-              onDragEnd={handleDragEnd}
-            >
-              <GripVertical size={18} className="reorder-grip" />
-              <span className="reorder-num">{i + 1}</span>
-              <img
-                className="reorder-thumb"
-                src={imageUrl(recipeId, img)}
-                alt={`Image ${i + 1}`}
-                loading="lazy"
-                draggable={false}
-              />
-              <span className="reorder-name">{img}</span>
-              <div className="reorder-arrows">
-                <button
-                  className="reorder-arrow"
-                  onClick={() => moveItem(i, -1)}
-                  disabled={i === 0}
-                  title="Move up"
-                ><ChevronUp size={15} /></button>
-                <button
-                  className="reorder-arrow"
-                  onClick={() => moveItem(i, 1)}
-                  disabled={i === order.length - 1}
-                  title="Move down"
-                ><ChevronDown size={15} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleSave} disabled={saving || saved}>
-            {saved ? t('orderSaved') : saving ? '…' : t('saveOrder')}
           </button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { X, UploadCloud, FileText, Image, CheckCircle2, AlertCircle, FolderOpen, AlertTriangle, RotateCcw, RotateCw, Scissors, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { createRecipe, checkDuplicate, rotateImage, deleteRecipeImage, cropImage, saveImageOrder, imageUrl } from '../utils/api';
+import { createRecipe, checkDuplicate, rotateImage, deleteRecipeImage, cropImage, saveImageOrder, imageUrl, finalizeRecipeUpload } from '../utils/api';
 import CropModal from './CropModal';
 import TaxonomyField from './TaxonomyManager';
 import './UploadModal.css';
@@ -332,6 +332,16 @@ export default function UploadModal({ onClose, onSuccess }) {
     await doUpload();
   };
 
+  const finishEditing = () => {
+    if (uploadedRecipe?.id) {
+      // Best-effort: if the admin has auto-convert enabled, this queues a
+      // background PDF conversion. Never blocks or errors the upload flow.
+      finalizeRecipeUpload(uploadedRecipe.id).catch(() => {});
+    }
+    setStep('done');
+    setTimeout(onSuccess, 300);
+  };
+
   const fileType  = files.length > 0 ? (files[0].type === 'application/pdf' ? 'pdf' : 'images') : null;
   const totalSize = files.reduce((s, f) => s + f.size, 0);
   const sizeStr   = totalSize < 1024*1024 ? `${(totalSize/1024).toFixed(0)} KB` : `${(totalSize/1024/1024).toFixed(1)} MB`;
@@ -355,12 +365,12 @@ export default function UploadModal({ onClose, onSuccess }) {
             <div className="modal-header">
               <h3>{t('editImagesTitle') || 'Edit images'}</h3>
               <span className="upload-step-badge">step 2 / 2</span>
-              <button className="modal-close" onClick={() => { setStep('done'); setTimeout(onSuccess, 300); }}><X size={20} /></button>
+              <button className="modal-close" onClick={finishEditing}><X size={20} /></button>
             </div>
             <ImageEditStep
               t={t}
               recipe={uploadedRecipe}
-              onDone={() => { setStep('done'); setTimeout(onSuccess, 300); }}
+              onDone={finishEditing}
             />
           </>
         )}
