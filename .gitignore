@@ -8,14 +8,10 @@ app/frontend/dist/
 # Data volumes — recipes, yarns, database (your personal files, never commit)
 data/
 data-test/
-data-codex-test/
-data-codex-ocr-charts/
 
 # Logs
 logs/
 logs-test/
-logs-codex-test/
-logs-codex-ocr-charts/
 *.log
 
 # Environment files
@@ -41,7 +37,7 @@ docker-compose.test*.yaml
 
 # AI tooling and session files
 .claude/
-agent.md
+AGENTS.md
 CLAUDE.md
 MEMORY.md
 TODO.md
