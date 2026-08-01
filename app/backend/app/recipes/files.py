@@ -402,7 +402,9 @@ def _generate_thumbnail(recipe_dir: Path, file_type: str) -> str:
             if pdf:
                 pages = convert_from_path(str(pdf), first_page=1, last_page=1, dpi=150)
                 if pages:
-                    pages[0].save(str(thumb), "JPEG", quality=85)
+                    page = pages[0].convert("RGB")
+                    page.thumbnail((400, 400))
+                    page.save(str(thumb), "JPEG", quality=85)
                     return "thumbnail.jpg"
         else:
             # Use iterdir + suffix.lower() so files with uppercase extensions
