@@ -511,19 +511,60 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     });
   }, [loading, viewMode, sourceMode, textLoading, reviewLoading, pdfPages.length, converting]);
 
+  // PDF pages render as canvases that stay 0-height until their image finishes
+  // loading (see ImageAnnotationCanvas), so scrollHeight right after pdfPages
+  // populates is nowhere near the final page layout. Keep reasserting the
+  // target scroll position as pages load in (via ResizeObserver) instead of
+  // clamping once against a container that hasn't grown yet.
   useEffect(() => {
     if (loading || viewMode !== 'original' || sourceMode !== 'pdf' || pdfPages.length === 0 || restoredPdfScrollRef.current || pendingPdfScrollY.current == null) return;
     const targetY = Math.max(0, pendingPdfScrollY.current);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (pdfPagesRef.current) {
-          const maxScroll = Math.max(0, pdfPagesRef.current.scrollHeight - pdfPagesRef.current.clientHeight);
-          pdfPagesRef.current.scrollTop = Math.min(targetY, maxScroll);
-          lastPdfScrollYRef.current = pdfPagesRef.current.scrollTop;
-        }
-        restoredPdfScrollRef.current = true;
-      });
-    });
+    const container = pdfPagesRef.current;
+    if (!container) return;
+
+    let done = false;
+    let settleTimer = null;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      restoredPdfScrollRef.current = true;
+      ro.disconnect();
+      if (settleTimer != null) clearTimeout(settleTimer);
+      container.removeEventListener('wheel', onUserInteract);
+      container.removeEventListener('touchstart', onUserInteract);
+    };
+
+    // If the user takes the wheel/touch before we've finished settling,
+    // stop fighting them — respect wherever they scroll to.
+    const onUserInteract = () => finish();
+
+    const applyScroll = () => {
+      if (done || !pdfPagesRef.current) return;
+      const el = pdfPagesRef.current;
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(targetY, maxScroll);
+      lastPdfScrollYRef.current = el.scrollTop;
+      if (maxScroll >= targetY) finish();
+    };
+
+    const ro = new ResizeObserver(applyScroll);
+    ro.observe(container);
+    container.addEventListener('wheel', onUserInteract, { passive: true });
+    container.addEventListener('touchstart', onUserInteract, { passive: true });
+
+    requestAnimationFrame(() => requestAnimationFrame(applyScroll));
+    // Best-effort cutoff in case a page image never loads — keep whatever
+    // clamped position we've reached rather than waiting forever.
+    settleTimer = setTimeout(finish, 8000);
+
+    return () => {
+      done = true;
+      ro.disconnect();
+      if (settleTimer != null) clearTimeout(settleTimer);
+      container.removeEventListener('wheel', onUserInteract);
+      container.removeEventListener('touchstart', onUserInteract);
+    };
   }, [loading, viewMode, sourceMode, pdfPages.length]);
 
   useEffect(() => {
