@@ -71,7 +71,7 @@ function AppMenu({ open, onClose, onNavigate }) {
     <div className="app-menu-overlay" onClick={onClose}>
       <aside className="app-menu" onClick={e => e.stopPropagation()}>
         <div className="app-menu-top">
-          <BrandMark />
+          <AppBrand />
           <button className="app-menu-close" onClick={onClose} aria-label={t('cancel')}>
             <X size={20} />
           </button>
