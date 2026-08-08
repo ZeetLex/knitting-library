@@ -1,6 +1,11 @@
 """Recipe persistence, taxonomy, project state, annotations, import, and export workflows."""
 from app.core.foundation import *
 from app.auth.service import get_current_user, require_admin, _verify_token_param
+from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, _discover_pdf_pages, _pdf_is_app_generated, _source_image_names
+import math
+
+MAX_VIEWER_PROGRESS_INTEGER = 9_007_199_254_740_991
+MAX_VIEWER_PROGRESS_REVISION = MAX_VIEWER_PROGRESS_INTEGER - 1_000_000
 
 def _slugify(title: str) -> str:
     """Convert a recipe title to a safe folder name.
@@ -148,32 +153,15 @@ def _get_recipe_full(recipe_id: str, conn, current_user: Optional[dict] = None, 
         "SELECT t.name FROM tags t JOIN recipe_tags rt ON t.id=rt.tag_id WHERE rt.recipe_id=?",
         (recipe_id,)
     ).fetchall()]
+    recipe_dir = DATA_DIR / recipe_id
     if recipe["file_type"] == "images":
-        recipe_dir = DATA_DIR / recipe_id
-        # Use iterdir + suffix.lower() so files with uppercase extensions
-        # (e.g. .JPG, .PNG from cameras/scanners) are found on Linux where
-        # glob() is case-sensitive.
-        images = sorted(
-            f for f in recipe_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTS and f.name != "thumbnail.jpg"
-        ) if recipe_dir.exists() else []
-        image_names = [f.name for f in images]
-        # Apply custom order if saved
-        image_order_json = recipe.get("image_order", "")
-        if image_order_json:
-            try:
-                saved_order = json.loads(image_order_json)
-                existing = set(image_names)
-                # Start with saved order (skip any files that no longer exist)
-                ordered = [n for n in saved_order if n in existing]
-                # Append new files not yet in the saved order
-                ordered += [n for n in image_names if n not in set(ordered)]
-                image_names = ordered
-            except Exception:
-                pass  # Fall back to alphabetical on malformed JSON
-        recipe["images"] = image_names
+        recipe["images"] = _source_image_names(recipe_dir, recipe.get("image_order", ""))
     else:
         recipe["images"] = []
+    recipe["has_images"] = bool(recipe["images"])
+    recipe["has_pdf"] = (recipe_dir / "recipe.pdf").is_file()
+    recipe["pdf_generated"] = _pdf_is_app_generated(recipe_dir)
+    recipe["preferred_source"] = "pdf" if recipe["has_pdf"] else ("images" if recipe["has_images"] else recipe["file_type"])
     owner_sql, owner_params = _project_owner_filter(current_user, "ps", project_scope)
     sessions = conn.execute(
         """SELECT ps.id, ps.user_id, ps.username, ps.started_at, ps.finished_at, ps.yarn_id, ps.yarn_colour_id,
@@ -232,18 +220,23 @@ def _clamped_float(value, default: float, minimum: float, maximum: float) -> flo
 
 
 def _source_fingerprint(recipe_id: str, conn) -> str:
-    recipe = _get_recipe_full(recipe_id, conn)
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    recipe_dir = DATA_DIR / recipe_id
-    names = recipe["images"] if recipe["file_type"] == "images" else [p.name for p in sorted(recipe_dir.glob("page-*.jpg"))]
-    parts = []
-    for name in names:
-        path = recipe_dir / name
-        if path.exists():
-            stat = path.stat()
-            parts.append(f"{name}:{stat.st_size}:{int(stat.st_mtime)}")
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+    with IMAGE_PDF_CONVERSION_LOCK:
+        recipe = _get_recipe_full(recipe_id, conn)
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        recipe_dir = DATA_DIR / recipe_id
+        paths = (
+            [recipe_dir / name for name in recipe["images"]]
+            if recipe["file_type"] == "images"
+            else _discover_pdf_pages(recipe_dir)
+        )
+        parts = []
+        for path in paths:
+            if path.exists():
+                stat = path.stat()
+                relative_name = path.relative_to(recipe_dir).as_posix()
+                parts.append(f"{relative_name}:{stat.st_size}:{int(stat.st_mtime)}")
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
 def _text_version_dict(row: Optional[sqlite3.Row], current_fingerprint: str = "") -> dict:
@@ -556,11 +549,14 @@ def _viewer_progress_dict(row) -> dict:
         "exists": True,
         "recipeId": row["recipe_id"],
         "viewMode": row["view_mode"],
+        "sourceMode": row["source_mode"],
         "imageIndex": row["image_index"],
         "zoom": row["zoom"],
         "scrollY": row["scroll_y"],
+        "pdfScrollY": row["pdf_scroll_y"],
         "textScrollY": row["text_scroll_y"],
         "mobileImagesVisible": bool(row["mobile_images_visible"]),
+        "revision": row["revision"],
         "updatedAt": row["updated_at"],
     }
 
@@ -578,48 +574,85 @@ def get_recipe_viewer_progress(recipe_id: str, current_user: dict = Depends(get_
     return _viewer_progress_dict(row)
 
 
+def _bounded_viewer_integer(value, default: int = 0, allow_fraction: bool = False) -> int:
+    try:
+        if allow_fraction and not isinstance(value, int):
+            numeric = float(value or 0)
+            if not math.isfinite(numeric):
+                return default
+            parsed = int(numeric)
+        else:
+            parsed = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return max(0, min(MAX_VIEWER_PROGRESS_INTEGER, parsed))
+
+
+def _bounded_viewer_zoom(value) -> float:
+    try:
+        parsed = float(value or 1)
+    except (TypeError, ValueError, OverflowError):
+        return 1
+    if not math.isfinite(parsed):
+        return 1
+    return max(0.5, min(4, parsed))
+
+
 def save_recipe_viewer_progress(recipe_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     view_mode = str(data.get("viewMode") or data.get("view_mode") or "original")
     if view_mode not in {"original", "text", "review", "charts"}:
         view_mode = "original"
-    try:
-        image_index = max(0, int(data.get("imageIndex", data.get("image_index", 0)) or 0))
-    except (TypeError, ValueError):
-        image_index = 0
-    try:
-        zoom = float(data.get("zoom", 1) or 1)
-    except (TypeError, ValueError):
-        zoom = 1
-    zoom = max(0.5, min(4, zoom))
-    try:
-        scroll_y = max(0, int(float(data.get("scrollY", data.get("scroll_y", 0)) or 0)))
-    except (TypeError, ValueError):
-        scroll_y = 0
-    try:
-        text_scroll_y = max(0, int(float(data.get("textScrollY", data.get("text_scroll_y", 0)) or 0)))
-    except (TypeError, ValueError):
-        text_scroll_y = 0
+    source_mode = str(data.get("sourceMode") or data.get("source_mode") or "")
+    if source_mode not in {"", "pdf", "images"}:
+        source_mode = ""
+    image_index = _bounded_viewer_integer(data.get("imageIndex", data.get("image_index", 0)))
+    zoom = _bounded_viewer_zoom(data.get("zoom", 1))
+    scroll_y = _bounded_viewer_integer(
+        data.get("scrollY", data.get("scroll_y", 0)), allow_fraction=True
+    )
+    pdf_scroll_y = _bounded_viewer_integer(
+        data.get("pdfScrollY", data.get("pdf_scroll_y", 0)), allow_fraction=True
+    )
+    text_scroll_y = _bounded_viewer_integer(
+        data.get("textScrollY", data.get("text_scroll_y", 0)), allow_fraction=True
+    )
     mobile_images_visible = 1 if data.get("mobileImagesVisible", data.get("mobile_images_visible", False)) else 0
+    revision = _bounded_viewer_integer(data.get("revision", 0))
+    if revision >= MAX_VIEWER_PROGRESS_REVISION:
+        revision = min(int(time.time() * 1000), MAX_VIEWER_PROGRESS_REVISION - 1)
     now = datetime.utcnow().isoformat()
     conn = get_db()
     if not conn.execute("SELECT id FROM recipes WHERE id=?", (recipe_id,)).fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
+    current = conn.execute(
+        "SELECT revision FROM recipe_viewer_progress WHERE recipe_id=? AND user_id=?",
+        (recipe_id, current_user["id"]),
+    ).fetchone()
+    if current and int(current["revision"] or 0) >= MAX_VIEWER_PROGRESS_REVISION:
+        conn.execute(
+            "UPDATE recipe_viewer_progress SET revision=0 WHERE recipe_id=? AND user_id=?",
+            (recipe_id, current_user["id"]),
+        )
     conn.execute(
         """
         INSERT INTO recipe_viewer_progress
-            (recipe_id,user_id,view_mode,image_index,zoom,scroll_y,text_scroll_y,mobile_images_visible,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?)
+            (recipe_id,user_id,view_mode,source_mode,image_index,zoom,scroll_y,pdf_scroll_y,text_scroll_y,mobile_images_visible,revision,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(recipe_id,user_id) DO UPDATE SET
             view_mode=excluded.view_mode,
+            source_mode=excluded.source_mode,
             image_index=excluded.image_index,
             zoom=excluded.zoom,
             scroll_y=excluded.scroll_y,
+            pdf_scroll_y=excluded.pdf_scroll_y,
             text_scroll_y=excluded.text_scroll_y,
             mobile_images_visible=excluded.mobile_images_visible,
+            revision=excluded.revision,
             updated_at=excluded.updated_at
+        WHERE excluded.revision > recipe_viewer_progress.revision
         """,
-        (recipe_id, current_user["id"], view_mode, image_index, zoom, scroll_y, text_scroll_y, mobile_images_visible, now)
+        (recipe_id, current_user["id"], view_mode, source_mode, image_index, zoom, scroll_y, pdf_scroll_y, text_scroll_y, mobile_images_visible, revision, now)
     )
     conn.commit()
     row = conn.execute(
@@ -1322,7 +1355,7 @@ async def import_upload_group(
     conn.execute("INSERT INTO import_queue (recipe_id,group_name,status) VALUES (?,?,?)", (recipe_id, group_name, "staged"))
     conn.commit()
     recipe    = _get_recipe_full(recipe_id, conn)
-    pdf_pages = sorted([f.name for f in recipe_dir.glob("page-*.jpg")])
+    pdf_pages = [path.name for path in _discover_pdf_pages(recipe_dir)]
     conn.close()
     return {"recipe_id": recipe_id, "recipe": recipe, "pdf_pages": pdf_pages, "group_name": group_name}
 

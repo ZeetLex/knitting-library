@@ -1,66 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
-import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, saveImageOrder, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
+import { clampIndex, createLatestPayloadThrottle, normalizeViewerResume, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
+import ReorderModal from '../components/ReorderModal';
+import ImageAdjustPanel from '../components/ImageAdjustPanel';
+import RepairPdfModal from '../components/RepairPdfModal';
 import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
-const VIEWER_RESUME_PREFIX = 'knitting_recipe_viewer_state_v1';
-
-function viewerResumeKey(user, recipeId) {
-  return `${VIEWER_RESUME_PREFIX}_${user?.id || user?.username || 'guest'}_${recipeId}`;
-}
-
-function readViewerResume(user, recipeId) {
-  if (!recipeId) return null;
-  try {
-    const raw = localStorage.getItem(viewerResumeKey(user, recipeId));
-    return raw ? JSON.parse(raw) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function clampIndex(value, max) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(parsed, Math.max(0, max)));
-}
-
-function normalizeViewMode(value) {
-  return value === 'charts' ? 'review' : (value || 'original');
-}
-
-function requestedViewTakesPrecedence(value) {
-  const mode = normalizeViewMode(value);
-  return mode === 'review' || mode === 'text';
-}
-
-function resolveResumeView(saved, requested) {
-  if (requestedViewTakesPrecedence(requested)) return normalizeViewMode(requested);
-  return normalizeViewMode(saved?.viewMode || requested);
-}
-
-function normalizeResume(saved, requested = 'original') {
-  return {
-    viewMode: resolveResumeView(saved, requested),
-    imageIndex: clampIndex(saved?.imageIndex, 9999),
-    zoom: Number.isFinite(Number(saved?.zoom)) ? Math.max(0.5, Math.min(Number(saved.zoom), 4)) : 1,
-    scrollY: Number.isFinite(Number(saved?.scrollY)) ? Number(saved.scrollY) : null,
-    textScrollY: Number.isFinite(Number(saved?.textScrollY)) ? Number(saved.textScrollY) : null,
-    mobileImagesVisible: Boolean(saved?.mobileImagesVisible),
-  };
-}
-
 export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
   const { t, language, user } = useApp();
   const initialResume = readViewerResume(user, recipeId);
-  const initialState = normalizeResume(initialResume, initialViewMode);
+  const initialState = normalizeViewerResume(initialResume, initialViewMode);
   const [recipe, setRecipe]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
@@ -73,6 +30,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [desktopInfoOpen, setDesktopInfoOpen] = useState(true);
   const [pdfPages, setPdfPages]     = useState([]);
   const [converting, setConverting] = useState(false);
+  const [convertingImages, setConvertingImages] = useState(false);
+  const [sourceMode, setSourceMode] = useState(initialState.sourceMode);
   const [thumbSet, setThumbSet]         = useState(null);  // filename of last set thumbnail
   const [thumbCacheBust, setThumbCacheBust] = useState(null); // timestamp to force browser re-fetch
   const [reordering, setReordering]     = useState(false);
@@ -101,13 +60,20 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const panelDragStartY = useRef(null);
   const touchStartX = useRef(null);
   const pendingScrollY = useRef(initialState.scrollY);
+  const pendingPdfScrollY = useRef(initialState.pdfScrollY);
   const pendingTextScrollY = useRef(initialState.textScrollY);
   const lastTextScrollYRef = useRef(initialState.textScrollY || 0);
   const restoredScrollRef = useRef(false);
+  const restoredPdfScrollRef = useRef(false);
   const restoredTextScrollRef = useRef(false);
   const textPanelRef = useRef(null);
-  const serverSaveTimerRef = useRef(null);
-  const lastServerSaveRef = useRef(0);
+  const pdfPagesRef = useRef(null);
+  const lastPdfScrollYRef = useRef(initialState.pdfScrollY || 0);
+  const serverProgressThrottleRef = useRef(null);
+  const serverProgressThrottleKeyRef = useRef('');
+  const progressRevisionRef = useRef(initialState.revision || 0);
+  const viewerStateRef = useRef(null);
+  viewerStateRef.current = { viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible };
 
   useEffect(() => {
     const openPanel = (event) => {
@@ -176,6 +142,13 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     panelDragStartY.current = null;
   };
 
+  const applyPdfInvalidation = (result) => {
+    if (!result?.pdf_invalidated) return;
+    setPdfPages([]);
+    setRecipe(current => ({ ...current, has_pdf: false, pdf_generated: false, preferred_source: 'images' }));
+    setSourceMode('images');
+  };
+
   const handleSetThumbnail = async (source, filename) => {
     try {
       const result = await setThumbnail(recipeId, source, filename);
@@ -204,6 +177,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
         setThumbCacheBust(Date.now());
       }
+      applyPdfInvalidation(result);
     } catch (e) {
       alert('Could not rotate image.');
     }
@@ -222,6 +196,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
         setThumbCacheBust(Date.now());
       }
+      applyPdfInvalidation(result);
     } catch (e) {
       alert('Could not delete image.');
       setDeleteImageConfirm(false);
@@ -239,6 +214,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
         setThumbCacheBust(Date.now());
       }
+      applyPdfInvalidation(result);
     } catch (e) {
       alert('Could not crop image.');
     }
@@ -253,6 +229,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
       setThumbCacheBust(Date.now());
     }
+    applyPdfInvalidation(result);
     setAdjustOpen(false);
   };
 
@@ -265,6 +242,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       setRecipe(r => ({ ...r, thumbnail_version: result.thumbnail_version }));
       setThumbCacheBust(Date.now());
     }
+    applyPdfInvalidation(result);
     setAdjustOpen(false);
   };
 
@@ -275,6 +253,10 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     try {
       const updated = await addImagesToRecipe(recipeId, files);
       setRecipe(updated);
+      if (!updated.has_pdf) {
+        setPdfPages([]);
+        setSourceMode('images');
+      }
     } catch (err) {
       alert(t('addImagesError'));
     } finally {
@@ -284,14 +266,67 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     }
   };
 
+  // Shared by the inline "Rebuild PDF" button and the Repair PDF modal so the
+  // post-conversion state sync (recipe, pages, scroll, source mode) can never
+  // drift between the two entry points.
+  const applyConversionResult = (result) => {
+    setRecipe(result.recipe);
+    setPdfPages(result.pages || []);
+    pendingPdfScrollY.current = 0;
+    lastPdfScrollYRef.current = 0;
+    restoredPdfScrollRef.current = true;
+    setSourceMode('pdf');
+    setMobilePanel(null);
+    setMobileImageEditing(false);
+  };
+
+  const handleConvertImagesToPdf = async () => {
+    if (convertingImages || !(recipe?.images || []).length) return;
+    setConvertingImages(true);
+    try {
+      const result = await convertImagesToPdf(recipeId);
+      applyConversionResult(result);
+    } catch (err) {
+      alert(err.message || t('convertImagesPdfError'));
+    } finally {
+      setConvertingImages(false);
+    }
+  };
+
+  const [repairOpen, setRepairOpen] = useState(false);
+
+  // Edits inside the Repair PDF modal are applied to the server immediately —
+  // there's no real "cancel". If the user closes without converting, resync
+  // with the server so a stale has_pdf/pdfPages view is never shown.
+  const handleRepairClose = async (didEdit) => {
+    setRepairOpen(false);
+    if (!didEdit) return;
+    try {
+      const fresh = await fetchRecipe(recipeId);
+      setRecipe(fresh);
+      if (fresh.has_pdf) {
+        const pages = await fetchPdfPages(recipeId);
+        setPdfPages(pages.pages || []);
+      } else {
+        setPdfPages([]);
+        setSourceMode('images');
+      }
+    } catch (_) {
+      // Best-effort resync — the next full reload will still catch up.
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const localSaved = readViewerResume(user, recipeId);
-    const fallbackResume = normalizeResume(localSaved, initialViewMode);
+    const fallbackResume = normalizeViewerResume(localSaved, initialViewMode);
     pendingScrollY.current = fallbackResume.scrollY;
+    pendingPdfScrollY.current = fallbackResume.pdfScrollY;
     pendingTextScrollY.current = fallbackResume.textScrollY;
+    lastPdfScrollYRef.current = fallbackResume.pdfScrollY || 0;
     lastTextScrollYRef.current = fallbackResume.textScrollY || 0;
     restoredScrollRef.current = false;
+    restoredPdfScrollRef.current = false;
     restoredTextScrollRef.current = false;
     setLoading(true);
     setError(null);
@@ -299,6 +334,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setMobilePanel(null);
     setMobileImagesVisible(fallbackResume.mobileImagesVisible);
     setViewMode(fallbackResume.viewMode);
+    setSourceMode(fallbackResume.sourceMode);
     setImageIndex(fallbackResume.imageIndex);
     setZoom(fallbackResume.zoom);
     setFullscreen(false);
@@ -312,22 +348,27 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           fetchViewerProgress(recipeId).catch(() => null),
         ]);
         if (cancelled) return;
-        const saved = serverSaved?.exists ? serverSaved : localSaved;
-        const resume = normalizeResume(saved, initialViewMode);
+        const saved = resolveViewerResume(localSaved, serverSaved);
+        const resume = normalizeViewerResume(saved, initialViewMode);
         pendingScrollY.current = resume.scrollY;
+        pendingPdfScrollY.current = resume.pdfScrollY;
         pendingTextScrollY.current = resume.textScrollY;
+        lastPdfScrollYRef.current = resume.pdfScrollY || 0;
         lastTextScrollYRef.current = resume.textScrollY || 0;
+        progressRevisionRef.current = Math.max(progressRevisionRef.current, resume.revision || 0);
         restoredScrollRef.current = false;
+        restoredPdfScrollRef.current = false;
         restoredTextScrollRef.current = false;
         setMobileImagesVisible(resume.mobileImagesVisible);
         setViewMode(resume.viewMode);
+        setSourceMode(resolveRecipeSourceMode(resume.sourceMode, r));
         setImageIndex(resume.imageIndex);
         setZoom(resume.zoom);
         setRecipe(r);
         if (r.file_type === 'images') {
           setImageIndex(index => clampIndex(index, (r.images || []).length - 1));
         }
-        if (r.file_type === 'pdf') {
+        if (r.has_pdf || r.file_type === 'pdf') {
           fetchPdfPages(recipeId).then(d => {
             const pages = d.pages || [];
             if (pages.length > 0) {
@@ -372,42 +413,38 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   }, [recipeId, viewMode]);
 
   const saveViewerResume = useCallback((flushServer = false) => {
+    const current = viewerStateRef.current;
+    const revision = Math.max(Date.now(), progressRevisionRef.current + 1);
+    progressRevisionRef.current = revision;
     const progress = {
       recipeId,
-      viewMode,
-      imageIndex,
-      zoom,
+      viewMode: current.viewMode,
+      sourceMode: current.sourceMode,
+      imageIndex: current.imageIndex,
+      zoom: current.zoom,
       scrollY: window.scrollY || 0,
+      pdfScrollY: pdfPagesRef.current?.scrollTop ?? lastPdfScrollYRef.current ?? 0,
       textScrollY: textPanelRef.current?.scrollTop ?? lastTextScrollYRef.current ?? 0,
-      mobileImagesVisible,
-      updatedAt: Date.now(),
+      mobileImagesVisible: current.mobileImagesVisible,
+      revision,
+      updatedAt: revision,
     };
     try {
       localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify(progress));
     } catch (_) {}
     if (!user || !recipeId) return;
-    const saveServer = () => {
-      lastServerSaveRef.current = Date.now();
-      saveViewerProgressApi(recipeId, progress).catch(() => {});
-    };
-    if (flushServer) {
-      if (serverSaveTimerRef.current) {
-        clearTimeout(serverSaveTimerRef.current);
-        serverSaveTimerRef.current = null;
-      }
-      saveServer();
-      return;
+    const throttleKey = `${user.id || user.username || ''}:${recipeId}`;
+    if (!serverProgressThrottleRef.current || serverProgressThrottleKeyRef.current !== throttleKey) {
+      serverProgressThrottleRef.current?.cancel();
+      serverProgressThrottleKeyRef.current = throttleKey;
+      serverProgressThrottleRef.current = createLatestPayloadThrottle(
+        (latestProgress, options) => {
+          saveViewerProgressApi(recipeId, latestProgress, options).catch(() => {});
+        },
+      );
     }
-    const elapsed = Date.now() - lastServerSaveRef.current;
-    if (elapsed >= 1500) {
-      saveServer();
-    } else if (!serverSaveTimerRef.current) {
-      serverSaveTimerRef.current = setTimeout(() => {
-        serverSaveTimerRef.current = null;
-        saveServer();
-      }, 1500 - elapsed);
-    }
-  }, [user, recipeId, viewMode, imageIndex, zoom, mobileImagesVisible]);
+    serverProgressThrottleRef.current.queue(progress, { flush: flushServer });
+  }, [user, recipeId]);
 
   useEffect(() => {
     if (!recipeId) return undefined;
@@ -430,10 +467,9 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     return () => {
       saveViewerResume(true);
       if (scrollFrame != null) cancelAnimationFrame(scrollFrame);
-      if (serverSaveTimerRef.current) {
-        clearTimeout(serverSaveTimerRef.current);
-        serverSaveTimerRef.current = null;
-      }
+      serverProgressThrottleRef.current?.cancel();
+      serverProgressThrottleRef.current = null;
+      serverProgressThrottleKeyRef.current = '';
       window.removeEventListener('pagehide', saveOnPageHide);
       document.removeEventListener('visibilitychange', saveOnVisibility);
       window.removeEventListener('scroll', saveOnScroll);
@@ -443,15 +479,28 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   useEffect(() => {
     if (!recipeId || loading) return;
     if (pendingScrollY.current != null && !restoredScrollRef.current) return;
+    if (viewMode === 'original' && sourceMode === 'pdf' && pendingPdfScrollY.current != null && !restoredPdfScrollRef.current) return;
     if (viewMode === 'text' && pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
     saveViewerResume();
-  }, [recipeId, loading, viewMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
+  }, [recipeId, loading, viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
+
+  useLayoutEffect(() => {
+    const pdfActive = viewMode === 'original' && sourceMode === 'pdf';
+    if (!pdfActive) return undefined;
+    pendingPdfScrollY.current = lastPdfScrollYRef.current;
+    restoredPdfScrollRef.current = false;
+    return () => {
+      if (pdfPagesRef.current) {
+        lastPdfScrollYRef.current = pdfPagesRef.current.scrollTop;
+      }
+    };
+  }, [recipeId, viewMode, sourceMode]);
 
   useEffect(() => {
     if (loading || restoredScrollRef.current || pendingScrollY.current == null) return;
     if (viewMode === 'text' && textLoading) return;
     if (viewMode === 'review' && reviewLoading) return;
-    if (viewMode === 'original' && recipe?.file_type === 'pdf' && pdfPages.length === 0 && !converting) return;
+    if (viewMode === 'original' && sourceMode === 'pdf' && pdfPages.length === 0 && !converting) return;
 
     const targetY = Math.max(0, pendingScrollY.current);
     requestAnimationFrame(() => {
@@ -460,7 +509,63 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         restoredScrollRef.current = true;
       });
     });
-  }, [loading, viewMode, textLoading, reviewLoading, recipe?.file_type, pdfPages.length, converting]);
+  }, [loading, viewMode, sourceMode, textLoading, reviewLoading, pdfPages.length, converting]);
+
+  // PDF pages render as canvases that stay 0-height until their image finishes
+  // loading (see ImageAnnotationCanvas), so scrollHeight right after pdfPages
+  // populates is nowhere near the final page layout. Keep reasserting the
+  // target scroll position as pages load in (via ResizeObserver) instead of
+  // clamping once against a container that hasn't grown yet.
+  useEffect(() => {
+    if (loading || viewMode !== 'original' || sourceMode !== 'pdf' || pdfPages.length === 0 || restoredPdfScrollRef.current || pendingPdfScrollY.current == null) return;
+    const targetY = Math.max(0, pendingPdfScrollY.current);
+    const container = pdfPagesRef.current;
+    if (!container) return;
+
+    let done = false;
+    let settleTimer = null;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      restoredPdfScrollRef.current = true;
+      ro.disconnect();
+      if (settleTimer != null) clearTimeout(settleTimer);
+      container.removeEventListener('wheel', onUserInteract);
+      container.removeEventListener('touchstart', onUserInteract);
+    };
+
+    // If the user takes the wheel/touch before we've finished settling,
+    // stop fighting them — respect wherever they scroll to.
+    const onUserInteract = () => finish();
+
+    const applyScroll = () => {
+      if (done || !pdfPagesRef.current) return;
+      const el = pdfPagesRef.current;
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(targetY, maxScroll);
+      lastPdfScrollYRef.current = el.scrollTop;
+      if (maxScroll >= targetY) finish();
+    };
+
+    const ro = new ResizeObserver(applyScroll);
+    ro.observe(container);
+    container.addEventListener('wheel', onUserInteract, { passive: true });
+    container.addEventListener('touchstart', onUserInteract, { passive: true });
+
+    requestAnimationFrame(() => requestAnimationFrame(applyScroll));
+    // Best-effort cutoff in case a page image never loads — keep whatever
+    // clamped position we've reached rather than waiting forever.
+    settleTimer = setTimeout(finish, 8000);
+
+    return () => {
+      done = true;
+      ro.disconnect();
+      if (settleTimer != null) clearTimeout(settleTimer);
+      container.removeEventListener('wheel', onUserInteract);
+      container.removeEventListener('touchstart', onUserInteract);
+    };
+  }, [loading, viewMode, sourceMode, pdfPages.length]);
 
   useEffect(() => {
     if (loading || viewMode !== 'text' || textLoading || restoredTextScrollRef.current || pendingTextScrollY.current == null) return;
@@ -482,6 +587,13 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     lastTextScrollYRef.current = textPanelRef.current?.scrollTop || 0;
     saveViewerResume();
   }, [viewMode, saveViewerResume]);
+
+  const handlePdfPanelScroll = useCallback(() => {
+    if (viewMode !== 'original' || sourceMode !== 'pdf') return;
+    if (pendingPdfScrollY.current != null && !restoredPdfScrollRef.current) return;
+    lastPdfScrollYRef.current = pdfPagesRef.current?.scrollTop || 0;
+    saveViewerResume();
+  }, [viewMode, sourceMode, saveViewerResume]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') setFullscreen(false);
@@ -606,7 +718,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               className="viewer-action-btn"
               href={downloadUrl(recipeId)}
               download
-              title={recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images (ZIP)'}
+              title={recipe?.has_pdf || recipe?.file_type === 'pdf' ? t('downloadPdf') : t('downloadImages')}
             >
               <Download size={18} />
             </a>
@@ -650,6 +762,25 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </button>
       </div>
 
+      {viewMode === 'original' && recipe.file_type === 'images' && recipe.has_pdf && recipe.has_images && (
+        <div className="viewer-source-tabs" role="group" aria-label={t('recipeSourceView')}>
+          <button
+            className={sourceMode === 'pdf' ? 'active' : ''}
+            onClick={() => setSourceMode('pdf')}
+            aria-pressed={sourceMode === 'pdf'}
+          >
+            <FileText size={15} /> {t('pdfView')}
+          </button>
+          <button
+            className={sourceMode === 'images' ? 'active' : ''}
+            onClick={() => setSourceMode('images')}
+            aria-pressed={sourceMode === 'images'}
+          >
+            <LucideImage size={15} /> {t('imagesView')}
+          </button>
+        </div>
+      )}
+
       <div className="viewer-body">
         <div className="viewer-content">
           {viewMode === 'text' ? (
@@ -686,7 +817,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 onTextJobQueued?.();
               }}
             />
-          ) : recipe.file_type === 'pdf' ? (
+          ) : sourceMode === 'pdf' && (recipe.has_pdf || recipe.file_type === 'pdf') ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
               <div className="pdf-controls">
                 <button className="pdf-open-btn" onClick={() => { setFullscreen(f => !f); }}>
@@ -702,9 +833,15 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 <a href={pdfUrl(recipeId)} download className="pdf-download-btn">
                   ↓ PDF
                 </a>
+                {recipe.file_type === 'images' && (recipe.images || []).length > 0 && (
+                  <button className="pdf-repair-btn" onClick={() => setRepairOpen(true)}>
+                    <Wrench size={16} />
+                    <span>{t('repairPdf')}</span>
+                  </button>
+                )}
               </div>
 
-              <div className="pdf-pages-wrap">
+              <div className="pdf-pages-wrap" ref={pdfPagesRef} onScroll={handlePdfPanelScroll}>
                 {pdfPages.length > 0 ? (
                   // Render each page as an annotatable image
                   pdfPages.map((page, i) => (
@@ -863,6 +1000,17 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                     <ImagePlus size={14} />
                     <span>{addingImages ? t('addingImages') : t('addImages')}</span>
                   </button>
+                  {(!recipe.has_pdf || recipe.pdf_generated) && (
+                    <button
+                      className="convert-images-pdf-btn"
+                      onClick={handleConvertImagesToPdf}
+                      title={recipe.pdf_generated ? t('rebuildPdf') : t('convertImagesToPdf')}
+                      disabled={convertingImages || recipe.images.length === 0}
+                    >
+                      <FileText size={14} />
+                      <span>{convertingImages ? t('creatingPdf') : (recipe.pdf_generated ? t('rebuildPdf') : t('convertImagesToPdf'))}</span>
+                    </button>
+                  )}
                   <input
                     ref={addImagesInputRef}
                     type="file"
@@ -932,8 +1080,9 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           recipeId={recipeId}
           images={recipe.images}
           onClose={() => setReordering(false)}
-          onSaved={(newOrder) => {
+          onSaved={(newOrder, result) => {
             setRecipe(r => ({ ...r, images: newOrder }));
+            applyPdfInvalidation(result);
             setImageIndex(0);
             setReordering(false);
           }}
@@ -985,6 +1134,16 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           onClose={() => setAdjustOpen(false)}
           onApply={handleAdjust}
           onRestore={handleRestoreOriginal}
+        />
+      )}
+
+      {repairOpen && recipe?.file_type === 'images' && (recipe.images || []).length > 0 && (
+        <RepairPdfModal
+          t={t}
+          recipeId={recipeId}
+          recipe={recipe}
+          onClose={handleRepairClose}
+          onConverted={(result) => { applyConversionResult(result); setRepairOpen(false); }}
         />
       )}
 
@@ -1078,7 +1237,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 onClick={() => setMobilePanel(null)}
               >
                 <Download size={19} />
-                <span>{recipe?.file_type === 'pdf' ? 'Download PDF' : 'Download images'}</span>
+                <span>{recipe?.has_pdf || recipe?.file_type === 'pdf' ? t('downloadPdf') : t('downloadImages')}</span>
               </a>
               <button className="mobile-action-row" onClick={() => { setEditing(true); setMobilePanel(null); }}>
                 <Pencil size={19} />
@@ -1105,13 +1264,23 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                   <LucideImage size={19} />
                   <span>{t('editImagesTitle') || 'Edit images'}</span>
                 </button>
+                {(!recipe.has_pdf || recipe.pdf_generated) && (
+                  <button
+                    className="mobile-action-row"
+                    onClick={handleConvertImagesToPdf}
+                    disabled={convertingImages || recipe.images.length === 0}
+                  >
+                    <FileText size={19} />
+                    <span>{convertingImages ? t('creatingPdf') : (recipe.pdf_generated ? t('rebuildPdf') : t('convertImagesToPdf'))}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {recipe.file_type === 'images' && (
+      {recipe.file_type === 'images' && sourceMode === 'images' && (
         <>
           {recipe.images.length > 1 && mobileImagesVisible && !mobileImageEditing && !fullscreen && (
             <div
@@ -1195,90 +1364,6 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-const DEFAULT_ADJUSTMENTS = {
-  brightness: 0,
-  contrast: 0,
-  gamma: 1,
-  saturation: 0,
-  warmth: 0,
-  sharpness: 0,
-};
-
-function ImageAdjustPanel({ t, imageSrc, onClose, onApply, onRestore }) {
-  const [values, setValues] = useState(DEFAULT_ADJUSTMENTS);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const f = (key, value) => setValues(prev => ({ ...prev, [key]: Number(value) }));
-  const previewFilter = [
-    `brightness(${1 + values.brightness / 100})`,
-    `contrast(${1 + values.contrast / 100})`,
-    `saturate(${Math.max(0, 1 + values.saturation / 100)})`,
-  ].join(' ');
-
-  const handleApply = async () => {
-    setSaving(true); setError('');
-    try { await onApply(values); }
-    catch (e) { setError(e.message || t('adjustImageError')); setSaving(false); }
-  };
-
-  const handleRestore = async () => {
-    if (!window.confirm(t('restoreOriginalConfirm'))) return;
-    setSaving(true); setError('');
-    try { await onRestore(); }
-    catch (e) { setError(e.message || t('restoreOriginalError')); setSaving(false); }
-  };
-
-  const sliders = [
-    ['brightness', t('adjustBrightness'), -100, 100, 1],
-    ['contrast', t('adjustContrast'), -100, 100, 1],
-    ['gamma', t('adjustGamma'), 0.2, 3, 0.05],
-    ['saturation', t('adjustSaturation'), -100, 100, 1],
-    ['warmth', t('adjustWarmth'), -100, 100, 1],
-    ['sharpness', t('adjustSharpness'), -100, 100, 1],
-  ];
-
-  return (
-    <div className="adjust-panel-overlay" onClick={onClose}>
-      <div className="adjust-panel" onClick={e => e.stopPropagation()}>
-        <div className="adjust-panel-header">
-          <div>
-            <h3>{t('adjustImage')}</h3>
-            <p>{t('adjustImageHint')}</p>
-          </div>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="adjust-panel-body">
-          <div className="adjust-preview">
-            <img src={imageSrc} alt="" style={{ filter: previewFilter }} />
-          </div>
-          <div className="adjust-sliders">
-            {sliders.map(([key, label, min, max, step]) => (
-              <label className="adjust-slider" key={key}>
-                <span>{label}<strong>{values[key]}</strong></span>
-                <input
-                  type="range"
-                  min={min}
-                  max={max}
-                  step={step}
-                  value={values[key]}
-                  onChange={e => f(key, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-        </div>
-        {error && <p className="status-error adjust-error">{error}</p>}
-        <div className="adjust-panel-actions">
-          <button className="btn-secondary" onClick={() => setValues(DEFAULT_ADJUSTMENTS)} disabled={saving}>{t('resetSliders')}</button>
-          <button className="btn-secondary" onClick={handleRestore} disabled={saving}>{t('restoreOriginal')}</button>
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleApply} disabled={saving}>{saving ? t('saving') : t('apply')}</button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2217,122 +2302,6 @@ function EditModal({ t, recipe, onClose, onSaved }) {
           <button className="btn-secondary" onClick={onClose}>{t('cancel')}</button>
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? t('saving') : t('saveChanges')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReorderModal({ t, recipeId, images, onClose, onSaved }) {
-  const [order, setOrder]           = useState([...images]);
-  const [dragIdx, setDragIdx]       = useState(null);   // which row is being dragged
-  const [dropIdx, setDropIdx]       = useState(null);   // which row the drag is over
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-
-  const moveItem = (idx, dir) => {
-    const target = idx + dir;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setOrder(next);
-  };
-
-  const handleDragStart = (e, i) => {
-    // Store the source index both in state and in dataTransfer as a fallback
-    setDragIdx(i);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(i));
-  };
-
-  const handleDragOver = (e, i) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dropIdx !== i) setDropIdx(i);
-  };
-
-  // Only commit the reorder on drop — avoids re-render mid-drag breaking the drag
-  const handleDrop = (e, i) => {
-    e.preventDefault();
-    const from = dragIdx ?? parseInt(e.dataTransfer.getData('text/plain'), 10);
-    setDragIdx(null);
-    setDropIdx(null);
-    if (isNaN(from) || from === i) return;
-    const next = [...order];
-    const [moved] = next.splice(from, 1);
-    next.splice(i, 0, moved);
-    setOrder(next);
-  };
-
-  const handleDragEnd = () => { setDragIdx(null); setDropIdx(null); };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await saveImageOrder(recipeId, order);
-      setSaved(true);
-      setTimeout(() => onSaved(order), 700);
-    } catch (e) {
-      alert('Failed to save order.');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay modal-overlay--bottom-mobile" onClick={onClose}>
-      <div className="reorder-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>{t('reorderTitle')}</h3>
-          <button className="modal-close" onClick={onClose}><X size={20} /></button>
-        </div>
-        <p className="reorder-help">{t('reorderHelp')}</p>
-        <div className="reorder-list">
-          {order.map((img, i) => (
-            <div
-              key={img}
-              className={`reorder-item${
-                dragIdx === i  ? ' reorder-item--dragging'    :
-                dropIdx  === i ? ' reorder-item--drop-target' : ''
-              }`}
-              draggable
-              onDragStart={e => handleDragStart(e, i)}
-              onDragOver={e  => handleDragOver(e, i)}
-              onDrop={e      => handleDrop(e, i)}
-              onDragLeave={() => setDropIdx(null)}
-              onDragEnd={handleDragEnd}
-            >
-              <GripVertical size={18} className="reorder-grip" />
-              <span className="reorder-num">{i + 1}</span>
-              <img
-                className="reorder-thumb"
-                src={imageUrl(recipeId, img)}
-                alt={`Image ${i + 1}`}
-                loading="lazy"
-                draggable={false}
-              />
-              <span className="reorder-name">{img}</span>
-              <div className="reorder-arrows">
-                <button
-                  className="reorder-arrow"
-                  onClick={() => moveItem(i, -1)}
-                  disabled={i === 0}
-                  title="Move up"
-                ><ChevronUp size={15} /></button>
-                <button
-                  className="reorder-arrow"
-                  onClick={() => moveItem(i, 1)}
-                  disabled={i === order.length - 1}
-                  title="Move down"
-                ><ChevronDown size={15} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>{t('cancel')}</button>
-          <button className="btn-primary" onClick={handleSave} disabled={saving || saved}>
-            {saved ? t('orderSaved') : saving ? '…' : t('saveOrder')}
           </button>
         </div>
       </div>

@@ -38,11 +38,15 @@ COPY app/backend/requirements.txt .
 # 1. Compile all Python packages (bcrypt, Pillow, uvloop need gcc)
 # 2. Strip the compiler toolchain — compiled .so files remain, tools are removed
 # 3. Fix vendored wheel CVE
+# 4. Remove pip itself — build-time only, and its vendored bundle (msgpack,
+#    plus a setuptools version reference in vendor.txt/bom.cdx.json) otherwise
+#    shows up as HIGH CVEs in image scans despite never being reachable at runtime
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip uninstall -y wheel \
     && find /usr/local/lib/python3.12/site-packages/setuptools/_vendor -name "wheel-*.dist-info" -exec rm -rf {} + 2>/dev/null; true \
     && pip install --no-cache-dir --no-deps "wheel==0.46.2" \
+    && pip uninstall -y pip \
     && apk del gcc musl-dev binutils \
     && rm -rf /usr/libexec/gcc /usr/lib/gcc /var/cache/apk/*
 

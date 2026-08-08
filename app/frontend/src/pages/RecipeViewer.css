@@ -159,12 +159,42 @@ a.viewer-action-btn { text-decoration: none; }
   background: rgba(196,113,74,0.1);
 }
 
+.viewer-source-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 12px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.viewer-source-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font: 700 12px 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+
+.viewer-source-tabs button.active {
+  border-color: var(--terracotta);
+  background: rgba(196,113,74,0.12);
+  color: var(--terracotta);
+}
+
 @media (max-width: 480px) {
   .viewer-mode-tabs { padding: 7px 10px; }
   .viewer-mode-tab {
     flex: 1;
     padding: 0 8px;
   }
+  .viewer-source-tabs button { flex: 1; justify-content: center; }
 }
 
 .markdown-image {
@@ -1242,6 +1272,21 @@ a.viewer-action-btn { text-decoration: none; }
   transition: background 0.15s;
 }
 .pdf-download-btn:hover { background: rgba(255,255,255,0.2); }
+
+.pdf-repair-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pdf-repair-btn:hover { background: rgba(255,255,255,0.2); }
 
 /* ── Image Viewer ───────────────────────────────────────────────────────────── */
 .image-viewer {
