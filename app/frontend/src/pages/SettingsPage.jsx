@@ -374,8 +374,14 @@ function BrandingSettings() {
       setStatus(`error:${t('brandingImageSizeError')}`);
       return;
     }
+    const objectUrl = URL.createObjectURL(file);
+    if (!objectUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(objectUrl);
+      setStatus(`error:${t('brandingImageTypeError')}`);
+      return;
+    }
     if (cropUrl) URL.revokeObjectURL(cropUrl);
-    setCropUrl(URL.createObjectURL(file));
+    setCropUrl(objectUrl);
     setStatus('');
   };
 
