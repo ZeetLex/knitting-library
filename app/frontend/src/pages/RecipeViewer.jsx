@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
-import { clampIndex, createLatestPayloadThrottle, normalizeViewerResume, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
+import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfScrollTopForAnchor, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -23,7 +23,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [error, setError]           = useState(null);
   const [imageIndex, setImageIndex] = useState(() => initialState.imageIndex);
   const [zoom, setZoom]             = useState(() => initialState.zoom);
-  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(() => initialState.fullscreen);
   const [editing, setEditing]       = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -61,6 +61,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const touchStartX = useRef(null);
   const pendingScrollY = useRef(initialState.scrollY);
   const pendingPdfScrollY = useRef(initialState.pdfScrollY);
+  const pendingPdfAnchor = useRef(initialState.pdfAnchor);
   const pendingTextScrollY = useRef(initialState.textScrollY);
   const lastTextScrollYRef = useRef(initialState.textScrollY || 0);
   const restoredScrollRef = useRef(false);
@@ -69,11 +70,12 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const textPanelRef = useRef(null);
   const pdfPagesRef = useRef(null);
   const lastPdfScrollYRef = useRef(initialState.pdfScrollY || 0);
+  const lastPdfAnchorRef = useRef(initialState.pdfAnchor);
   const serverProgressThrottleRef = useRef(null);
   const serverProgressThrottleKeyRef = useRef('');
   const progressRevisionRef = useRef(initialState.revision || 0);
   const viewerStateRef = useRef(null);
-  viewerStateRef.current = { viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible };
+  viewerStateRef.current = { viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible, fullscreen };
 
   useEffect(() => {
     const openPanel = (event) => {
@@ -322,8 +324,10 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     const fallbackResume = normalizeViewerResume(localSaved, initialViewMode);
     pendingScrollY.current = fallbackResume.scrollY;
     pendingPdfScrollY.current = fallbackResume.pdfScrollY;
+    pendingPdfAnchor.current = fallbackResume.pdfAnchor;
     pendingTextScrollY.current = fallbackResume.textScrollY;
     lastPdfScrollYRef.current = fallbackResume.pdfScrollY || 0;
+    lastPdfAnchorRef.current = fallbackResume.pdfAnchor;
     lastTextScrollYRef.current = fallbackResume.textScrollY || 0;
     restoredScrollRef.current = false;
     restoredPdfScrollRef.current = false;
@@ -337,7 +341,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setSourceMode(fallbackResume.sourceMode);
     setImageIndex(fallbackResume.imageIndex);
     setZoom(fallbackResume.zoom);
-    setFullscreen(false);
+    setFullscreen(fallbackResume.fullscreen && fallbackResume.viewMode === 'original');
     setTextVersion(null);
     setReviewSession(null);
 
@@ -348,12 +352,14 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           fetchViewerProgress(recipeId).catch(() => null),
         ]);
         if (cancelled) return;
-        const saved = resolveViewerResume(localSaved, serverSaved);
+        const saved = mergeLocalViewerPresentation(resolveViewerResume(localSaved, serverSaved), localSaved);
         const resume = normalizeViewerResume(saved, initialViewMode);
         pendingScrollY.current = resume.scrollY;
         pendingPdfScrollY.current = resume.pdfScrollY;
+        pendingPdfAnchor.current = resume.pdfAnchor;
         pendingTextScrollY.current = resume.textScrollY;
         lastPdfScrollYRef.current = resume.pdfScrollY || 0;
+        lastPdfAnchorRef.current = resume.pdfAnchor;
         lastTextScrollYRef.current = resume.textScrollY || 0;
         progressRevisionRef.current = Math.max(progressRevisionRef.current, resume.revision || 0);
         restoredScrollRef.current = false;
@@ -361,7 +367,9 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         restoredTextScrollRef.current = false;
         setMobileImagesVisible(resume.mobileImagesVisible);
         setViewMode(resume.viewMode);
-        setSourceMode(resolveRecipeSourceMode(resume.sourceMode, r));
+        const resolvedSourceMode = resolveRecipeSourceMode(resume.sourceMode, r);
+        setSourceMode(resolvedSourceMode);
+        setFullscreen(resume.fullscreen && resume.viewMode === 'original' && (resolvedSourceMode === 'pdf' || resolvedSourceMode === 'images'));
         setImageIndex(resume.imageIndex);
         setZoom(resume.zoom);
         setRecipe(r);
@@ -412,11 +420,42 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       .finally(() => setReviewLoading(false));
   }, [recipeId, viewMode]);
 
+  const capturePdfAnchor = useCallback(() => {
+    const container = pdfPagesRef.current;
+    if (!container) return null;
+    const pages = Array.from(container.querySelectorAll('.pdf-page-block'));
+    if (pages.length === 0) return null;
+    const containerRect = container.getBoundingClientRect();
+    const focusY = containerRect.top + (container.clientHeight / 2);
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    pages.forEach((page, index) => {
+      const pageRect = page.getBoundingClientRect();
+      const top = pageRect.top;
+      const height = Math.max(1, pageRect.height);
+      const bottom = top + height;
+      const distance = focusY < top ? top - focusY : (focusY > bottom ? focusY - bottom : 0);
+      if (distance < bestDistance) {
+        bestIndex = index;
+        bestDistance = distance;
+      }
+    });
+    const page = pages[bestIndex];
+    const pageRect = page.getBoundingClientRect();
+    const height = Math.max(1, pageRect.height);
+    return {
+      pageIndex: bestIndex,
+      offsetRatio: Math.max(0, Math.min((focusY - pageRect.top) / height, 1)),
+    };
+  }, []);
+
   const saveViewerResume = useCallback((flushServer = false) => {
     const current = viewerStateRef.current;
     const revision = Math.max(Date.now(), progressRevisionRef.current + 1);
     progressRevisionRef.current = revision;
-    const progress = {
+    const currentPdfAnchor = capturePdfAnchor() || lastPdfAnchorRef.current;
+    if (currentPdfAnchor) lastPdfAnchorRef.current = currentPdfAnchor;
+    const localProgress = {
       recipeId,
       viewMode: current.viewMode,
       sourceMode: current.sourceMode,
@@ -426,13 +465,16 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       pdfScrollY: pdfPagesRef.current?.scrollTop ?? lastPdfScrollYRef.current ?? 0,
       textScrollY: textPanelRef.current?.scrollTop ?? lastTextScrollYRef.current ?? 0,
       mobileImagesVisible: current.mobileImagesVisible,
+      fullscreen: current.fullscreen,
+      pdfAnchor: currentPdfAnchor,
       revision,
       updatedAt: revision,
     };
     try {
-      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify(progress));
+      localStorage.setItem(viewerResumeKey(user, recipeId), JSON.stringify(localProgress));
     } catch (_) {}
     if (!user || !recipeId) return;
+    const { fullscreen: _fullscreen, pdfAnchor: _pdfAnchor, ...serverProgress } = localProgress;
     const throttleKey = `${user.id || user.username || ''}:${recipeId}`;
     if (!serverProgressThrottleRef.current || serverProgressThrottleKeyRef.current !== throttleKey) {
       serverProgressThrottleRef.current?.cancel();
@@ -443,8 +485,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         },
       );
     }
-    serverProgressThrottleRef.current.queue(progress, { flush: flushServer });
-  }, [user, recipeId]);
+    serverProgressThrottleRef.current.queue(serverProgress, { flush: flushServer });
+  }, [user, recipeId, capturePdfAnchor]);
 
   useEffect(() => {
     if (!recipeId) return undefined;
@@ -482,7 +524,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     if (viewMode === 'original' && sourceMode === 'pdf' && pendingPdfScrollY.current != null && !restoredPdfScrollRef.current) return;
     if (viewMode === 'text' && pendingTextScrollY.current != null && !restoredTextScrollRef.current) return;
     saveViewerResume();
-  }, [recipeId, loading, viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible, saveViewerResume]);
+  }, [recipeId, loading, viewMode, sourceMode, imageIndex, zoom, mobileImagesVisible, fullscreen, saveViewerResume]);
 
   useLayoutEffect(() => {
     const pdfActive = viewMode === 'original' && sourceMode === 'pdf';
@@ -519,6 +561,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   useEffect(() => {
     if (loading || viewMode !== 'original' || sourceMode !== 'pdf' || pdfPages.length === 0 || restoredPdfScrollRef.current || pendingPdfScrollY.current == null) return;
     const targetY = Math.max(0, pendingPdfScrollY.current);
+    const targetAnchor = pendingPdfAnchor.current;
     const container = pdfPagesRef.current;
     if (!container) return;
 
@@ -533,6 +576,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       if (settleTimer != null) clearTimeout(settleTimer);
       container.removeEventListener('wheel', onUserInteract);
       container.removeEventListener('touchstart', onUserInteract);
+      lastPdfAnchorRef.current = capturePdfAnchor() || targetAnchor || lastPdfAnchorRef.current;
+      saveViewerResume();
     };
 
     // If the user takes the wheel/touch before we've finished settling,
@@ -543,6 +588,27 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       if (done || !pdfPagesRef.current) return;
       const el = pdfPagesRef.current;
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (targetAnchor) {
+        const page = el.querySelectorAll('.pdf-page-block')[targetAnchor.pageIndex];
+        const canvas = page?.querySelector('.iac-canvas');
+        const wrap = page?.querySelector('.iac-wrap');
+        if (!page || !canvas?.style.height || !wrap || Math.abs(canvas.getBoundingClientRect().width - wrap.clientWidth) > 1) return;
+        const containerRect = el.getBoundingClientRect();
+        const pageRect = page.getBoundingClientRect();
+        const pageTop = el.scrollTop + pageRect.top - containerRect.top;
+        const anchoredScrollTop = pdfScrollTopForAnchor(
+          targetAnchor,
+          pageTop,
+          pageRect.height,
+          el.clientHeight,
+          maxScroll,
+        );
+        if (anchoredScrollTop == null) return;
+        el.scrollTop = anchoredScrollTop;
+        lastPdfScrollYRef.current = el.scrollTop;
+        finish();
+        return;
+      }
       el.scrollTop = Math.min(targetY, maxScroll);
       lastPdfScrollYRef.current = el.scrollTop;
       if (maxScroll >= targetY) finish();
@@ -550,6 +616,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
 
     const ro = new ResizeObserver(applyScroll);
     ro.observe(container);
+    container.querySelectorAll('.pdf-page-block').forEach(page => ro.observe(page));
     container.addEventListener('wheel', onUserInteract, { passive: true });
     container.addEventListener('touchstart', onUserInteract, { passive: true });
 
@@ -565,7 +632,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       container.removeEventListener('wheel', onUserInteract);
       container.removeEventListener('touchstart', onUserInteract);
     };
-  }, [loading, viewMode, sourceMode, pdfPages.length]);
+  }, [loading, viewMode, sourceMode, pdfPages.length, fullscreen, capturePdfAnchor, saveViewerResume]);
 
   useEffect(() => {
     if (loading || viewMode !== 'text' || textLoading || restoredTextScrollRef.current || pendingTextScrollY.current == null) return;
@@ -592,15 +659,36 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     if (viewMode !== 'original' || sourceMode !== 'pdf') return;
     if (pendingPdfScrollY.current != null && !restoredPdfScrollRef.current) return;
     lastPdfScrollYRef.current = pdfPagesRef.current?.scrollTop || 0;
+    lastPdfAnchorRef.current = capturePdfAnchor() || lastPdfAnchorRef.current;
     saveViewerResume();
-  }, [viewMode, sourceMode, saveViewerResume]);
+  }, [viewMode, sourceMode, capturePdfAnchor, saveViewerResume]);
+
+  const updateFullscreen = useCallback((nextValue) => {
+    const next = typeof nextValue === 'function' ? nextValue(fullscreen) : Boolean(nextValue);
+    if (next === fullscreen) return;
+    if (viewMode === 'original' && sourceMode === 'pdf') {
+      const anchor = capturePdfAnchor();
+      if (anchor) {
+        pendingPdfAnchor.current = anchor;
+        lastPdfAnchorRef.current = anchor;
+      }
+      pendingPdfScrollY.current = pdfPagesRef.current?.scrollTop ?? lastPdfScrollYRef.current;
+      restoredPdfScrollRef.current = false;
+    }
+    setFullscreen(next);
+  }, [fullscreen, viewMode, sourceMode, capturePdfAnchor]);
+
+  const updateViewMode = useCallback((nextMode) => {
+    if (nextMode !== 'original') updateFullscreen(false);
+    setViewMode(nextMode);
+  }, [updateFullscreen]);
 
   const handleKey = useCallback((e) => {
-    if (e.key === 'Escape') setFullscreen(false);
+    if (e.key === 'Escape') updateFullscreen(false);
     if (!recipe || recipe.file_type !== 'images') return;
     if (e.key === 'ArrowLeft')  setImageIndex(i => Math.max(0, i - 1));
     if (e.key === 'ArrowRight') setImageIndex(i => Math.min(recipe.images.length - 1, i + 1));
-  }, [recipe]);
+  }, [recipe, updateFullscreen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey);
@@ -735,7 +823,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       <div className="viewer-mode-tabs" role="tablist" aria-label={t('recipeViewTabs')}>
         <button
           className={`viewer-mode-tab ${viewMode === 'original' ? 'active' : ''}`}
-          onClick={() => setViewMode('original')}
+          onClick={() => updateViewMode('original')}
           role="tab"
           aria-selected={viewMode === 'original'}
         >
@@ -744,7 +832,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </button>
         <button
           className={`viewer-mode-tab ${viewMode === 'text' ? 'active' : ''}`}
-          onClick={() => setViewMode('text')}
+          onClick={() => updateViewMode('text')}
           role="tab"
           aria-selected={viewMode === 'text'}
         >
@@ -753,7 +841,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </button>
         <button
           className={`viewer-mode-tab viewer-mode-tab--review ${viewMode === 'review' ? 'active' : ''}`}
-          onClick={() => setViewMode('review')}
+          onClick={() => updateViewMode('review')}
           role="tab"
           aria-selected={viewMode === 'review'}
         >
@@ -795,7 +883,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               onTextJobQueued={onTextJobQueued}
               onReviewReady={(session) => {
                 setReviewSession(session);
-                setViewMode('review');
+                updateViewMode('review');
               }}
               panelRef={textPanelRef}
               onPanelScroll={handleTextPanelScroll}
@@ -813,19 +901,19 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               onTextJobQueued={onTextJobQueued}
               onCompleted={(textVersionResult) => {
                 setTextVersion(textVersionResult || null);
-                setViewMode('text');
+                updateViewMode('text');
                 onTextJobQueued?.();
               }}
             />
           ) : sourceMode === 'pdf' && (recipe.has_pdf || recipe.file_type === 'pdf') ? (
             <div className={`pdf-container ${fullscreen ? 'pdf-fullscreen' : ''}`}>
               <div className="pdf-controls">
-                <button className="pdf-open-btn" onClick={() => { setFullscreen(f => !f); }}>
+                <button className="pdf-open-btn" onClick={() => updateFullscreen(value => !value)}>
                   <Maximize2 size={18} />
                   <span>{fullscreen ? t('exitFullscreen') : t('openFull')}</span>
                 </button>
                 {fullscreen && (
-                  <button className="pdf-exit-btn" onClick={() => setFullscreen(false)}>
+                  <button className="pdf-exit-btn" onClick={() => updateFullscreen(false)}>
                     <X size={18} />
                   </button>
                 )}
@@ -898,7 +986,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               {fullscreen && (
                 <button
                   className="fullscreen-exit-btn"
-                  onClick={() => { setFullscreen(false); setZoom(1); }}
+                  onClick={() => updateFullscreen(false)}
                   aria-label={t('exitFullscreen')}
                 >
                   <ArrowLeft size={19} />
@@ -944,8 +1032,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                   <button onClick={() => setZoom(z => Math.max(0.5, z-0.25))}><ZoomOut size={16} /></button>
                   <button onClick={() => setZoom(1)}>{t('resetZoom')}</button>
                   <button onClick={() => setZoom(z => Math.min(4, z+0.25))}><ZoomIn size={16} /></button>
-                  <button onClick={() => { setFullscreen(f => !f); setZoom(1); }}><Maximize2 size={16} /></button>
-                  {fullscreen && <button onClick={() => setFullscreen(false)}><X size={16} /></button>}
+                  <button onClick={() => updateFullscreen(value => !value)}><Maximize2 size={16} /></button>
+                  {fullscreen && <button onClick={() => updateFullscreen(false)}><X size={16} /></button>}
                   {recipe.images.length > 0 && (
                     <>
                       <button onClick={() => handleRotate('ccw')} title={t('rotateCCW')}>
@@ -1225,7 +1313,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               </button>
               <button
                 className="mobile-action-row"
-                onClick={() => { setViewMode('review'); setMobilePanel(null); }}
+                onClick={() => { updateViewMode('review'); setMobilePanel(null); }}
               >
                 <CheckCircle2 size={19} />
                 <span>{t('reviewOcrText') || t('reviewText') || 'Review AI scan'}</span>
@@ -1331,7 +1419,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} aria-label={t('zoomIn') || 'Zoom in'} title={t('zoomIn') || 'Zoom in'}>
                 <ZoomIn size={18} />
               </button>
-              <button onClick={() => { setFullscreen(f => !f); setZoom(1); }} aria-label={fullscreen ? t('exitFullscreen') : t('openFull')} title={fullscreen ? t('exitFullscreen') : t('openFull')}>
+              <button onClick={() => updateFullscreen(value => !value)} aria-label={fullscreen ? t('exitFullscreen') : t('openFull')} title={fullscreen ? t('exitFullscreen') : t('openFull')}>
                 <Maximize2 size={18} />
               </button>
               <button onClick={() => handleRotate('ccw')} disabled={recipe.images.length === 0} aria-label={t('rotateCCW')} title={t('rotateCCW')}>
@@ -2308,4 +2396,3 @@ function EditModal({ t, recipe, onClose, onSaved }) {
     </div>
   );
 }
-
