@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
-import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfScrollTopForAnchor, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
+import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -567,6 +567,12 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
 
     let done = false;
     let settleTimer = null;
+    let quietTimer = null;
+    let initialFrame = null;
+    let initialSettleFrame = null;
+    let quietFrame = null;
+    let quietSettleFrame = null;
+    let layoutRevision = 0;
 
     const finish = () => {
       if (done) return;
@@ -574,6 +580,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       restoredPdfScrollRef.current = true;
       ro.disconnect();
       if (settleTimer != null) clearTimeout(settleTimer);
+      if (quietTimer != null) clearTimeout(quietTimer);
+      if (initialFrame != null) cancelAnimationFrame(initialFrame);
+      if (initialSettleFrame != null) cancelAnimationFrame(initialSettleFrame);
+      if (quietFrame != null) cancelAnimationFrame(quietFrame);
+      if (quietSettleFrame != null) cancelAnimationFrame(quietSettleFrame);
       container.removeEventListener('wheel', onUserInteract);
       container.removeEventListener('touchstart', onUserInteract);
       lastPdfAnchorRef.current = capturePdfAnchor() || targetAnchor || lastPdfAnchorRef.current;
@@ -584,15 +595,28 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     // stop fighting them — respect wherever they scroll to.
     const onUserInteract = () => finish();
 
-    const applyScroll = () => {
+    const restoreAnchor = () => {
       if (done || !pdfPagesRef.current) return;
       const el = pdfPagesRef.current;
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
       if (targetAnchor) {
-        const page = el.querySelectorAll('.pdf-page-block')[targetAnchor.pageIndex];
+        const pages = Array.from(el.querySelectorAll('.pdf-page-block'));
+        const pageLayouts = pages.map(pageBlock => {
+          const canvas = pageBlock.querySelector('.iac-canvas');
+          const canvasRect = canvas?.getBoundingClientRect();
+          const wrap = pageBlock.querySelector('.iac-wrap');
+          return {
+            isSized: Boolean(canvas?.style.width && canvas?.style.height),
+            canvasWidth: canvasRect?.width,
+            canvasHeight: canvasRect?.height,
+            wrapWidth: wrap?.clientWidth,
+          };
+        });
+        if (!pdfPagesReadyForAnchor(targetAnchor, pageLayouts)) return false;
+        const page = pages[targetAnchor.pageIndex];
         const canvas = page?.querySelector('.iac-canvas');
         const wrap = page?.querySelector('.iac-wrap');
-        if (!page || !canvas?.style.height || !wrap || Math.abs(canvas.getBoundingClientRect().width - wrap.clientWidth) > 1) return;
+        if (!page || !canvas || !wrap) return false;
         const containerRect = el.getBoundingClientRect();
         const pageRect = page.getBoundingClientRect();
         const pageTop = el.scrollTop + pageRect.top - containerRect.top;
@@ -603,15 +627,37 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           el.clientHeight,
           maxScroll,
         );
-        if (anchoredScrollTop == null) return;
+        if (anchoredScrollTop == null) return false;
         el.scrollTop = anchoredScrollTop;
         lastPdfScrollYRef.current = el.scrollTop;
-        finish();
-        return;
+        return true;
       }
       el.scrollTop = Math.min(targetY, maxScroll);
       lastPdfScrollYRef.current = el.scrollTop;
       if (maxScroll >= targetY) finish();
+      return true;
+    };
+
+    const applyScroll = () => {
+      if (!restoreAnchor() || !targetAnchor || done) return;
+      const revision = ++layoutRevision;
+      if (quietTimer != null) clearTimeout(quietTimer);
+      if (quietFrame != null) cancelAnimationFrame(quietFrame);
+      if (quietSettleFrame != null) cancelAnimationFrame(quietSettleFrame);
+      // ResizeObserver callbacks for the individual canvases are not reliably
+      // delivered in one batch on iPad Safari. Keep the anchor in place until
+      // the observed layout has been quiet, then confirm it across two paints.
+      quietTimer = setTimeout(() => {
+        quietTimer = null;
+        quietFrame = requestAnimationFrame(() => {
+          quietFrame = null;
+          quietSettleFrame = requestAnimationFrame(() => {
+            quietSettleFrame = null;
+            if (revision !== layoutRevision || !restoreAnchor()) return;
+            finish();
+          });
+        });
+      }, 120);
     };
 
     const ro = new ResizeObserver(applyScroll);
@@ -620,7 +666,13 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     container.addEventListener('wheel', onUserInteract, { passive: true });
     container.addEventListener('touchstart', onUserInteract, { passive: true });
 
-    requestAnimationFrame(() => requestAnimationFrame(applyScroll));
+    initialFrame = requestAnimationFrame(() => {
+      initialFrame = null;
+      initialSettleFrame = requestAnimationFrame(() => {
+        initialSettleFrame = null;
+        applyScroll();
+      });
+    });
     // Best-effort cutoff in case a page image never loads — keep whatever
     // clamped position we've reached rather than waiting forever.
     settleTimer = setTimeout(finish, 8000);
@@ -629,6 +681,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       done = true;
       ro.disconnect();
       if (settleTimer != null) clearTimeout(settleTimer);
+      if (quietTimer != null) clearTimeout(quietTimer);
+      if (initialFrame != null) cancelAnimationFrame(initialFrame);
+      if (initialSettleFrame != null) cancelAnimationFrame(initialSettleFrame);
+      if (quietFrame != null) cancelAnimationFrame(quietFrame);
+      if (quietSettleFrame != null) cancelAnimationFrame(quietSettleFrame);
       container.removeEventListener('wheel', onUserInteract);
       container.removeEventListener('touchstart', onUserInteract);
     };

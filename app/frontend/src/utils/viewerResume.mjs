@@ -118,6 +118,24 @@ export function pdfScrollTopForAnchor(anchor, pageTop, pageHeight, viewportHeigh
   return Math.max(0, Math.min(target, Math.max(0, maximum)));
 }
 
+export function pdfPagesReadyForAnchor(anchor, pageLayouts, tolerance = 1) {
+  const normalized = normalizePdfAnchor(anchor);
+  if (!normalized || !Array.isArray(pageLayouts) || normalized.pageIndex >= pageLayouts.length) return false;
+  const allowedDifference = Number.isFinite(Number(tolerance)) ? Math.max(0, Number(tolerance)) : 1;
+  for (let index = 0; index <= normalized.pageIndex; index += 1) {
+    const layout = pageLayouts[index];
+    const canvasWidth = Number(layout?.canvasWidth);
+    const canvasHeight = Number(layout?.canvasHeight);
+    const wrapWidth = Number(layout?.wrapWidth);
+    if (layout?.isSized !== true ||
+        !Number.isFinite(canvasWidth) || canvasWidth <= 0 ||
+        !Number.isFinite(canvasHeight) || canvasHeight <= 0 ||
+        !Number.isFinite(wrapWidth) || wrapWidth <= 0 ||
+        Math.abs(canvasWidth - wrapWidth) > allowedDifference) return false;
+  }
+  return true;
+}
+
 export function mergeLocalViewerPresentation(resolved, localResume) {
   const resolvedRevision = Number(resolved?.revision) || 0;
   const localRevision = Number(localResume?.revision) || 0;

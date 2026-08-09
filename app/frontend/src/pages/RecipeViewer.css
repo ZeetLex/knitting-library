@@ -1217,6 +1217,9 @@ a.viewer-action-btn { text-decoration: none; }
 .pdf-pages-wrap {
   flex: 1;
   overflow-y: auto;
+  /* Safari's native anchoring can fight the explicit page anchor while the
+     fixed fullscreen layout is being added or removed. */
+  overflow-anchor: none;
   -webkit-overflow-scrolling: touch;
   padding: 12px;
   display: flex;
@@ -3288,5 +3291,3 @@ a.viewer-action-btn { text-decoration: none; }
     border-color: rgba(217, 76, 76, 0.28) !important;
   }
 }
-
-

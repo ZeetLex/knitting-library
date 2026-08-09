@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfScrollTopForAnchor, resolveRecipeSourceMode, resolveViewerResume } from './viewerResume.mjs';
+import { createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, resolveRecipeSourceMode, resolveViewerResume } from './viewerResume.mjs';
 
 test('prefers PDF when both formats exist and no source preference is saved', () => {
   const recipe = { has_pdf: true, has_images: true, preferred_source: 'pdf' };
@@ -52,6 +52,27 @@ test('calculates a centered PDF scroll target after page resizing', () => {
   );
   assert.equal(target, 1900);
   assert.equal(pdfScrollTopForAnchor({ pageIndex: 0, offsetRatio: 0 }, 0, 1000, 800, 5000), 0);
+});
+
+test('waits for the target PDF page and every preceding page to finish resizing', () => {
+  const ready = [
+    { isSized: true, canvasWidth: 800, canvasHeight: 1100, wrapWidth: 800 },
+    { isSized: true, canvasWidth: 799.5, canvasHeight: 1100, wrapWidth: 800 },
+    { isSized: true, canvasWidth: 800, canvasHeight: 1100, wrapWidth: 800 },
+  ];
+  assert.equal(pdfPagesReadyForAnchor({ pageIndex: 1, offsetRatio: 0.5 }, ready), true);
+
+  const precedingPageStillResizing = ready.map(layout => ({ ...layout }));
+  precedingPageStillResizing[0].canvasWidth = 640;
+  assert.equal(pdfPagesReadyForAnchor({ pageIndex: 1, offsetRatio: 0.5 }, precedingPageStillResizing), false);
+
+  const laterPageStillResizing = ready.map(layout => ({ ...layout }));
+  laterPageStillResizing[2].canvasWidth = 640;
+  assert.equal(pdfPagesReadyForAnchor({ pageIndex: 1, offsetRatio: 0.5 }, laterPageStillResizing), true);
+  const targetPageNotLoaded = ready.map(layout => ({ ...layout }));
+  targetPageNotLoaded[1].isSized = false;
+  assert.equal(pdfPagesReadyForAnchor({ pageIndex: 1, offsetRatio: 0.5 }, targetPageNotLoaded), false);
+  assert.equal(pdfPagesReadyForAnchor({ pageIndex: 3, offsetRatio: 0.5 }, ready), false);
 });
 
 test('keeps fullscreen local and only reuses a PDF anchor for current progress', () => {
