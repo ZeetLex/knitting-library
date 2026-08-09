@@ -90,7 +90,41 @@ export function normalizeViewerResume(saved, requested = 'original') {
     pdfScrollY: Number.isFinite(Number(saved?.pdfScrollY)) ? Math.max(0, Number(saved.pdfScrollY)) : null,
     textScrollY: Number.isFinite(Number(saved?.textScrollY)) ? Math.max(0, Number(saved.textScrollY)) : null,
     mobileImagesVisible: Boolean(saved?.mobileImagesVisible),
+    fullscreen: Boolean(saved?.fullscreen),
+    pdfAnchor: normalizePdfAnchor(saved?.pdfAnchor),
     revision: Number.isSafeInteger(Number(saved?.revision)) ? Math.max(0, Number(saved.revision)) : 0,
+  };
+}
+
+export function normalizePdfAnchor(anchor) {
+  const pageIndex = Number.parseInt(anchor?.pageIndex, 10);
+  const offsetRatio = Number(anchor?.offsetRatio);
+  if (!Number.isFinite(pageIndex) || pageIndex < 0 || !Number.isFinite(offsetRatio)) return null;
+  return {
+    pageIndex: Math.min(pageIndex, 9999),
+    offsetRatio: Math.max(0, Math.min(offsetRatio, 1)),
+  };
+}
+
+export function pdfScrollTopForAnchor(anchor, pageTop, pageHeight, viewportHeight, maxScroll) {
+  const normalized = normalizePdfAnchor(anchor);
+  const top = Number(pageTop);
+  const height = Number(pageHeight);
+  const viewport = Number(viewportHeight);
+  const maximum = Number(maxScroll);
+  if (!normalized || !Number.isFinite(top) || !Number.isFinite(height) || height <= 0 ||
+      !Number.isFinite(viewport) || !Number.isFinite(maximum)) return null;
+  const target = top + (height * normalized.offsetRatio) - (viewport / 2);
+  return Math.max(0, Math.min(target, Math.max(0, maximum)));
+}
+
+export function mergeLocalViewerPresentation(resolved, localResume) {
+  const resolvedRevision = Number(resolved?.revision) || 0;
+  const localRevision = Number(localResume?.revision) || 0;
+  return {
+    ...(resolved || {}),
+    fullscreen: Boolean(localResume?.fullscreen),
+    pdfAnchor: localRevision >= resolvedRevision ? normalizePdfAnchor(localResume?.pdfAnchor) : null,
   };
 }
 

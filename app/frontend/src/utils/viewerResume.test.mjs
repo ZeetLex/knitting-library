@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createLatestPayloadThrottle, normalizeViewerResume, resolveRecipeSourceMode, resolveViewerResume } from './viewerResume.mjs';
+import { createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfScrollTopForAnchor, resolveRecipeSourceMode, resolveViewerResume } from './viewerResume.mjs';
 
 test('prefers PDF when both formats exist and no source preference is saved', () => {
   const recipe = { has_pdf: true, has_images: true, preferred_source: 'pdf' };
@@ -24,15 +24,45 @@ test('restores a saved image source when there is no PDF at all', () => {
 });
 
 test('normalizes PDF scroll and source mode safely', () => {
-  const resume = normalizeViewerResume({ sourceMode: 'pdf', pdfScrollY: 1234, revision: 42 }, 'original');
+  const resume = normalizeViewerResume({
+    sourceMode: 'pdf', pdfScrollY: 1234, fullscreen: true,
+    pdfAnchor: { pageIndex: 3, offsetRatio: 0.25 }, revision: 42,
+  }, 'original');
   assert.equal(resume.sourceMode, 'pdf');
   assert.equal(resume.pdfScrollY, 1234);
+  assert.equal(resume.fullscreen, true);
+  assert.deepEqual(resume.pdfAnchor, { pageIndex: 3, offsetRatio: 0.25 });
   assert.equal(resume.revision, 42);
 
-  const invalid = normalizeViewerResume({ sourceMode: 'other', pdfScrollY: -20 }, 'original');
+  const invalid = normalizeViewerResume({ sourceMode: 'other', pdfScrollY: -20, pdfAnchor: { pageIndex: -1, offsetRatio: 'bad' } }, 'original');
   assert.equal(invalid.sourceMode, '');
   assert.equal(invalid.pdfScrollY, 0);
+  assert.equal(invalid.fullscreen, false);
+  assert.equal(invalid.pdfAnchor, null);
   assert.equal(invalid.revision, 0);
+});
+
+test('calculates a centered PDF scroll target after page resizing', () => {
+  const target = pdfScrollTopForAnchor(
+    { pageIndex: 2, offsetRatio: 0.25 },
+    2000,
+    1200,
+    800,
+    5000,
+  );
+  assert.equal(target, 1900);
+  assert.equal(pdfScrollTopForAnchor({ pageIndex: 0, offsetRatio: 0 }, 0, 1000, 800, 5000), 0);
+});
+
+test('keeps fullscreen local and only reuses a PDF anchor for current progress', () => {
+  const local = { fullscreen: true, pdfAnchor: { pageIndex: 4, offsetRatio: 0.5 }, revision: 42 };
+  const same = mergeLocalViewerPresentation({ sourceMode: 'pdf', revision: 42 }, local);
+  assert.equal(same.fullscreen, true);
+  assert.deepEqual(same.pdfAnchor, local.pdfAnchor);
+
+  const newerServer = mergeLocalViewerPresentation({ sourceMode: 'pdf', revision: 43 }, local);
+  assert.equal(newerServer.fullscreen, true);
+  assert.equal(newerServer.pdfAnchor, null);
 });
 
 test('throttled viewer progress sends the latest queued payload', () => {
