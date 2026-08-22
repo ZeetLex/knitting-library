@@ -54,6 +54,16 @@ logs/
 
 Backups are straightforward: stop the container if possible, copy `data/`, then restart. Restoring means putting `data/` back and starting the container again.
 
+## Recover a User Password
+
+If a user cannot sign in and email recovery is unavailable, an operator with access to the Docker host can reset the password interactively:
+
+```bash
+docker exec -it knitting-library python -m app.cli reset-password admin
+```
+
+Replace `admin` with the exact username. The command prompts for the new password twice, requires at least 8 characters, and does not put the password in the command or shell history. A successful reset signs out that user's existing sessions. If the Compose service has a different container name, use that name in place of `knitting-library` (find it with `docker compose ps`).
+
 ## Security
 
 Implemented measures include bcrypt password hashing, login rate limiting, optional TOTP two-factor authentication, HttpOnly SameSite session cookies, CSRF protection for cookie-authenticated writes, upload validation, same-origin CORS by default, security headers, disabled production API docs, parameterised database queries, upload filename sanitisation, and SSRF checks for yarn URL imports.
