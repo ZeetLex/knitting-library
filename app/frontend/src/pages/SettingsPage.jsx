@@ -225,6 +225,36 @@ function AppearancePickerHeader({ title, onBack }) {
 }
 
 const BRANDING_CROP_SIZE = 280;
+const BRANDING_MIN_IMAGE_DIMENSION = 64;
+const BRANDING_MAX_IMAGE_DIMENSION = 4096;
+
+async function createSafeBrandingPreview(file) {
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (
+      Math.min(bitmap.width, bitmap.height) < BRANDING_MIN_IMAGE_DIMENSION
+      || Math.max(bitmap.width, bitmap.height) > BRANDING_MAX_IMAGE_DIMENSION
+    ) {
+      throw new Error('Invalid branding image dimensions');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas is unavailable');
+    context.drawImage(bitmap, 0, 0);
+
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('Could not encode branding image')),
+        'image/png'
+      );
+    });
+  } finally {
+    bitmap.close();
+  }
+}
 
 function IconCropModal({ sourceUrl, onCancel, onSave, saving }) {
   const { t } = useApp();
@@ -338,6 +368,7 @@ function IconCropModal({ sourceUrl, onCancel, onSave, saving }) {
 function BrandingSettings() {
   const { branding, applyBranding, t } = useApp();
   const fileRef = useRef(null);
+  const fileSelectionRef = useRef(0);
   const [title, setTitle] = useState(branding.title);
   const [cropUrl, setCropUrl] = useState('');
   const [saving, setSaving] = useState(false);
@@ -362,7 +393,7 @@ function BrandingSettings() {
     }
   };
 
-  const chooseFile = (event) => {
+  const chooseFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -374,15 +405,22 @@ function BrandingSettings() {
       setStatus(`error:${t('brandingImageSizeError')}`);
       return;
     }
-    const objectUrl = URL.createObjectURL(file);
-    if (!objectUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(objectUrl);
-      setStatus(`error:${t('brandingImageTypeError')}`);
-      return;
+
+    const selectionId = ++fileSelectionRef.current;
+    try {
+      // Decode and re-encode the upload before it reaches an <img> src. This
+      // prevents attacker-controlled file bytes from being interpreted as HTML.
+      const previewBlob = await createSafeBrandingPreview(file);
+      if (selectionId !== fileSelectionRef.current) return;
+      const objectUrl = URL.createObjectURL(previewBlob);
+      if (cropUrl) URL.revokeObjectURL(cropUrl);
+      setCropUrl(objectUrl);
+      setStatus('');
+    } catch {
+      if (selectionId === fileSelectionRef.current) {
+        setStatus(`error:${t('brandingImageTypeError')}`);
+      }
     }
-    if (cropUrl) URL.revokeObjectURL(cropUrl);
-    setCropUrl(objectUrl);
-    setStatus('');
   };
 
   const saveIcon = async (blob) => {
