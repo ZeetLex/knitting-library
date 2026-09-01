@@ -155,7 +155,7 @@ function SaveCard({ save, onEdit, onDelete, t }) {
   );
 }
 
-function CounterRow({ counter, onIncrement, onDecrement, onOpen, t }) {
+function CounterRow({ counter, onIncrement, onDecrement, onOpen, onDelete, t }) {
   const label = counter.label || t('toolCounterUntitled');
   return (
     <div className="kt-counter-row">
@@ -173,6 +173,14 @@ function CounterRow({ counter, onIncrement, onDecrement, onOpen, t }) {
       </button>
       <button className="kt-counter-row-step" onClick={() => onIncrement(counter.id)} aria-label={t('increase')}>
         <Plus size={22} />
+      </button>
+      <button
+        className="kt-counter-row-delete"
+        onClick={() => onDelete(counter)}
+        aria-label={`${t('delete')} — ${label}`}
+        title={t('delete')}
+      >
+        <Trash2 size={15} />
       </button>
     </div>
   );
@@ -212,11 +220,7 @@ function CounterModal({ counter, onSave, onReset, onDelete, onClose, t }) {
               </button>
               <button
                 className="kt-btn kt-btn--danger"
-                onClick={() => {
-                  if (!window.confirm((t('toolCounterDeleteConfirm') || 'Delete {name}?').replace('{name}', counter.label || t('toolCounterUntitled')))) return;
-                  onDelete(counter.id);
-                  onClose();
-                }}
+                onClick={() => { if (onDelete(counter)) onClose(); }}
               >
                 <Trash2 size={15} />{t('delete')}
               </button>
@@ -407,9 +411,14 @@ export default function KnittingToolbar({ scope = 'recipe', recipeId = null, t, 
     setCounterModalOpen(true);
   };
 
-  const deleteCounter = id => {
+  // Confirms, then deletes. Returns false when the user backs out, so the edit
+  // modal knows whether to close itself.
+  const deleteCounter = counter => {
+    const label = counter.label || t('toolCounterUntitled');
+    if (!window.confirm((t('toolCounterDeleteConfirm') || 'Delete {name}?').replace('{name}', label))) return false;
     setError('');
-    update({ counters: state.counters.filter(counter => counter.id !== id) });
+    update({ counters: state.counters.filter(item => item.id !== counter.id) });
+    return true;
   };
 
   const handleClose = () => {
@@ -485,6 +494,7 @@ export default function KnittingToolbar({ scope = 'recipe', recipeId = null, t, 
                         onIncrement={id => bumpCounter(id, 1)}
                         onDecrement={id => bumpCounter(id, -1)}
                         onOpen={item => { setEditingCounter(item); setCounterModalOpen(true); }}
+                        onDelete={deleteCounter}
                       />
                     ))
                   )}

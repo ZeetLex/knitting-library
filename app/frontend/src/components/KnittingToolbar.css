@@ -353,7 +353,7 @@
 
 .kt-counter-row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  grid-template-columns: 56px minmax(0, 1fr) 56px 40px;
   align-items: stretch;
   min-height: 72px;
   overflow: hidden;
@@ -416,6 +416,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kt-counter-row-delete {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.kt-counter-row-delete:hover,
+.kt-counter-row-delete:focus-visible {
+  color: #c94b4b;
+  background: color-mix(in srgb, #c94b4b 12%, transparent);
+}
+
+.kt-counter-row-delete:active {
+  transform: scale(0.94);
 }
 
 .kt-counters-empty {
@@ -783,7 +805,7 @@
   }
 
   .kt-counter-row {
-    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    grid-template-columns: 48px minmax(0, 1fr) 48px 36px;
     min-height: 64px;
   }
 
