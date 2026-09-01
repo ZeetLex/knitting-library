@@ -352,11 +352,30 @@ export async function fetchKnittingTools(recipeId) {
   return res.json();
 }
 
-export async function saveKnittingTools(recipeId, data) {
+export async function saveKnittingTools(recipeId, data, { keepalive = false } = {}) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/knitting-tools`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ data }),
+    keepalive,
+  });
+  const response = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(response.detail || 'Failed to save knitting tools');
+  return response;
+}
+
+export async function fetchUserKnittingTools() {
+  const res = await fetch(`${API_BASE}/auth/knitting-tools`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to load knitting tools');
+  return res.json();
+}
+
+export async function saveUserKnittingTools(data, { keepalive = false } = {}) {
+  const res = await fetch(`${API_BASE}/auth/knitting-tools`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ data }),
+    keepalive,
   });
   const response = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(response.detail || 'Failed to save knitting tools');

@@ -202,6 +202,60 @@ def save_navigation_progress(data: dict = Body(default={}), current_user: dict =
     return {"exists": True, **payload}
 
 
+def _user_tools_dict(row) -> dict:
+    if not row:
+        return {"exists": False, "data": {}, "updatedAt": ""}
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        data = {}
+    return {
+        "exists": True,
+        "data": data if isinstance(data, dict) else {},
+        "updatedAt": row["updated_at"],
+    }
+
+
+# Named with a `user_` prefix so wire_services() cannot clobber the recipe-scoped
+# get_recipe_knitting_tools / save_recipe_knitting_tools in app.recipes.repository.
+def get_user_knitting_tools(current_user: dict = Depends(get_current_user)):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT data_json, updated_at FROM app_knitting_tools WHERE user_id=?",
+        (current_user["id"],)
+    ).fetchone()
+    conn.close()
+    return _user_tools_dict(row)
+
+
+def save_user_knitting_tools(data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    payload = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+    if not isinstance(payload, dict):
+        payload = {}
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(payload_json.encode("utf-8")) > 200_000:
+        raise HTTPException(status_code=413, detail="Tool data is too large")
+    now = datetime.utcnow().isoformat()
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO app_knitting_tools (user_id,data_json,updated_at)
+        VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            data_json=excluded.data_json,
+            updated_at=excluded.updated_at
+        """,
+        (current_user["id"], payload_json, now)
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT data_json, updated_at FROM app_knitting_tools WHERE user_id=?",
+        (current_user["id"],)
+    ).fetchone()
+    conn.close()
+    return _user_tools_dict(row)
+
+
 def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
     theme        = data.get("theme",        current_user.get("theme", "light"))
     language     = data.get("language",     current_user.get("language", "en"))
