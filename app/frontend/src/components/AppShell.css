@@ -387,10 +387,10 @@
   bottom: max(9px, env(safe-area-inset-bottom, 9px));
   z-index: 180;
   display: grid;
-  grid-template-columns: 1fr 1fr 72px 1fr 1fr;
+  grid-template-columns: 1fr 1fr minmax(108px, 124px) 1fr 1fr;
   align-items: center;
   height: var(--mobile-nav-height);
-  padding: 8px 8px;
+  padding: 8px 6px;
   border: 1px solid rgba(255,255,255,0.5);
   border-radius: 26px;
   background: color-mix(in srgb, var(--card-bg) 94%, transparent);
@@ -405,7 +405,7 @@
 }
 
 .mobile-nav--compact {
-  grid-template-columns: 1fr 1fr 58px 1fr 1fr;
+  grid-template-columns: 1fr 1fr minmax(96px, 110px) 1fr 1fr;
   border-radius: 22px;
 }
 
@@ -480,7 +480,7 @@
 }
 
 .mobile-nav-item-main,
-.mobile-nav-add,
+.mobile-nav-main-split-btn,
 .mobile-nav-review-approve,
 .mobile-nav-recipe-project {
   display: flex;
@@ -492,7 +492,7 @@
 }
 
 .mobile-nav-item-main:focus-visible,
-.mobile-nav-add:focus-visible,
+.mobile-nav-main-split-btn:focus-visible,
 .mobile-nav-review-approve:focus-visible,
 .mobile-nav-recipe-project:focus-visible,
 .mobile-nav-collapse:focus-visible,
@@ -523,6 +523,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 10.5px;
+  letter-spacing: -0.01em;
 }
 
 .mobile-nav--compact .mobile-nav-item-main span {
@@ -567,24 +569,6 @@
 
 .mobile-nav-item-main--danger {
   color: #c94b4b;
-}
-
-.mobile-nav-add {
-  align-self: center;
-  justify-self: center;
-  flex-direction: column;
-  gap: 2px;
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: white;
-  font-size: 10px;
-  font-weight: 900;
-  box-shadow: 0 10px 28px rgba(196, 113, 74, 0.28);
-  transform: translateY(-15px);
-  transition: width 0.22s ease, height 0.22s ease, transform 0.22s ease;
-  min-width: 0;
 }
 
 .mobile-nav-recipe-project {
@@ -661,6 +645,64 @@
   transform: scale(0.96);
 }
 
+.mobile-nav-main-split {
+  align-self: center;
+  justify-self: center;
+  width: min(124px, 100%);
+  height: 62px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 20px;
+  background: var(--accent);
+  box-shadow: 0 10px 28px rgba(196, 113, 74, 0.26);
+  transform: translateY(-12px);
+  transition: width 0.22s ease, height 0.22s ease, transform 0.22s ease;
+}
+
+.mobile-nav-main-split-btn {
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.mobile-nav-main-split-btn--tools {
+  background: color-mix(in srgb, var(--accent) 74%, #1a1a2e);
+}
+
+.mobile-nav-main-split-btn + .mobile-nav-main-split-btn {
+  border-left: 1px solid rgba(255, 255, 255, 0.34);
+}
+
+.mobile-nav-main-split-btn span {
+  max-width: 54px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-nav-main-split-btn:active {
+  transform: scale(0.96);
+}
+
+.mobile-nav--compact .mobile-nav-main-split {
+  width: min(110px, 100%);
+  height: 50px;
+  border-radius: 17px;
+  transform: translateY(-8px);
+}
+
+.mobile-nav--compact .mobile-nav-main-split-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
 .mobile-nav-review-approve {
   align-self: center;
   justify-self: center;
@@ -711,12 +753,6 @@
 
 .mobile-nav-recipe-project:active {
   transform: translateY(-8px) scale(0.96);
-}
-
-.mobile-nav--compact .mobile-nav-add {
-  width: 54px;
-  height: 54px;
-  transform: translateY(-9px);
 }
 
 .add-menu {

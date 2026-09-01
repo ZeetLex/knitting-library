@@ -1292,7 +1292,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         />
       )}
 
-      <KnittingToolbar recipeId={recipeId} t={t} open={toolOpen} onClose={() => setToolOpen(false)} />
+      <KnittingToolbar scope="recipe" recipeId={recipeId} t={t} open={toolOpen} onClose={() => setToolOpen(false)} />
 
       {isRecipeStarted && (
         <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>

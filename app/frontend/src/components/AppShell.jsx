@@ -138,6 +138,8 @@ function MobileNav({
   recipeReviewMode,
   recipeReviewSaving,
   recipeToolOpen,
+  toolsOpen,
+  onOpenTools,
   onToggleCollapsed,
   onNavigate,
   onAddClick,
@@ -161,6 +163,8 @@ function MobileNav({
     { key: 'recipes', icon: <BookOpen size={21} />, label: t('tabRecipes') },
     { key: 'inventory', icon: <Boxes size={21} />, label: t('tabInventory') },
   ];
+
+  if (!recipeMode && toolsOpen) return null;
 
   if (collapsed) {
     return (
@@ -326,10 +330,24 @@ function MobileNav({
         <BookOpen size={21} />
         <span>{t('tabRecipes')}</span>
       </button>
-      <button className="mobile-nav-add" onClick={onAddClick} aria-label={t('navAddSomething')}>
-        <Plus size={24} />
-        <span>{t('navAdd')}</span>
-      </button>
+      <div className="mobile-nav-main-split">
+        <button
+          className="mobile-nav-main-split-btn mobile-nav-main-split-btn--add"
+          onClick={onAddClick}
+          aria-label={t('navAddSomething')}
+        >
+          <Plus size={19} />
+          <span>{t('navAdd')}</span>
+        </button>
+        <button
+          className="mobile-nav-main-split-btn mobile-nav-main-split-btn--tools"
+          onClick={onOpenTools}
+          aria-label={t('toolbarTitleGlobal')}
+        >
+          <Wrench size={19} />
+          <span>{t('toolNavLabel')}</span>
+        </button>
+      </div>
       <button
         className={`mobile-nav-item-main ${activeView === 'inventory' || activeView === 'yarnDatabase' ? 'active' : ''}`}
         onClick={() => onNavigate('inventory')}
@@ -346,7 +364,7 @@ function MobileNav({
   );
 }
 
-function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI }) {
+function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapsed, onNavigate, onAddClick, onInventoryClick, queue, onOpenImport, onOpenRecipe, onCancelAI, onDismissAI, onOpenTools, toolsOpen }) {
   const { t, branding } = useApp();
   const primary = [
     { key: 'home', icon: <Home size={19} />, label: t('navHome') },
@@ -394,6 +412,14 @@ function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapse
             <span>{item.label}</span>
           </button>
         ))}
+        <button
+          className={`desktop-nav-item ${toolsOpen ? 'active' : ''}`}
+          onClick={onOpenTools}
+          title={collapsed ? t('toolbarTitleGlobal') : undefined}
+        >
+          <Wrench size={19} />
+          <span>{t('toolNavLabel')}</span>
+        </button>
       </div>
       {!collapsed && (
         <WorkQueueDock
@@ -438,6 +464,8 @@ export default function AppShell({
   onOpenRecipe,
   onCancelAI,
   onDismissAI,
+  onOpenTools,
+  toolsOpen = false,
   children,
 }) {
   const [addOpen, setAddOpen] = useState(false);
@@ -537,6 +565,8 @@ export default function AppShell({
         onOpenRecipe={onOpenRecipe}
         onCancelAI={onCancelAI}
         onDismissAI={onDismissAI}
+        onOpenTools={onOpenTools}
+        toolsOpen={toolsOpen}
       />
       <main className="app-content" onWheel={handleContentWheel}>
         {children}
@@ -551,6 +581,8 @@ export default function AppShell({
         recipeReviewMode={recipeMobileState.reviewMode}
         recipeReviewSaving={recipeMobileState.reviewSaving}
         recipeToolOpen={recipeMobileState.toolOpen}
+        toolsOpen={toolsOpen}
+        onOpenTools={onOpenTools}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
         onAddClick={() => setAddOpen(o => !o)}

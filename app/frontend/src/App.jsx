@@ -15,6 +15,7 @@ import YarnUploadModal from './components/YarnUploadModal';
 import ImportWizard from './components/ImportWizard';
 import AppShell from './components/AppShell';
 import AnnouncementModal from './components/AnnouncementModal';
+import KnittingToolbar from './components/KnittingToolbar';
 import WorkQueueDock from './components/WorkQueueDock';
 import { getImportQueue, fetchPendingReleases, dismissRelease, fetchLatestRelease, fetchWorkQueue, cancelAIJob, dismissAIJob, fetchNavigationProgress, saveNavigationProgress } from './utils/api';
 import './App.css';
@@ -59,6 +60,7 @@ function AppInner() {
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [workQueue, setWorkQueue]         = useState(null);
   const [recipeInitialView, setRecipeInitialView] = useState('original');
+  const [globalToolsOpen, setGlobalToolsOpen] = useState(false);
   const resumeCheckedRef = useRef(false);
 
   const checkImport = useCallback(() => {
@@ -179,6 +181,7 @@ function AppInner() {
 
   const openRecipe = (id, initialView = 'original') => {
     setActiveView('recipes');
+    setGlobalToolsOpen(false);
     setShowSettings(false);
     setShowStats(false);
     setShowHelp(false);
@@ -252,6 +255,19 @@ function AppInner() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Mounted as the second child of every `.app` branch (with a stable key) so the
+  // settings/stats/help early returns reconcile it to the same instance instead of
+  // remounting — the panel must survive navigation with its state intact.
+  const globalToolsPanel = (
+    <KnittingToolbar
+      key="global-tools"
+      scope="global"
+      t={t}
+      open={globalToolsOpen}
+      onClose={() => setGlobalToolsOpen(false)}
+    />
+  );
+
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'var(--bg-primary)' }}>
       <div style={{ width:36, height:36, border:'3px solid var(--border)', borderTopColor:'var(--terracotta)', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
@@ -277,9 +293,12 @@ function AppInner() {
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onOpenTools={() => setGlobalToolsOpen(true)}
+        toolsOpen={globalToolsOpen}
       >
         <SettingsPage onBack={() => setShowSettings(false)} />
       </AppShell>
+      {globalToolsPanel}
       {pendingReleases.length > 0 && (
         <AnnouncementModal
           announcements={pendingReleases}
@@ -305,9 +324,12 @@ function AppInner() {
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onOpenTools={() => setGlobalToolsOpen(true)}
+        toolsOpen={globalToolsOpen}
       >
         <StatisticsPage />
       </AppShell>
+      {globalToolsPanel}
     </div>
   );
 
@@ -327,9 +349,12 @@ function AppInner() {
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onOpenTools={() => setGlobalToolsOpen(true)}
+        toolsOpen={globalToolsOpen}
       >
         <HelpPage onBack={() => setShowHelp(false)} />
       </AppShell>
+      {globalToolsPanel}
     </div>
   );
 
@@ -351,6 +376,8 @@ function AppInner() {
         onOpenRecipe={(id, initialView = 'text') => openRecipe(id, initialView)}
         onCancelAI={async (id) => { await cancelAIJob(id).catch(() => {}); refreshWorkQueue(); }}
         onDismissAI={async (id) => { await dismissAIJob(id).catch(() => {}); refreshWorkQueue(); }}
+        onOpenTools={() => setGlobalToolsOpen(true)}
+        toolsOpen={globalToolsOpen}
       >
 
         {activeView === 'home' && (
@@ -424,6 +451,7 @@ function AppInner() {
         )}
 
       </AppShell>
+      {globalToolsPanel}
 
       {yarnUploadOpen && (
         <YarnUploadModal
