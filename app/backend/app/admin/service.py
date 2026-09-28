@@ -1,5 +1,11 @@
 """Admin users, logs, mail, AI settings, 2FA administration, and announcements."""
 from app.core.foundation import *
+from app.core.mail import (
+    parse_mail_boolean,
+    resolve_mail_settings,
+    send_mail,
+    validate_mail_settings,
+)
 from app.auth.service import get_current_user, require_admin, _verify_token_param
 import threading
 from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, convert_images_to_pdf, _pdf_is_app_generated
@@ -286,57 +292,83 @@ def _render_template(text: str, tokens: dict) -> str:
         text = text.replace("{" + key + "}", value)
     return text
 
+
+def _load_stored_mail_settings(conn=None) -> dict:
+    owns_connection = conn is None
+    if owns_connection:
+        conn = get_db()
+    try:
+        rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_%'").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+    finally:
+        if owns_connection:
+            conn.close()
+
+
+def _load_effective_mail_settings(conn=None) -> tuple[dict, set[str]]:
+    return resolve_mail_settings(_load_stored_mail_settings(conn))
+
+
 def _send_app_mail(to: str, subject: str, body: str) -> None:
-    """Send a plain-text email using the stored SMTP settings. Raises on failure."""
-    conn = get_db()
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_%'").fetchall()
-    conn.close()
-    cfg = {r["key"]: r["value"] for r in rows}
-    if cfg.get("mail_enabled", "false").lower() != "true":
-        raise ValueError("Mail is not enabled")
-    host      = cfg.get("mail_host", "")
-    port      = int(cfg.get("mail_port", 587))
-    username  = cfg.get("mail_username", "")
-    password  = cfg.get("mail_password", "")
-    from_addr = cfg.get("mail_from", username)
-    use_tls   = cfg.get("mail_tls", "true").lower() == "true"
-    if not host or not username or not password:
-        raise ValueError("Mail server not configured")
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"]    = from_addr
-    msg["To"]      = to
-    if use_tls:
-        server = smtplib.SMTP(host, port, timeout=10)
-        server.starttls()
-    else:
-        server = smtplib.SMTP_SSL(host, port, timeout=10)
-    server.login(username, password)
-    server.sendmail(from_addr, [to], msg.as_string())
-    server.quit()
+    """Send a plain-text email using effective database/environment settings."""
+    settings, _managed = _load_effective_mail_settings()
+    send_mail(settings, to, subject, body)
 
 
 # ── Admin: mail settings ──────────────────────────────────────────────────────
 
 def get_mail_settings(admin: dict = Depends(require_admin)):
-    conn = get_db()
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'mail_%'").fetchall()
-    conn.close()
-    settings = {r["key"]: r["value"] for r in rows}
+    settings, managed = _load_effective_mail_settings()
+    try:
+        normalized = validate_mail_settings(settings, require_enabled=False)
+        settings["mail_enabled"] = "true" if normalized["enabled"] else "false"
+        settings["mail_announcements_enabled"] = "true" if normalized["announcements_enabled"] else "false"
+        settings["mail_port"] = str(normalized["port"])
+        settings["mail_security"] = str(normalized["security"])
+    except ValueError as exc:
+        settings["configuration_error"] = str(exc)
     # Never return the password in plaintext — return a mask if set
     if settings.get("mail_password"):
         settings["mail_password"] = "••••••••"
+    settings["environment_managed"] = sorted(managed)
     return settings
 
 
 def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
-    allowed = {
+    operational = {
         "mail_host", "mail_port", "mail_username", "mail_password",
-        "mail_from", "mail_tls", "mail_enabled", "mail_announcements_enabled",
+        "mail_from", "mail_tls", "mail_security", "mail_enabled", "mail_announcements_enabled",
+    }
+    allowed = {
+        *operational,
         "mail_tmpl_forgot_subject", "mail_tmpl_forgot_body",
         "mail_tmpl_welcome_subject", "mail_tmpl_welcome_body",
     }
     conn = get_db()
+    stored = _load_stored_mail_settings(conn)
+    _effective, managed = resolve_mail_settings(stored)
+    attempted_managed = sorted(key for key in data if key in managed)
+    if "mail_tls" in data and "mail_security" in managed:
+        attempted_managed.append("mail_tls")
+    if attempted_managed:
+        conn.close()
+        raise HTTPException(
+            status_code=409,
+            detail="These mail settings are managed by environment variables: " + ", ".join(attempted_managed),
+        )
+
+    proposed = dict(stored)
+    for key, value in data.items():
+        if key in allowed and not (key == "mail_password" and value == "••••••••"):
+            proposed[key] = str(value)
+    if any(key in operational for key in data):
+        try:
+            effective, _managed = resolve_mail_settings(proposed)
+            validate_mail_settings(effective, require_enabled=False)
+        except ValueError as exc:
+            conn.close()
+            raise HTTPException(status_code=400, detail=str(exc))
+
     for key, value in data.items():
         if key not in allowed:
             continue
@@ -349,7 +381,7 @@ def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
         )
     conn.commit()
     conn.close()
-    return {"message": "Mail settings saved"}
+    return {"message": "Mail settings saved", "environment_managed": sorted(managed)}
 
 
 def test_mail(data: dict, admin: dict = Depends(require_admin)):
@@ -679,10 +711,15 @@ def create_announcement(data: dict, background_tasks: BackgroundTasks, admin: di
     )
     conn.commit()
     # Email users if announcement emails are enabled
-    enabled_row = conn.execute(
-        "SELECT value FROM app_settings WHERE key='mail_announcements_enabled'"
-    ).fetchone()
-    if enabled_row and enabled_row["value"] == "true":
+    effective_mail, _managed = _load_effective_mail_settings(conn)
+    try:
+        announcements_enabled = parse_mail_boolean(
+            effective_mail.get("mail_announcements_enabled", "false"),
+            "Announcement email enabled",
+        )
+    except ValueError:
+        announcements_enabled = False
+    if announcements_enabled:
         recipients = [r["email"] for r in conn.execute(
             "SELECT email FROM users WHERE email != ''"
         ).fetchall()]

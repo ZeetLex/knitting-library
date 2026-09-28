@@ -986,7 +986,9 @@ const defaultWelcomeBody = (t) => t('defaultWelcomeBody');
 /* ─── Mail Section (Admin) ────────────────────────────────────────────────── */
 function MailSection() {
   const { t } = useApp();
-  const [cfg, setCfg]         = useState({ mail_host: '', mail_port: '587', mail_username: '', mail_password: '', mail_from: '', mail_tls: 'true', mail_enabled: 'false', mail_announcements_enabled: 'false', mail_tmpl_forgot_subject: '', mail_tmpl_forgot_body: '', mail_tmpl_welcome_subject: '', mail_tmpl_welcome_body: '' });
+  const [cfg, setCfg]         = useState({ mail_host: '', mail_port: '587', mail_username: '', mail_password: '', mail_from: '', mail_security: 'starttls', mail_enabled: 'false', mail_announcements_enabled: 'false', mail_tmpl_forgot_subject: '', mail_tmpl_forgot_body: '', mail_tmpl_welcome_subject: '', mail_tmpl_welcome_body: '' });
+  const [managed, setManaged] = useState([]);
+  const [configError, setConfigError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [testTo, setTestTo]   = useState('');
@@ -996,7 +998,12 @@ function MailSection() {
 
   useEffect(() => {
     fetchMailSettings()
-      .then(data => setCfg(prev => ({ ...prev, ...data })))
+      .then(data => {
+        const { environment_managed = [], configuration_error = '', ...settings } = data;
+        setManaged(environment_managed);
+        setConfigError(configuration_error);
+        setCfg(prev => ({ ...prev, ...settings }));
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -1004,7 +1011,9 @@ function MailSection() {
   const handleSave = async () => {
     setSaving(true); setStatus(null);
     try {
-      await saveMailSettings(cfg);
+      const payload = Object.fromEntries(Object.entries(cfg).filter(([key]) => !managed.includes(key) && key !== 'mail_tls'));
+      await saveMailSettings(payload);
+      setConfigError('');
       setStatus('saved');
     } catch (e) { setStatus('error:' + e.message); }
     finally { setSaving(false); }
@@ -1021,12 +1030,13 @@ function MailSection() {
   };
 
   const f = (key, val) => setCfg(prev => ({ ...prev, [key]: val }));
+  const isManaged = (key) => managed.includes(key);
 
   const handleTemplateSave = (subjectKey, bodyKey, subject, body) => {
     setCfg(prev => ({ ...prev, [subjectKey]: subject, [bodyKey]: body }));
     setTemplateModal(null);
     // Save to backend immediately
-    saveMailSettings({ ...cfg, [subjectKey]: subject, [bodyKey]: body }).catch(console.error);
+    saveMailSettings({ [subjectKey]: subject, [bodyKey]: body }).catch(console.error);
   };
 
   if (loading) return <div className="settings-section"><p className="loading-text">Loading…</p></div>;
@@ -1035,6 +1045,8 @@ function MailSection() {
     <div className="settings-section">
       <h3 className="section-heading">{t('adminMail')}</h3>
       <p className="settings-row-sub" style={{ marginBottom: '1.5rem' }}>{t('mailDesc')}</p>
+      {managed.length > 0 && <p className="settings-row-sub" style={{ marginBottom: '1rem' }}>{t('mailManagedEnvironment')}</p>}
+      {configError && <p className="status-error" style={{ marginBottom: '1rem' }}>{configError}</p>}
 
       <div className="form-stack">
         <div className="settings-row" style={{ padding: '0.5rem 0', marginBottom: '0.25rem' }}>
@@ -1043,6 +1055,7 @@ function MailSection() {
             <p className="settings-row-sub">{t('mailEnableSub')}</p>
           </div>
           <button className={`theme-toggle ${cfg.mail_enabled === 'true' ? 'dark' : ''}`}
+            disabled={isManaged('mail_enabled')}
             onClick={() => f('mail_enabled', cfg.mail_enabled === 'true' ? 'false' : 'true')}>
             <span className="theme-toggle-knob" />
           </button>
@@ -1053,34 +1066,32 @@ function MailSection() {
         <div className="form-row-two">
           <div className="form-field">
             <label className="form-label">{t('mailHost')}</label>
-            <input className="form-input" value={cfg.mail_host} onChange={e => f('mail_host', e.target.value)} placeholder="smtp.gmail.com" />
+            <input className="form-input" value={cfg.mail_host} disabled={isManaged('mail_host')} onChange={e => f('mail_host', e.target.value)} placeholder="smtp.gmail.com" />
           </div>
           <div className="form-field" style={{ maxWidth: 100 }}>
             <label className="form-label">{t('mailPort')}</label>
-            <input className="form-input" type="number" value={cfg.mail_port} onChange={e => f('mail_port', e.target.value)} placeholder="587" />
+            <input className="form-input" type="number" value={cfg.mail_port} disabled={isManaged('mail_port')} onChange={e => f('mail_port', e.target.value)} placeholder="587" />
           </div>
         </div>
         <div className="form-field">
           <label className="form-label">{t('mailUsername')}</label>
-          <input className="form-input" value={cfg.mail_username} onChange={e => f('mail_username', e.target.value)} placeholder="you@gmail.com" autoComplete="off" />
+          <input className="form-input" value={cfg.mail_username} disabled={isManaged('mail_username')} onChange={e => f('mail_username', e.target.value)} placeholder="you@gmail.com" autoComplete="off" />
         </div>
         <div className="form-field">
           <label className="form-label">{t('mailPassword')}</label>
-          <input className="form-input" type="password" value={cfg.mail_password} onChange={e => f('mail_password', e.target.value)} autoComplete="new-password" />
+          <input className="form-input" type="password" value={cfg.mail_password} disabled={isManaged('mail_password')} onChange={e => f('mail_password', e.target.value)} autoComplete="new-password" />
         </div>
         <div className="form-field">
           <label className="form-label">{t('mailFrom')}</label>
-          <input className="form-input" value={cfg.mail_from} onChange={e => f('mail_from', e.target.value)} placeholder="Knitting Library <you@gmail.com>" />
+          <input className="form-input" value={cfg.mail_from} disabled={isManaged('mail_from')} onChange={e => f('mail_from', e.target.value)} placeholder="Knitting Library <you@gmail.com>" />
         </div>
-        <div className="settings-row" style={{ padding: '0.5rem 0' }}>
-          <div className="settings-row-info">
-            <p className="settings-row-label">{t('mailTLS')}</p>
-            <p className="settings-row-sub">{t('mailTLSSub')}</p>
-          </div>
-          <button className={`theme-toggle ${cfg.mail_tls === 'true' ? 'dark' : ''}`}
-            onClick={() => f('mail_tls', cfg.mail_tls === 'true' ? 'false' : 'true')}>
-            <span className="theme-toggle-knob" />
-          </button>
+        <div className="form-field">
+          <label className="form-label">{t('mailSecurity')}</label>
+          <select className="form-input" value={cfg.mail_security} disabled={isManaged('mail_security')} onChange={e => f('mail_security', e.target.value)}>
+            <option value="none">{t('mailSecurityNone')}</option>
+            <option value="starttls">{t('mailSecurityStarttls')}</option>
+            <option value="ssl">{t('mailSecuritySsl')}</option>
+          </select>
         </div>
 
         {status === 'saved'   && <p className="status-success">{t('saved')}</p>}

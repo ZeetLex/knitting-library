@@ -969,8 +969,9 @@ export async function saveMailSettings(data) {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to save mail settings');
-  return res.json();
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.detail || 'Failed to save mail settings');
+  return result;
 }
 export async function testMail(to) {
   const res = await fetch(`${API_BASE}/admin/mail/test`, {

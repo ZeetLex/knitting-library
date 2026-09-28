@@ -22,6 +22,7 @@ Functionality preservation is priority ONE. This refactor moved the old single-f
 
 - Authentication and account endpoints: `backend/app/auth/service.py`; FastAPI dependencies are in `backend/app/auth/dependencies.py`.
 - Admin users, logs, mail settings, AI settings, admin 2FA, and announcements: `backend/app/admin/service.py`.
+- Environment/database mail configuration and SMTP transport: `backend/app/core/mail.py`.
 - Recipe list/detail/CRUD, taxonomy, project sessions, annotations, imports, and exports: `backend/app/recipes/repository.py`, surfaced through `backend/app/recipes/service.py`.
 - Recipe files, images, PDFs, thumbnails, downloads, and text-version storage: `backend/app/recipes/files.py`.
 - AI settings, OCR, text generation, chart extraction, work queue, and startup queue resume: `backend/app/ai/service.py`.
