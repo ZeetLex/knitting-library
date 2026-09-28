@@ -1483,7 +1483,7 @@ def export_library(current_user: dict = Depends(get_current_user)):
                         for file in d.rglob("*"):
                             if file.is_file():
                                 zf.write(str(file), arcname=f"{prefix}/{file.relative_to(directory)}")
-        branding_dir = Path("/data/branding")
+        branding_dir = BRANDING_DIR
         if branding_dir.exists():
             for file in branding_dir.iterdir():
                 if file.is_file():

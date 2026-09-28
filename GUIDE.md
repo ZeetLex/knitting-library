@@ -4,7 +4,7 @@ This guide collects the practical details that do not need to live in the projec
 
 ## Requirements
 
-Use Docker Desktop, Docker Engine, or another Docker-compatible host.
+Use Docker Desktop, Docker Engine, or another Docker-compatible host, or follow [Running without Docker](README.md#running-without-docker) for a native Python service with a built frontend and Poppler.
 
 Docker Desktop is available from `https://www.docker.com/products/docker-desktop/`.
 
@@ -45,6 +45,8 @@ services:
 ```
 
 `PUID` and `PGID` control host ownership for files written to `/data` and `/logs`. Docker Desktop users can usually set these to `0` or omit them.
+
+The defaults remain `/data`, `/logs`, and `/app/frontend/build`. Override them with `KNITTING_DATA_DIR`, `KNITTING_LOG_DIR`, and `KNITTING_STATIC_DIR` respectively. Explicit values must be absolute paths; blank values keep defaults. If changing a container data/log path, change the corresponding volume target too. Native deployments must provide these variables through their service manager and configure Uvicorn output separately. See the README for setup, log destinations, password recovery, and safe data migration.
 
 ## Mobile Installation
 

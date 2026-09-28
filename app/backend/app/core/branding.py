@@ -3,7 +3,6 @@ from app.core.foundation import *
 from app.auth.service import require_admin
 
 DEFAULT_APP_TITLE = "Knitting Library"
-BRANDING_DIR = Path("/data/branding")
 BRANDING_TITLE_KEY = "branding_app_title"
 BRANDING_ICON_VERSION_KEY = "branding_icon_version"
 BRANDING_ICON_SIZES = (32, 180, 192, 512)

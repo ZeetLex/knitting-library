@@ -1,6 +1,6 @@
 # Backend Structure Reference
 
-Functionality preservation is priority ONE. This refactor moved the old single-file backend into feature modules without changing public API paths, request/response shapes, SQLite table or column names, auth/session/CSRF behavior, upload validation, `/data` and `/logs` paths, security headers, or static frontend serving.
+Functionality preservation is priority ONE. This refactor moved the old single-file backend into feature modules without changing public API paths, request/response shapes, SQLite table or column names, auth/session/CSRF behavior, upload validation, security headers, or static frontend serving. Deployment paths now support environment overrides while preserving `/data`, `/logs`, and `/app/frontend/build` defaults.
 
 ## App startup
 
@@ -12,6 +12,7 @@ Functionality preservation is priority ONE. This refactor moved the old single-f
 
 - `backend/app/core/foundation.py` contains shared imports, runtime constants, security helpers, DB initialization, auth dependencies, release-sync helpers, and other foundation code used by several domains.
 - `backend/app/core/config.py` re-exports runtime paths and environment-backed settings.
+- `backend/app/core/paths.py` resolves `KNITTING_DATA_DIR`, `KNITTING_LOG_DIR`, and `KNITTING_STATIC_DIR` without import-time I/O. The foundation explicitly initializes data directories; the CLI shares the database path without importing the server or initializing a database.
 - `backend/app/core/security.py` contains HTTP security, CSRF, proxy, upload magic-byte, and SSRF/public URL validation helpers.
 - `backend/app/core/logging.py` contains auth and user-action logging helpers.
 - `backend/app/core/static.py` serves the built frontend and SPA fallback.

@@ -29,6 +29,9 @@ services:
       # headers should be trusted. Leave empty when accessing the app directly.
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - KNITTING_DATA_DIR=${KNITTING_DATA_DIR:-/data}
+      - KNITTING_LOG_DIR=${KNITTING_LOG_DIR:-/logs}
+      - KNITTING_STATIC_DIR=${KNITTING_STATIC_DIR:-/app/frontend/build}
     volumes:
       - ./data:/data
       - ./logs:/logs
