@@ -4,7 +4,7 @@ This guide collects the practical details that do not need to live in the projec
 
 ## Requirements
 
-Use Docker Desktop, Docker Engine, or another Docker-compatible host, or follow [Running without Docker](README.md#running-without-docker) for a native Python service with a built frontend and Poppler.
+Use Docker Desktop, Docker Engine, or another Docker-compatible host, or follow [Running without Docker](#running-without-docker) for a native Python service with a built frontend and Poppler.
 
 Docker Desktop is available from `https://www.docker.com/products/docker-desktop/`.
 
@@ -46,7 +46,92 @@ services:
 
 `PUID` and `PGID` control host ownership for files written to `/data` and `/logs`. Docker Desktop users can usually set these to `0` or omit them.
 
-The defaults remain `/data`, `/logs`, and `/app/frontend/build`. Override them with `KNITTING_DATA_DIR`, `KNITTING_LOG_DIR`, and `KNITTING_STATIC_DIR` respectively. Explicit values must be absolute paths; blank values keep defaults. If changing a container data/log path, change the corresponding volume target too. Native deployments must provide these variables through their service manager and configure Uvicorn output separately. See the README for setup, log destinations, password recovery, and safe data migration.
+The defaults remain `/data`, `/logs`, and `/app/frontend/build`. Override them with `KNITTING_DATA_DIR`, `KNITTING_LOG_DIR`, and `KNITTING_STATIC_DIR` respectively. Explicit values must be absolute paths; blank values keep defaults. If changing a container data/log path, change the corresponding volume target too. Native deployments must provide these variables through their service manager and configure Uvicorn output separately. See [Running without Docker](#running-without-docker) for native setup, log destinations, and password recovery, and [Moving existing data and custom Docker paths](#moving-existing-data-and-custom-docker-paths) for migration instructions.
+
+## Running without Docker
+
+The backend can run directly as an unprivileged Python service and serve both the API and the built frontend. Use Python 3.12, Node.js 20.19+ (or a compatible newer release) to build the frontend, and Poppler (`poppler-utils` on Debian/Ubuntu) for PDF processing. Node.js is only needed during the build.
+
+Serve the app at the root of its own hostname. URL subpath hosting, a YunoHost package, and YunoHost SSO integration are not provided by these instructions.
+
+From the repository root, create a virtual environment and build the frontend:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r app/backend/requirements.txt
+cd app/frontend
+npm ci --legacy-peer-deps
+npm run build
+cd ../..
+```
+
+The build is written to `app/frontend/dist`. Configure these paths before starting the backend:
+
+| Environment variable | Default | Contents |
+|---|---|---|
+| `KNITTING_DATA_DIR` | `/data` | `recipes.db`, `recipes/`, `yarns/`, `branding/` |
+| `KNITTING_LOG_DIR` | `/logs` | `auth.log` and files read by Admin Logs |
+| `KNITTING_STATIC_DIR` | `/app/frontend/build` | Built frontend, including `index.html` |
+
+Unset or blank values use the defaults. Explicit paths must be absolute. The backend does not automatically load `.env`; export the values or supply them through your service manager. Restart the service after changing them. Data paths must be writable by the service account, and frontend files must be readable. Do not grant the service write access to the source code or frontend assets unless needed by your packaging workflow.
+
+For example, with the repository at `/opt/knitting-library` and writable directories already created for your service account:
+
+```bash
+export KNITTING_DATA_DIR=/var/lib/knitting-library
+export KNITTING_LOG_DIR=/var/log/knitting-library
+export KNITTING_STATIC_DIR=/opt/knitting-library/app/frontend/dist
+cd /opt/knitting-library/app/backend
+/opt/knitting-library/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080 --access-log \
+  >> /var/log/knitting-library/uvicorn.log 2>&1
+```
+
+Open the app through your reverse proxy and create the first admin account. Set `TRUSTED_PROXIES` to the proxy addresses/CIDRs when using forwarded HTTPS/client-IP headers; for a proxy on the same machine, `127.0.0.1/32,::1/128` is appropriate. See [the reverse proxy guide](#reverse-proxy). `ALLOWED_ORIGINS` is only needed when frontend and API origins differ. HTTPS is handled by the reverse proxy.
+
+### systemd example
+
+Create a dedicated `knitting-library` service account and provision `/var/lib/knitting-library` and `/var/log/knitting-library` with that account as owner (for example, mode `0750`). Install this unit as `/etc/systemd/system/knitting-library.service`, adjusting installation paths as needed:
+
+```ini
+[Unit]
+Description=Knitting Library
+After=network.target
+
+[Service]
+Type=simple
+User=knitting-library
+Group=knitting-library
+WorkingDirectory=/opt/knitting-library/app/backend
+Environment=KNITTING_DATA_DIR=/var/lib/knitting-library
+Environment=KNITTING_LOG_DIR=/var/log/knitting-library
+Environment=KNITTING_STATIC_DIR=/opt/knitting-library/app/frontend/dist
+Environment=TRUSTED_PROXIES=127.0.0.1/32,::1/128
+ExecStart=/opt/knitting-library/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080 --access-log
+StandardOutput=append:/var/log/knitting-library/uvicorn.log
+StandardError=append:/var/log/knitting-library/uvicorn.log
+Restart=on-failure
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Run `sudo systemctl daemon-reload` and `sudo systemctl enable --now knitting-library`. The `append:` output destination requires systemd 240 or newer. Arrange log rotation through the host's logging tools. The Docker entrypoint is not used by this service.
+
+`KNITTING_LOG_DIR` selects authentication logging and Admin Logs file locations; it does not redirect Uvicorn output. Configure your service manager as above for Admin Logs to show server output. Native deployments do not produce the Docker entrypoint's `supervisord.log`; that source may remain absent. If file-based authentication logging is unavailable, authentication events fall back to stderr.
+
+For password recovery, use the same `KNITTING_DATA_DIR` as the service and run from the backend directory:
+
+```bash
+sudo -u knitting-library env KNITTING_DATA_DIR=/var/lib/knitting-library \
+  /opt/knitting-library/.venv/bin/python -m app.cli reset-password admin
+```
+
+### Moving existing data and custom Docker paths
+
+Changing `KNITTING_DATA_DIR` does not move data. Stop the service, back up the complete existing data directory, then copy or move `recipes.db`, `recipes/`, `yarns/`, `branding/`, and any SQLite sidecar files together to the new root. Set ownership for the service account, update the environment, restart, and verify users, recipes, yarn images, custom icons, and exports before removing the old copy. A wrong or empty destination can initialize a new database and make the existing library appear missing.
+
+Existing Docker deployments need no configuration changes. The variables select paths **inside** the container. If overriding data or log paths in `.env`, update the Compose volume targets to match; for example, `KNITTING_DATA_DIR=/storage` requires `./data:/storage` instead of `./data:/data`. A custom static directory must contain the built frontend and be copied or mounted into the container. Changing only the host side of an existing bind mount does not require these variables.
 
 ## Mobile Installation
 
