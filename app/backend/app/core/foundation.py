@@ -74,13 +74,9 @@ _ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
 _ALLOWED_ORIGINS = [o.strip() for o in _ALLOWED_ORIGINS if o.strip()]
 
 
-DATA_DIR   = Path("/data/recipes")
-YARN_DIR   = Path("/data/yarns")
-DB_PATH    = Path("/data/recipes.db")
-STATIC_DIR = Path("/app/frontend/build")
+from app.core.paths import DATA_ROOT, DATA_DIR, YARN_DIR, DB_PATH, BRANDING_DIR, LOG_DIR, STATIC_DIR, ensure_data_directories
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-YARN_DIR.mkdir(parents=True, exist_ok=True)
+ensure_data_directories()
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
@@ -197,13 +193,14 @@ def _validate_public_url(url: str) -> str:
     return url
 
 # ── Auth log — fail2ban and admin audit ──────────────────────────────────────
-# Writes AUTH_FAIL / AUTH_OK events to /logs/auth.log (mounted volume).
+# Writes AUTH_FAIL / AUTH_OK events to the configured log directory.
 _auth_log = logging.getLogger("knitting.auth")
 _auth_log.setLevel(logging.INFO)
 _auth_log.propagate = False          # don't bubble up to the root logger
 try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     _auth_handler = logging.handlers.RotatingFileHandler(
-        "/logs/auth.log",
+        LOG_DIR / "auth.log",
         maxBytes=5 * 1024 * 1024,   # 5 MB per file
         backupCount=3,
         encoding="utf-8",
@@ -213,7 +210,7 @@ try:
     )
     _auth_log.addHandler(_auth_handler)
 except OSError:
-    # /logs not mounted (e.g. local dev without the volume) — log to stderr instead
+    # Log directory unavailable or unwritable — log to stderr instead.
     _auth_log.addHandler(logging.StreamHandler())
 
 def _auth_fail(request: Request, reason: str, username: str = "") -> None:

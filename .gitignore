@@ -23,6 +23,7 @@ logs-test/
 Thumbs.db
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 *.pyo

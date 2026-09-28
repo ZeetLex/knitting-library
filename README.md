@@ -1,6 +1,6 @@
 # Knitting Library
 
-Knitting Library is a self-hosted pattern, project, and yarn inventory manager for people who want their knitting archive under their own control. It runs as a single Docker container, stores data locally, and provides a mobile-friendly interface for daily use.
+Knitting Library is a self-hosted pattern, project, and yarn inventory manager for people who want their knitting archive under their own control. It runs in a single Docker container or directly as a Python service, stores data locally, and provides a mobile-friendly interface for daily use.
 
 The project started as a practical home tool: a private place to keep knitting patterns, notes, project status, and yarn inventory without a subscription or third-party data lock-in.
 
@@ -15,7 +15,7 @@ The project started as a practical home tool: a private place to keep knitting p
 - Manages yarn and thread references, color variants, stock, needles, tools, and notions.
 - Includes user accounts, optional TOTP two-factor authentication, per-user appearance settings, and admin tools.
 - Offers the interface in English, Norwegian, Hungarian, French, German, and Spanish.
-- Runs locally with SQLite-backed storage in mounted `data/` and `logs/` folders.
+- Runs locally with SQLite-backed storage in configurable data and log directories.
 
 ## Status
 
@@ -39,13 +39,14 @@ For Unraid, reverse proxy, fail2ban, backups, AI setup, and troubleshooting, see
 
 ## Storage
 
-Runtime data is kept outside the container:
+Runtime data is kept separately from the application. The default Docker bind mounts use this layout:
 
 ```text
 data/
-  knitting.db
+  recipes.db
   recipes/
   yarns/
+  branding/
 logs/
   uvicorn.log
   supervisord.log
@@ -53,6 +54,18 @@ logs/
 ```
 
 Backups are straightforward: stop the container if possible, copy `data/`, then restart. Restoring means putting `data/` back and starting the container again.
+
+## Running without Docker
+
+Knitting Library can also run directly as a Python service, serving the API and built frontend. Deployment paths are configurable:
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `KNITTING_DATA_DIR` | `/data` | Database, recipes, yarns, and branding |
+| `KNITTING_LOG_DIR` | `/logs` | Authentication logs and Admin Logs files |
+| `KNITTING_STATIC_DIR` | `/app/frontend/build` | Built frontend assets |
+
+Existing Docker deployments keep their current defaults. See [Running without Docker](GUIDE.md#running-without-docker) for requirements, setup, service configuration, and data migration.
 
 ## Recover a User Password
 

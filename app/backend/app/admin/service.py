@@ -203,15 +203,15 @@ def get_user_actions(
     return {"items": [_user_action_dict(row) for row in rows], "count": len(rows)}
 
 def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(require_admin)):
-    """Return the last N lines from the persistent log files in /logs/.
+    """Return the last N lines from the configured persistent log directory.
     source: 'all' | 'uvicorn' | 'supervisord' | 'auth' | 'ai' | 'user_actions'
     """
     lines = max(10, min(lines, 1000))
 
     log_files = {
-        "uvicorn":     Path("/logs/uvicorn.log"),
-        "supervisord": Path("/logs/supervisord.log"),
-        "auth":        Path("/logs/auth.log"),
+        "uvicorn":     LOG_DIR / "uvicorn.log",
+        "supervisord": LOG_DIR / "supervisord.log",
+        "auth":        LOG_DIR / "auth.log",
     }
 
     sources = [*log_files.keys(), "ai", "user_actions"] if source == "all" else [source]
@@ -228,7 +228,7 @@ def get_logs(lines: int = 200, source: str = "all", admin: dict = Depends(requir
             continue
         path = log_files.get(src)
         if not path or not path.exists():
-            collected.append(f"[{src}] no log file yet — container may have just started")
+            collected.append(f"[{src}] no log file yet — check the service log destination")
             continue
         try:
             with open(path, "r", errors="replace") as f:

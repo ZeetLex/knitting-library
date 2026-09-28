@@ -1,4 +1,4 @@
-"""Administrative commands intended to be run inside the application container."""
+"""Administrative commands for container and native deployments."""
 
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ from pathlib import Path
 import bcrypt
 
 
-DEFAULT_DB_PATH = Path("/data/recipes.db")
+from app.core.paths import DB_PATH
+
+DEFAULT_DB_PATH = DB_PATH
 MIN_PASSWORD_LENGTH = 8
 
 
