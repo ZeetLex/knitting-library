@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from typing import Mapping
 
@@ -76,10 +77,8 @@ def resolve_mail_settings(
 def validate_mail_settings(settings: Mapping[str, object], require_enabled: bool = True) -> dict[str, object]:
     """Validate and normalize effective settings for SMTP use."""
     enabled = parse_mail_boolean(settings.get("mail_enabled", "false"), "Mail enabled")
-    announcements_enabled = parse_mail_boolean(
-        settings.get("mail_announcements_enabled", "false"),
-        "Announcement email enabled",
-    )
+    if not enabled and require_enabled:
+        raise ValueError("Mail is not enabled")
 
     try:
         port = int(str(settings.get("mail_port", "587")).strip())
@@ -104,12 +103,9 @@ def validate_mail_settings(settings: Mapping[str, object], require_enabled: bool
             raise ValueError("Mail host is required when mail is enabled")
         if not from_address:
             raise ValueError("Mail from address is required when mail is enabled")
-    elif require_enabled:
-        raise ValueError("Mail is not enabled")
 
     return {
         "enabled": enabled,
-        "announcements_enabled": announcements_enabled,
         "host": host,
         "port": port,
         "username": username,
@@ -130,14 +126,21 @@ def send_mail(settings: Mapping[str, object], to: str, subject: str, body: str) 
     server = None
     try:
         if config["security"] == "ssl":
-            server = smtplib.SMTP_SSL(str(config["host"]), int(config["port"]), timeout=10)
+            server = smtplib.SMTP_SSL(
+                str(config["host"]), int(config["port"]), timeout=10,
+                context=ssl.create_default_context(),
+            )
         else:
             server = smtplib.SMTP(str(config["host"]), int(config["port"]), timeout=10)
             if config["security"] == "starttls":
-                server.starttls()
+                server.starttls(context=ssl.create_default_context())
         if config["username"]:
             server.login(str(config["username"]), str(config["password"]))
         server.sendmail(str(config["from_address"]), [to], message.as_string())
-    finally:
+    except Exception:
+        # Preserve the original failure, including certificate verification errors.
         if server is not None:
-            server.quit()
+            server.close()
+        raise
+    else:
+        server.quit()

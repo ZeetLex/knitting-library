@@ -152,7 +152,9 @@ Non-blank environment values override only the matching database-backed admin se
 
 Boolean values also accept `1`/`0`, `yes`/`no`, and `on`/`off`. Use `none` only for a trusted local connection, `starttls` for an SMTP connection upgraded with STARTTLS (commonly port 587), or `ssl` for implicit TLS (commonly port 465). Authentication is skipped when both username and password are absent. Supplying only one is rejected.
 
-After changing mail variables, restart the application and use **Send Test** in the Mail Server admin page. Invalid mail configuration prevents mail from being sent but does not prevent Knitting Library from starting. Passwords are masked in the API and interface; protect any `.env` or service environment file because it still contains the real secret.
+After changing mail variables, restart the application and use **Send Test** in the Mail Server admin page. Invalid SMTP configuration prevents mail from being sent but does not prevent Knitting Library from starting or prevent an editable email switch from being turned off. An invalid announcement toggle disables announcement emails without blocking password recovery or other transactional messages. Passwords are masked in the API and interface; protect any `.env` or service environment file because it still contains the real secret.
+
+Both `starttls` and `ssl` verify the server certificate and hostname against trusted certificate authorities. Use a hostname covered by the certificate. For private mail servers, install the appropriate CA certificate in the application host/container trust store; do not disable certificate verification. Existing database `mail_tls` values remain supported: `true` selects STARTTLS and `false` selects implicit TLS. Legacy API updates to this field also update the explicit security mode, unless that mode is managed by the environment. When both fields are supplied, `mail_security` takes precedence.
 
 ### Docker Compose SMTP example
 

@@ -1,4 +1,5 @@
 import sys
+import ssl
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -108,7 +109,10 @@ class MailDeliveryTests(unittest.TestCase):
         send_mail(self.settings(), "user@example.com", "Subject", "Body")
 
         smtp.assert_called_once_with("smtp.example.com", 587, timeout=10)
-        smtp.return_value.starttls.assert_called_once_with()
+        smtp.return_value.starttls.assert_called_once()
+        context = smtp.return_value.starttls.call_args.kwargs["context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
         smtp.return_value.login.assert_called_once_with("mailer", "secret")
         smtp.return_value.sendmail.assert_called_once()
         smtp.return_value.quit.assert_called_once_with()
@@ -130,8 +134,31 @@ class MailDeliveryTests(unittest.TestCase):
     def test_implicit_ssl_uses_smtp_ssl(self, smtp_ssl):
         send_mail(self.settings(security="ssl"), "user@example.com", "Subject", "Body")
 
-        smtp_ssl.assert_called_once_with("smtp.example.com", 587, timeout=10)
+        smtp_ssl.assert_called_once()
+        self.assertEqual(smtp_ssl.call_args.args, ("smtp.example.com", 587))
+        context = smtp_ssl.call_args.kwargs["context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
         smtp_ssl.return_value.login.assert_called_once_with("mailer", "secret")
+
+    @patch("app.core.mail.smtplib.SMTP")
+    def test_invalid_announcement_flag_does_not_block_transactional_mail(self, smtp):
+        send_mail(
+            {**self.settings(), "mail_announcements_enabled": "typo"},
+            "user@example.com", "Password recovery", "Body",
+        )
+        smtp.return_value.sendmail.assert_called_once()
+
+    @patch("app.core.mail.smtplib.SMTP")
+    def test_certificate_failure_prevents_login_and_preserves_error(self, smtp):
+        failure = ssl.SSLCertVerificationError("untrusted server")
+        smtp.return_value.starttls.side_effect = failure
+        with self.assertRaises(ssl.SSLCertVerificationError):
+            send_mail(self.settings(), "user@example.com", "Subject", "Body")
+        smtp.return_value.login.assert_not_called()
+        smtp.return_value.sendmail.assert_not_called()
+        smtp.return_value.close.assert_called_once()
+        smtp.return_value.quit.assert_not_called()
 
 
 if __name__ == "__main__":

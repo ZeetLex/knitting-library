@@ -322,11 +322,15 @@ def get_mail_settings(admin: dict = Depends(require_admin)):
     try:
         normalized = validate_mail_settings(settings, require_enabled=False)
         settings["mail_enabled"] = "true" if normalized["enabled"] else "false"
-        settings["mail_announcements_enabled"] = "true" if normalized["announcements_enabled"] else "false"
         settings["mail_port"] = str(normalized["port"])
         settings["mail_security"] = str(normalized["security"])
     except ValueError as exc:
         settings["configuration_error"] = str(exc)
+    try:
+        announcements = parse_mail_boolean(settings["mail_announcements_enabled"], "Announcement email enabled")
+        settings["mail_announcements_enabled"] = "true" if announcements else "false"
+    except ValueError as exc:
+        settings["configuration_error"] = "; ".join(filter(None, [settings.get("configuration_error"), str(exc)]))
     # Never return the password in plaintext — return a mask if set
     if settings.get("mail_password"):
         settings["mail_password"] = "••••••••"
@@ -357,6 +361,13 @@ def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
             detail="These mail settings are managed by environment variables: " + ", ".join(attempted_managed),
         )
 
+    data = dict(data)
+    if "mail_tls" in data and "mail_security" not in data:
+        try:
+            data["mail_security"] = "starttls" if parse_mail_boolean(data["mail_tls"], "Mail TLS") else "ssl"
+        except ValueError as exc:
+            conn.close()
+            raise HTTPException(status_code=400, detail=str(exc))
     proposed = dict(stored)
     for key, value in data.items():
         if key in allowed and not (key == "mail_password" and value == "••••••••"):
@@ -364,7 +375,11 @@ def save_mail_settings(data: dict, admin: dict = Depends(require_admin)):
     if any(key in operational for key in data):
         try:
             effective, _managed = resolve_mail_settings(proposed)
-            validate_mail_settings(effective, require_enabled=False)
+            # The off switch must remain usable even with broken transport settings.
+            if parse_mail_boolean(effective["mail_enabled"], "Mail enabled"):
+                validate_mail_settings(effective)
+                if "mail_announcements_enabled" in data:
+                    parse_mail_boolean(data["mail_announcements_enabled"], "Announcement email enabled")
         except ValueError as exc:
             conn.close()
             raise HTTPException(status_code=400, detail=str(exc))
