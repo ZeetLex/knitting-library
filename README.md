@@ -67,6 +67,10 @@ Knitting Library can also run directly as a Python service, serving the API and 
 
 Existing Docker deployments keep their current defaults. See [Running without Docker](GUIDE.md#running-without-docker) for requirements, setup, service configuration, and data migration.
 
+## Mail Configuration
+
+Admins can configure SMTP under **Settings -> Admin -> Mail Server**. Deployments such as YunoHost can instead provide `KNITTING_MAIL_*` environment variables; supplied values override the matching admin settings and appear read-only in the interface. SMTP supports unencrypted trusted/local connections, STARTTLS, and implicit SSL/TLS. See [Mail configuration](GUIDE.md#mail-configuration) for the complete variable reference and examples.
+
 ## Recover a User Password
 
 If a user cannot sign in and email recovery is unavailable, an operator with access to the Docker host can reset the password interactively:

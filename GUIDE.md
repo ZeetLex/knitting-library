@@ -133,6 +133,78 @@ Changing `KNITTING_DATA_DIR` does not move data. Stop the service, back up the c
 
 Existing Docker deployments need no configuration changes. The variables select paths **inside** the container. If overriding data or log paths in `.env`, update the Compose volume targets to match; for example, `KNITTING_DATA_DIR=/storage` requires `./data:/storage` instead of `./data:/data`. A custom static directory must contain the built frontend and be copied or mounted into the container. Changing only the host side of an existing bind mount does not require these variables.
 
+## Mail Configuration
+
+SMTP can be configured interactively under **Settings -> Admin -> Mail Server** or by deployment environment variables. Environment variables are useful for YunoHost, container orchestration, and other managed installations where mail credentials are provisioned during installation.
+
+Non-blank environment values override only the matching database-backed admin settings. Overridden fields are displayed as read-only in the admin interface. Blank or unset variables leave the saved admin value in control, and removing an override restores that saved value. Email templates remain editable in the interface. Environment credentials are read at runtime and are not copied into the application database.
+
+| Environment variable | Accepted values | Purpose |
+|---|---|---|
+| `KNITTING_MAIL_ENABLED` | `true` or `false` | Master switch for outgoing email |
+| `KNITTING_MAIL_HOST` | Hostname or IP | SMTP server |
+| `KNITTING_MAIL_PORT` | `1`-`65535` | SMTP port |
+| `KNITTING_MAIL_USERNAME` | Text, optional | SMTP login username |
+| `KNITTING_MAIL_PASSWORD` | Text, optional | SMTP login password; provide together with username |
+| `KNITTING_MAIL_FROM` | Email or formatted sender | Sender shown on outgoing messages; defaults to username when omitted |
+| `KNITTING_MAIL_SECURITY` | `none`, `starttls`, or `ssl` | SMTP transport security |
+| `KNITTING_MAIL_ANNOUNCEMENTS_ENABLED` | `true` or `false` | Email published update notes to users who have an address |
+
+Boolean values also accept `1`/`0`, `yes`/`no`, and `on`/`off`. Use `none` only for a trusted local connection, `starttls` for an SMTP connection upgraded with STARTTLS (commonly port 587), or `ssl` for implicit TLS (commonly port 465). Authentication is skipped when both username and password are absent. Supplying only one is rejected.
+
+After changing mail variables, restart the application and use **Send Test** in the Mail Server admin page. Invalid SMTP configuration prevents mail from being sent but does not prevent Knitting Library from starting or prevent an editable email switch from being turned off. An invalid announcement toggle disables announcement emails without blocking password recovery or other transactional messages. Passwords are masked in the API and interface; protect any `.env` or service environment file because it still contains the real secret.
+
+Both `starttls` and `ssl` verify the server certificate and hostname against trusted certificate authorities. Use a hostname covered by the certificate. For private mail servers, install the appropriate CA certificate in the application host/container trust store; do not disable certificate verification. Existing database `mail_tls` values remain supported: `true` selects STARTTLS and `false` selects implicit TLS. Legacy API updates to this field also update the explicit security mode, unless that mode is managed by the environment. When both fields are supplied, `mail_security` takes precedence.
+
+### Docker Compose SMTP example
+
+Copy `.env.example` to `.env` and set the values needed by your provider. For a STARTTLS service:
+
+```dotenv
+KNITTING_MAIL_ENABLED=true
+KNITTING_MAIL_HOST=smtp.example.com
+KNITTING_MAIL_PORT=587
+KNITTING_MAIL_USERNAME=knitting@example.com
+KNITTING_MAIL_PASSWORD=replace-with-app-password
+KNITTING_MAIL_FROM="Knitting Library <knitting@example.com>"
+KNITTING_MAIL_SECURITY=starttls
+KNITTING_MAIL_ANNOUNCEMENTS_ENABLED=false
+```
+
+Then recreate the container so it receives the new environment:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+If a password contains characters interpreted by Docker Compose, quote or escape it according to Compose `.env` syntax. Keep `.env` private; it is excluded by the repository's `.gitignore`.
+
+### YunoHost SMTP example
+
+YunoHost packages can enable mail for the application system user and pass the generated application name, `mail_pwd`, and sender address into the service environment. A typical local YunoHost configuration is:
+
+```ini
+Environment=KNITTING_MAIL_ENABLED=true
+Environment=KNITTING_MAIL_HOST=127.0.0.1
+Environment=KNITTING_MAIL_PORT=25
+Environment=KNITTING_MAIL_USERNAME=knitting-library
+Environment=KNITTING_MAIL_PASSWORD=generated-mail-password
+Environment=KNITTING_MAIL_FROM=knitting-library@example.com
+Environment=KNITTING_MAIL_SECURITY=none
+```
+
+The package should substitute its actual application id, generated mail password, and domain-derived sender. Store secrets in a root-readable environment file where practical instead of embedding them in a world-readable unit. If the YunoHost mail service is configured for STARTTLS on port 587, use `starttls` instead of `none`.
+
+### Native service SMTP example
+
+For the systemd unit shown above, place the variables in a file readable only by root and the service manager, for example `/etc/knitting-library/environment`, and add this under `[Service]`:
+
+```ini
+EnvironmentFile=/etc/knitting-library/environment
+```
+
+The environment file uses unquoted `KEY=value` entries unless systemd escaping is required. Run `sudo systemctl daemon-reload` and restart the service after changes.
+
 ## Mobile Installation
 
 Open `http://YOUR-SERVER-IP:3000` in Safari on iPhone, then use Share -> Add to Home Screen.
