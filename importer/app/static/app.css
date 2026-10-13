@@ -278,3 +278,5 @@ details.peek pre { white-space: pre-wrap; word-break: break-word; font: .85rem/1
   .brand-name { white-space: nowrap; }
   .top-end { width: 100%; justify-content: flex-start; }
 }
+
+.actions .waiting { margin: 0; align-self: center; font-size: .9rem; }

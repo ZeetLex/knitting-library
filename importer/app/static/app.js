@@ -336,6 +336,7 @@
           d.url ? h("button", { class: "btn ghost", type: "button", onclick: retryLink }, "Try the link again") : null),
         h("div", { class: "actions" },
           canContinue && !pageV ? h("span", { class: "lede" }, "Without the page, tags and videos are left out.") : null,
+          !canContinue ? h("span", { class: "lede waiting", role: "status" }, "Continue unlocks when the PDF (step A) is added.") : null,
           h("button", { class: "btn", type: "button", disabled: !canContinue, onclick: () => { S.ui.continued = true; render(); } }, "Continue"))),
     );
   }
