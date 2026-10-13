@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CheckCircle2, CircleHelp, Github, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
+  CheckCircle2, CircleHelp, CloudDownload, Github, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
 import AppBrand from './AppBrand';
 import './AppShell.css';
+
+// The pattern importer is a separate app served on this same address under /import/.
+const PATTERN_IMPORTER_URL = '/import/';
 
 function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAddTool }) {
   const { t } = useApp();
@@ -24,6 +27,12 @@ function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAd
   if (!open) return null;
 
   const actions = [
+    {
+      icon: <CloudDownload size={18} />,
+      label: t('navPatternImporter'),
+      sub: t('navPatternImporterHint'),
+      onClick: () => window.location.assign(PATTERN_IMPORTER_URL),
+    },
     { icon: <Import size={18} />, label: t('importRecipe') || t('importWizardTitle'), sub: t('importRecipeHint') || t('workThroughFolder'), onClick: onImportRecipe },
     { icon: <PackagePlus size={18} />, label: t('addYarn'), sub: t('navAddYarnHint'), onClick: onAddYarn },
     { icon: <Wrench size={18} />, label: t('addToolToInventory'), sub: t('navAddToolHint'), onClick: onAddTool },
@@ -420,6 +429,14 @@ function DesktopSidebar({ activeView, collapsed, latestRelease, onToggleCollapse
           <Wrench size={19} />
           <span>{t('toolNavLabel')}</span>
         </button>
+        <a
+          className="desktop-nav-item"
+          href={PATTERN_IMPORTER_URL}
+          title={collapsed ? t('navPatternImporter') : undefined}
+        >
+          <CloudDownload size={19} />
+          <span>{t('navPatternImporter')}</span>
+        </a>
       </div>
       {!collapsed && (
         <WorkQueueDock

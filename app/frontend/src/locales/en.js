@@ -16,6 +16,8 @@ const en = {
     navAdd: "Add",
     navAddSomething: "Add something",
     navAddYarnHint: "Sample or stock for projects",
+    navPatternImporter: "Import from DROPS",
+    navPatternImporterHint: "Paste a pattern link",
     navAddToolHint: "Needles, hooks, tools, and notions",
     navMenu: "Menu",
     navHideNavigation: "Hide navigation",

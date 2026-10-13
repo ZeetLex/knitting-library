@@ -353,6 +353,13 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
+.desktop-nav-item {
+  text-decoration: none;
+  box-sizing: border-box;
+  font-size: 13.3333px; /* match the other items, which are buttons */
+  line-height: normal;
+}
+
 .desktop-nav-item svg {
   flex-shrink: 0;
 }
