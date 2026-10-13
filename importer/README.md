@@ -28,7 +28,7 @@ That needs one extra target on the existing Pangolin resource. In Pangolin, open
 | Field | Value |
 | --- | --- |
 | Site | the same site (Newt) as the library |
-| Method, host, port | `http`, `knit-import`, `8080` |
+| Method, host, port | `http`, the NAS address, `31952` (the importer's published port in `deploy/docker-compose.yml`). If Newt shares the `knit` Docker network, use `knit-import` and `8080` instead |
 | Path | `/import` |
 | Path match | `prefix` |
 | Rewrite | none |
@@ -40,7 +40,7 @@ Notes:
 * Do not add a rewrite. The importer accepts requests with or without `/import` in front, so it does not need one. With `stripPrefix` the page still loads from `/import/`, but `/import` without the slash would not redirect.
 * The importer has no sign-in of its own, so Pangolin's sign-in has to cover `/import/`. The Pangolin docs describe authentication as a resource setting but do not say outright that it covers every path. Check it: open `/import/` in a private window. You should land on the SSO sign-in page. If you do not, stop and fix that before using it.
 * The importer reaches the library over the Docker network (`KL_URL`), not through Pangolin, so the two apps sharing an address changes nothing there.
-* Own hostname instead: create a second resource, for example `knit-import.wighttrash.uk`, pointing at `knit-import:8080`. It works with no changes. The link in the library goes to `/import/` on the library's address, so it only helps if the path target above exists too.
+* Own hostname instead: create a second resource, for example `knit-import.wighttrash.uk`, pointing at the same importer address and port. It works with no changes. The link in the library goes to `/import/` on the library's address, so it only helps if the path target above exists too.
 * The importer and the library share an origin when served this way. The importer writes page text with `textContent` and sends a strict Content-Security-Policy, so pattern text cannot run as script.
 
 ## Settings

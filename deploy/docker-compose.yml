@@ -1,13 +1,26 @@
 # Knitting Library (patched fork) and the importer, on one private network.
 # Change every line marked CHANGE. Put IMPORTER_PASSWORD in a .env file next to this one.
 #
-# No ports are published. Newt reaches both apps over the Docker network.
-# One Pangolin resource, knit.wighttrash.uk, with two targets:
-#   path "/" (no path match)           ->  knitting-library:8080
-#   path "/import", match "prefix"     ->  knit-import:8080      (no rewrite)
+# Both apps listen on 8080 inside their containers. That is fine, because each container has its own
+# network. On the NAS they are published on two other ports, so they do not clash with whatever
+# already uses 8080:
+#   knitting-library  ->  host port 28417   (change with KL_PORT in the .env file)
+#   knit-import       ->  host port 31952   (change with IMPORT_PORT in the .env file)
+# Check that both are free first:  ss -tln | grep -E ':(28417|31952)\b'   (no output means free)
+#
+# One Pangolin resource, knit.wighttrash.uk, with two targets. Use the NAS address and the host ports:
+#   path "/" (no path match)           ->  <NAS address>:28417    (the library)
+#   path "/import", match "prefix"     ->  <NAS address>:31952    (the importer, no rewrite)
+# If Newt shares the "knit" Docker network instead, the targets can be knitting-library:8080 and
+# knit-import:8080, and the published ports are not needed for Pangolin.
 # Mary opens the importer from the "Import from DROPS" link inside the library.
-# If you would rather give it its own hostname, point a second resource at knit-import:8080.
+# If you would rather give it its own hostname, point a second resource at the importer target.
 # See importer/README.md, section "Where it lives".
+#
+# The published ports are open to anything on your LAN. Only Pangolin should be sending traffic to
+# them, so the importer in particular (it has no sign-in of its own) should not be reachable from
+# other devices. Block the two ports for the LAN in your firewall, or use 127.0.0.1 in the ports lines
+# if Newt runs on the NAS itself with host networking.
 
 name: knitting
 
@@ -28,6 +41,8 @@ services:
     volumes:
       - /mnt/tank/configs/knitting-library/data:/data
       - /mnt/tank/configs/knitting-library/logs:/logs
+    ports:
+      - "${KL_PORT:-28417}:8080"
     networks: [knit]
 
   knit-import:
@@ -38,7 +53,7 @@ services:
     restart: unless-stopped
     depends_on: [knitting-library]
     environment:
-      KL_URL: http://knitting-library:8080          # private network, not through Pangolin
+      KL_URL: http://knitting-library:8080          # private network, so it keeps the container port, not 28417
       KL_PUBLIC_URL: https://knit.wighttrash.uk     # for the "Back to library" and "Open Knitting Library" links
       BASE_PATH: /import                             # answers on /import/ as well as /
       KL_USERNAME: importer                          # a normal (non-admin) Knitting Library user
@@ -48,6 +63,8 @@ services:
       DRAFT_TTL_HOURS: "24"
     volumes:
       - /mnt/tank/configs/knit-import:/data
+    ports:
+      - "${IMPORT_PORT:-31952}:8080"
     networks: [knit]
     shm_size: "256m"                                # Chromium needs a little shared memory to print a PDF
 
