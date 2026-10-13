@@ -1,0 +1,26 @@
+# Put this file in your fork at .github/workflows/upstream-check.yml
+# Once a week, checks whether upstream has moved and whether your patches still rebase cleanly.
+# A conflict makes the run fail, and GitHub emails you about failed runs.
+name: Upstream check
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: jeff
+          fetch-depth: 0
+      - name: Check
+        run: |
+          git config user.name "upstream-check"
+          git config user.email "upstream-check@users.noreply.github.com"
+          ./sync-upstream.sh --check | tee -a "$GITHUB_STEP_SUMMARY"

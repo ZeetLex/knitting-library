@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Saved DROPS pages are DROPS Design material. Keep them on your own machine only.
+tests/fixtures/*
+!tests/fixtures/README.txt

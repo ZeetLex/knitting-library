@@ -1,0 +1,35 @@
+# Builds the patched Knitting Library image from this branch and publishes it to GitHub's container registry.
+name: Build Knitting Library image
+
+on:
+  push:
+    branches: [jeff]
+    paths-ignore:
+      - "importer/**"
+      - "deploy/**"
+      - "*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/knitting-library:jeff
+            ghcr.io/${{ github.repository_owner }}/knitting-library:sha-${{ github.sha }}

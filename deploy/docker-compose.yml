@@ -1,0 +1,51 @@
+# Knitting Library (patched fork) and the importer, on one private network.
+# Change every line marked CHANGE. Put IMPORTER_PASSWORD in a .env file next to this one.
+#
+# No ports are published. Newt reaches both apps over the Docker network:
+#   Pangolin target for knit.wighttrash.uk    ->  knitting-library:8080
+#   Pangolin target for the importer hostname ->  knit-import:8080
+
+name: knitting
+
+services:
+  knitting-library:
+    # Built from this fork. The plain upstream image (zeetlex/knitting-library) does not save tags.
+    image: ghcr.io/wight-trash/knitting-library:jeff
+    container_name: knitting-library
+    restart: unless-stopped
+    environment:
+      PUID: "568"                      # CHANGE: owner of the dataset below (568 is the usual TrueNAS apps user)
+      PGID: "568"
+      TRUSTED_PROXIES: ""              # CHANGE: address or network range of the Newt container
+      ALLOWED_ORIGINS: "https://knit.wighttrash.uk"
+      KNITTING_DATA_DIR: /data
+      KNITTING_LOG_DIR: /logs
+      KNITTING_STATIC_DIR: /app/frontend/build
+    volumes:
+      - /mnt/tank/configs/knitting-library/data:/data
+      - /mnt/tank/configs/knitting-library/logs:/logs
+    networks: [knit]
+
+  knit-import:
+    image: ghcr.io/wight-trash/knit-import:latest
+    # To build on the NAS instead of pulling from GitHub, swap the line above for:
+    # build: https://github.com/wight-trash/knitting-library.git#jeff:importer
+    container_name: knit-import
+    restart: unless-stopped
+    depends_on: [knitting-library]
+    environment:
+      KL_URL: http://knitting-library:8080          # private network, not through Pangolin
+      KL_PUBLIC_URL: https://knit.wighttrash.uk     # for the "Open Knitting Library" button
+      KL_USERNAME: importer                          # a normal (non-admin) Knitting Library user
+      KL_PASSWORD: ${IMPORTER_PASSWORD:?set IMPORTER_PASSWORD in the .env file}
+      DROPS_MIN_INTERVAL: "3"                       # seconds between requests to DROPS
+      DROPS_CONTACT: ""                             # optional: an email address, added to the User-Agent
+      DRAFT_TTL_HOURS: "24"
+    volumes:
+      - /mnt/tank/configs/knit-import:/data
+    networks: [knit]
+    shm_size: "256m"                                # Chromium needs a little shared memory to print a PDF
+
+networks:
+  knit:
+    name: knit

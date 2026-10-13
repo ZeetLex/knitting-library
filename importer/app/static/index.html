@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Pattern importer</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the page</a>
+  <header class="top">
+    <div class="brand">
+      <svg class="ball" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="currentColor"/>
+        <path d="M5 12c7 4 15 4 22 0M4 18c8 5 16 5 24 0M9 6c5 6 9 14 8 21M18 3c2 7 1 17-5 24" fill="none" stroke="var(--ground)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">Pattern importer</span>
+    </div>
+    <div id="status" class="status" role="status"></div>
+  </header>
+
+  <nav id="rail" class="rail" aria-label="Progress"></nav>
+
+  <main id="main" tabindex="-1"></main>
+
+  <footer class="foot">
+    <p>For personal use. DROPS patterns belong to DROPS Design.</p>
+  </footer>
+
+  <noscript><p class="nojs">This page needs JavaScript to run.</p></noscript>
+  <script src="/app.js" defer></script>
+</body>
+</html>

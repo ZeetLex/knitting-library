@@ -1,0 +1,8 @@
+fastapi==0.135.1
+uvicorn[standard]==0.34.3
+python-multipart==0.0.31
+httpx==0.28.1
+beautifulsoup4==4.13.4
+lxml==5.3.0
+playwright==1.49.1
+pydantic==2.10.4
