@@ -102,6 +102,9 @@ def _save_cats_tags(conn, recipe_id: str, categories: str, tags: str):
     for name in [t.strip() for t in tags.split(",") if t.strip()]:
         conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
         row = conn.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
+        if row:
+            conn.execute("INSERT OR IGNORE INTO recipe_tags (recipe_id,tag_id) VALUES (?,?)", (recipe_id, row["id"]))
+
 
 def _project_scope_is_global(current_user: Optional[dict], project_scope: str = "user") -> bool:
     return bool(current_user and current_user.get("is_admin")) or project_scope == "global"
