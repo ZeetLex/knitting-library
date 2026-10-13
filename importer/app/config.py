@@ -21,6 +21,10 @@ class Settings:
     kl_username: str = "importer"
     kl_password: str = ""
 
+    # Where the importer is reached. "/import" lets knit.example/import work through a path rule.
+    # Requests with or without this prefix are both accepted. Use "" to switch it off.
+    base_path: str = "/import"
+
     # Storage
     data_dir: Path = Path("/data")
     draft_ttl_hours: int = 24
@@ -72,6 +76,7 @@ def load_settings() -> Settings:
         kl_public_url=env("KL_PUBLIC_URL", "").rstrip("/"),
         kl_username=env("KL_USERNAME", "importer"),
         kl_password=env("KL_PASSWORD", ""),
+        base_path=env("BASE_PATH", "/import"),
         data_dir=Path(env("DATA_DIR", "/data")),
         draft_ttl_hours=int(env("DRAFT_TTL_HOURS", "24")),
         max_upload_mb=int(env("MAX_UPLOAD_MB", "50")),

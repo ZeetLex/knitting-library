@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import pipeline
+from app.basepath import BasePathMiddleware
 from app.config import Settings, load_settings
 from app.drafts import Draft, DraftStore
 from app.drops.build import NotAPattern
@@ -397,6 +398,7 @@ def create_app(
 
     # ------------------------------------------------------------------ page
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
+    app.add_middleware(BasePathMiddleware, base_path=settings.base_path)  # added last, so it runs first
     return app
 
 

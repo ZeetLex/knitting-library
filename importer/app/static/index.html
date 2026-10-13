@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Pattern importer</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/app.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <a class="skip" href="#main">Skip to the page</a>
@@ -18,7 +18,13 @@
       </svg>
       <span class="brand-name">Pattern importer</span>
     </div>
-    <div id="status" class="status" role="status"></div>
+    <div class="top-end">
+      <a id="back" class="back" href="#" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        <span>Back to library</span>
+      </a>
+      <div id="status" class="status" role="status"></div>
+    </div>
   </header>
 
   <nav id="rail" class="rail" aria-label="Progress"></nav>
@@ -30,6 +36,6 @@
   </footer>
 
   <noscript><p class="nojs">This page needs JavaScript to run.</p></noscript>
-  <script src="/app.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>

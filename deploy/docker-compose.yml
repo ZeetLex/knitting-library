@@ -1,9 +1,13 @@
 # Knitting Library (patched fork) and the importer, on one private network.
 # Change every line marked CHANGE. Put IMPORTER_PASSWORD in a .env file next to this one.
 #
-# No ports are published. Newt reaches both apps over the Docker network:
-#   Pangolin target for knit.wighttrash.uk    ->  knitting-library:8080
-#   Pangolin target for the importer hostname ->  knit-import:8080
+# No ports are published. Newt reaches both apps over the Docker network.
+# One Pangolin resource, knit.wighttrash.uk, with two targets:
+#   path "/" (no path match)           ->  knitting-library:8080
+#   path "/import", match "prefix"     ->  knit-import:8080      (no rewrite)
+# Mary opens the importer from the "Import from DROPS" link inside the library.
+# If you would rather give it its own hostname, point a second resource at knit-import:8080.
+# See importer/README.md, section "Where it lives".
 
 name: knitting
 
@@ -35,7 +39,8 @@ services:
     depends_on: [knitting-library]
     environment:
       KL_URL: http://knitting-library:8080          # private network, not through Pangolin
-      KL_PUBLIC_URL: https://knit.wighttrash.uk     # for the "Open Knitting Library" button
+      KL_PUBLIC_URL: https://knit.wighttrash.uk     # for the "Back to library" and "Open Knitting Library" links
+      BASE_PATH: /import                             # answers on /import/ as well as /
       KL_USERNAME: importer                          # a normal (non-admin) Knitting Library user
       KL_PASSWORD: ${IMPORTER_PASSWORD:?set IMPORTER_PASSWORD in the .env file}
       DROPS_MIN_INTERVAL: "3"                       # seconds between requests to DROPS

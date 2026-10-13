@@ -115,6 +115,10 @@
 
   function renderStatus() {
     const st = S.status;
+    const back = document.getElementById("back");
+    if (back) {
+      if (st && st.library_url) { back.href = st.library_url; back.hidden = false; } else { back.hidden = true; }
+    }
     if (!st) { statusEl.className = "status"; statusEl.replaceChildren(); return; }
     const lib = st.library || {};
     let text, cls;
@@ -176,7 +180,7 @@
       S.ui.urlError = "";
       S.ui.busy = true; render();
       try {
-        const d = await api("POST", "/api/drafts", { url: S.ui.url });
+        const d = await api("POST", "api/drafts", { url: S.ui.url });
         setDraft(d);
       } catch (err) {
         S.ui.urlError = err.message;
@@ -204,7 +208,7 @@
 
   async function startManual() {
     try {
-      const d = await api("POST", "/api/drafts/manual");
+      const d = await api("POST", "api/drafts/manual");
       setDraft(d);
       render();
     } catch (err) {
@@ -342,7 +346,7 @@
     const fd = new FormData();
     files.forEach((f) => fd.append("files", f, f.name));
     try {
-      const d = await api("POST", `/api/drafts/${S.draft.id}/files`, fd);
+      const d = await api("POST", `api/drafts/${S.draft.id}/files`, fd);
       S.ui.rejected = d.rejected || [];
       S.ui.problem = d.problem || "";
       setDraft(d);
@@ -353,7 +357,7 @@
   }
 
   async function retryLink() {
-    try { setDraft(await api("POST", `/api/drafts/${S.draft.id}/retry`)); S.ui.rejected = []; S.ui.problem = ""; render(); }
+    try { setDraft(await api("POST", `api/drafts/${S.draft.id}/retry`)); S.ui.rejected = []; S.ui.problem = ""; render(); }
     catch (err) { S.ui.rejected = [{ filename: "", verdict: { headline: err.message, checks: [], advice: "" } }]; render(false); }
   }
 
@@ -362,7 +366,7 @@
     S.draft = null; store.clear();
     S.ui = { url: "", urlError: "", busy: false, continued: false, backToDetails: false, rejected: [], problem: "", uploading: false, textPreview: null };
     render();
-    if (id) { try { await api("DELETE", `/api/drafts/${id}`); } catch { /* it will be tidied up later */ } }
+    if (id) { try { await api("DELETE", `api/drafts/${id}`); } catch { /* it will be tidied up later */ } }
   }
 
   // ------------------------------------------------------------------ stage 2
@@ -409,7 +413,7 @@
     S.saveTimers[key] = setTimeout(() => flush(patch), delay);
   }
   async function flush(patch) {
-    try { const d = await api("PATCH", `/api/drafts/${S.draft.id}`, patch); S.draft.edits = d.edits; }
+    try { const d = await api("PATCH", `api/drafts/${S.draft.id}`, patch); S.draft.edits = d.edits; }
     catch { /* the next change or the Add button will send it again */ }
   }
   async function flushAll() {
@@ -449,14 +453,14 @@
 
   function viewCheck(d) {
     const p = d.pattern, e = d.edits;
-    const cover = h("img", { alt: `Page ${e.cover_page} of the PDF`, src: `/api/drafts/${d.id}/pages/${e.cover_page}.jpg`, width: 300, height: 424 });
+    const cover = h("img", { alt: `Page ${e.cover_page} of the PDF`, src: `api/drafts/${d.id}/pages/${e.cover_page}.jpg`, width: 300, height: 424 });
     const caption = h("p", { class: "cover-cap" }, `Cover picture: page ${e.cover_page} of ${p.page_count}`);
     const thumbs = h("div", { class: "thumbs", role: "group", "aria-label": "Choose the cover picture" });
     const paintThumbs = () => thumbs.replaceChildren(...Array.from({ length: p.page_count }, (_, i) => {
       const n = i + 1;
       return h("button", { type: "button", "aria-pressed": String(n === e.cover_page), "aria-label": `Page ${n}`,
-        onclick: () => { e.cover_page = n; cover.src = `/api/drafts/${d.id}/pages/${n}.jpg`; cover.alt = `Page ${n} of the PDF`; caption.textContent = `Cover picture: page ${n} of ${p.page_count}`; paintThumbs(); saveSoon({ cover_page: n }, 200); } },
-        h("img", { src: `/api/drafts/${d.id}/pages/${n}.jpg`, alt: "", loading: "lazy", width: 54, height: 76 }));
+        onclick: () => { e.cover_page = n; cover.src = `api/drafts/${d.id}/pages/${n}.jpg`; cover.alt = `Page ${n} of the PDF`; caption.textContent = `Cover picture: page ${n} of ${p.page_count}`; paintThumbs(); saveSoon({ cover_page: n }, 200); } },
+        h("img", { src: `api/drafts/${d.id}/pages/${n}.jpg`, alt: "", loading: "lazy", width: 54, height: 76 }));
     }));
     paintThumbs();
 
@@ -481,7 +485,7 @@
     const textBox = h("pre", {}, "Loading…");
     const peek = h("details", { class: "peek", ontoggle: async (ev) => {
       if (!ev.target.open || S.ui.textPreview) { if (S.ui.textPreview) textBox.textContent = S.ui.textPreview; return; }
-      try { S.ui.textPreview = (await api("GET", `/api/drafts/${d.id}/text`)).markdown; } catch (err) { S.ui.textPreview = err.message; }
+      try { S.ui.textPreview = (await api("GET", `api/drafts/${d.id}/text`)).markdown; } catch (err) { S.ui.textPreview = err.message; }
       textBox.textContent = S.ui.textPreview;
     } }, h("summary", {}, "Preview the instructions text"), textBox);
 
@@ -514,7 +518,7 @@
     try {
       await flushAll();
       S.ui.backToDetails = false;
-      const d = await api("POST", `/api/drafts/${S.draft.id}/publish`, { allow_duplicate: allow });
+      const d = await api("POST", `api/drafts/${S.draft.id}/publish`, { allow_duplicate: allow });
       setDraft(d);
     } catch (err) {
       S.ui.backToDetails = true;
@@ -589,7 +593,7 @@
     if (!busy(S.draft)) return;
     S.timer = setTimeout(async () => {
       try {
-        const d = await api("GET", `/api/drafts/${S.draft.id}`);
+        const d = await api("GET", `api/drafts/${S.draft.id}`);
         const before = JSON.stringify([S.draft.status, S.draft.progress, S.draft.publish]);
         const wasEdits = S.draft.edits;
         setDraft(d);
@@ -629,13 +633,13 @@
   // ------------------------------------------------------------------ boot
   async function boot() {
     render(false);
-    try { S.status = await api("GET", "/api/status"); } catch { S.status = null; }
+    try { S.status = await api("GET", "api/status"); } catch { S.status = null; }
     renderStatus();
-    api("GET", "/api/suggestions").then((s) => { S.suggestions = s; }).catch(() => {});
+    api("GET", "api/suggestions").then((s) => { S.suggestions = s; }).catch(() => {});
     const id = store.get();
     if (id) {
       try {
-        const d = await api("GET", `/api/drafts/${id}`);
+        const d = await api("GET", `api/drafts/${id}`);
         if (d.status === "published" || (d.publish && d.publish.state === "done")) { store.clear(); }
         else { S.ui.continued = d.status === "ready"; setDraft(d); }
       } catch { store.clear(); }
@@ -643,7 +647,7 @@
     if (S.status) renderStatus();
     render(false);
     setInterval(async () => {
-      try { S.status = await api("GET", "/api/status"); renderStatus(); } catch { /* ignore */ }
+      try { S.status = await api("GET", "api/status"); renderStatus(); } catch { /* ignore */ }
     }, 60000);
   }
   boot();

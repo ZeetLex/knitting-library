@@ -19,6 +19,30 @@ Mary pastes a pattern link. The importer fetches the pattern, makes a PDF, reads
 * A normal (non-admin) Knitting Library user for the importer, for example `importer`.
 * Protection in front of it. The importer has **no sign-in of its own**. Put it behind Pangolin with SSO, as with Knitting Library. Anyone who can open it can add patterns to the library.
 
+## Where it lives
+
+Mary can reach the importer from inside Knitting Library. The library has an **Import from DROPS** link in its sidebar and in its Add menu. Both go to `/import/` on the same address, for example `https://knit.wighttrash.uk/import/`. The importer has a **Back to library** link in return.
+
+That needs one extra target on the existing Pangolin resource. In Pangolin, open the resource for the library and add a target:
+
+| Field | Value |
+| --- | --- |
+| Site | the same site (Newt) as the library |
+| Method, host, port | `http`, `knit-import`, `8080` |
+| Path | `/import` |
+| Path match | `prefix` |
+| Rewrite | none |
+
+Leave the library's own target as it is. The Pangolin docs say a path match ranks above the plain `/` target, so `/import/...` goes to the importer and everything else goes to the library. Source: https://docs.pangolin.net/manage/resources/public/targets.md
+
+Notes:
+
+* Do not add a rewrite. The importer accepts requests with or without `/import` in front, so it does not need one. With `stripPrefix` the page still loads from `/import/`, but `/import` without the slash would not redirect.
+* The importer has no sign-in of its own, so Pangolin's sign-in has to cover `/import/`. The Pangolin docs describe authentication as a resource setting but do not say outright that it covers every path. Check it: open `/import/` in a private window. You should land on the SSO sign-in page. If you do not, stop and fix that before using it.
+* The importer reaches the library over the Docker network (`KL_URL`), not through Pangolin, so the two apps sharing an address changes nothing there.
+* Own hostname instead: create a second resource, for example `knit-import.wighttrash.uk`, pointing at `knit-import:8080`. It works with no changes. The link in the library goes to `/import/` on the library's address, so it only helps if the path target above exists too.
+* The importer and the library share an origin when served this way. The importer writes page text with `textContent` and sends a strict Content-Security-Policy, so pattern text cannot run as script.
+
 ## Settings
 
 Environment variables.
@@ -27,6 +51,7 @@ Environment variables.
 | --- | --- | --- |
 | `KL_URL` | `http://knitting-library:8080` | Where Knitting Library is, on the private network |
 | `KL_PUBLIC_URL` | same as `KL_URL` | Address for the "Open Knitting Library" button |
+| `BASE_PATH` | `/import` | Prefix it also answers on. Leave as is for the same-address route. Use an empty value to switch it off |
 | `KL_USERNAME` / `KL_PASSWORD` | `importer` / none | The importer's Knitting Library account |
 | `DATA_DIR` | `/data` | Drafts and a 24 hour page cache |
 | `DRAFT_TTL_HOURS` | `24` | How long unfinished patterns are kept |
