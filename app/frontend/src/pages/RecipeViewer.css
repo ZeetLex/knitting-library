@@ -1950,6 +1950,16 @@ a.viewer-action-btn { text-decoration: none; }
   background: var(--terracotta);
 }
 
+.markdown-view a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-view a:hover {
+  color: var(--accent-light);
+}
+
 .text-generation-audit {
   max-width: 860px;
   margin-top: 14px;

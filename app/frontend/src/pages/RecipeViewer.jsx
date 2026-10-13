@@ -2277,9 +2277,9 @@ function MarkdownView({ content }) {
       if (src) elements.push(<img key={i} className="markdown-image" src={src} alt={img[1]} />);
       return;
     }
-    if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{line.replace(/^[-*]\s+/, '')}</p>); return; }
-    if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{line.trim().slice(1, -1)}</p>); return; }
-    elements.push(<p key={i}>{line}</p>);
+    if (/^[-*]\s+/.test(line)) { elements.push(<p key={i} className="markdown-bullet">{renderInlineLinks(line.replace(/^[-*]\s+/, ''))}</p>); return; }
+    if (/^_.*_$/.test(line.trim())) { elements.push(<p key={i} className="markdown-note">{renderInlineLinks(line.trim().slice(1, -1))}</p>); return; }
+    elements.push(<p key={i}>{renderInlineLinks(line)}</p>);
   });
   if (code) {
     elements.push(<pre key="code-final" className="markdown-code"><code>{code.lines.join('\n')}</code></pre>);
@@ -2289,6 +2289,25 @@ function MarkdownView({ content }) {
       {elements}
     </div>
   );
+}
+
+// Turns [label](https://example.com) into a link that opens in a new tab.
+// Only http and https addresses become links. Everything else stays as plain text.
+function renderInlineLinks(text) {
+  const pattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const parts = [];
+  let last = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <a key={`link-${match.index}`} href={match[2]} target="_blank" rel="noopener noreferrer">{match[1]}</a>
+    );
+    last = match.index + match[0].length;
+  }
+  if (!parts.length) return text;
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
 }
 
 function safeMarkdownImageSrc(rawSrc) {
