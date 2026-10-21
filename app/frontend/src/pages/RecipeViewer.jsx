@@ -2136,6 +2136,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
   const hasText = !!textVersion?.content_markdown;
   const jobStatus = generationJob?.status || '';
   const isGenerating = ['queued', 'running'].includes(jobStatus);
+  const isWaitingForOwner = ['awaiting_approval', 'blocked_auth', 'blocked_usage', 'interrupted'].includes(jobStatus);
   const isReviewReady = !!readySession?.exists || jobStatus === 'ready_to_review';
 
   const refreshGenerationState = useCallback(async () => {
@@ -2151,7 +2152,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
       return;
     }
     const queue = await fetchWorkQueue().catch(() => null);
-    const job = queue?.ai_jobs?.find(item => item.recipe_id === recipeId && ['queued', 'running', 'ready_to_review'].includes(item.status));
+    const job = queue?.ai_jobs?.find(item => item.recipe_id === recipeId && ['queued', 'running', 'ready_to_review', 'awaiting_approval', 'blocked_auth', 'blocked_usage', 'interrupted'].includes(item.status));
     setGenerationJob(job || null);
     setReadySession(null);
   }, [aiEnabled, hasText, recipeId]);
@@ -2225,19 +2226,19 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
           {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
           {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
           {aiEnabled && <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
-            <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
+            <Sparkles size={15} />{textVersion?.requires_owner_approval ? t('chatgptRequestOcr') : hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
           </button>}
         </div>
       </div>
       {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
       {error && <p className="status-error">{error}</p>}
-      {!hasText && (isGenerating || isReviewReady) ? (
+      {!hasText && (isGenerating || isReviewReady || isWaitingForOwner) ? (
         <div className="text-generation-state">
           <div className={`text-generation-state-icon ${isReviewReady ? 'text-generation-state-icon--ready' : ''}`}>
-            {isReviewReady ? <CheckCircle2 size={34} /> : <div className="spinner" />}
+            {isReviewReady ? <CheckCircle2 size={34} /> : isWaitingForOwner ? <Clock3 size={34} /> : <div className="spinner" />}
           </div>
-          <h3>{isReviewReady ? t('reviewReadyTitle') : t('textGenerationWorkingTitle')}</h3>
-          <p>{isReviewReady ? t('reviewReadyHint') : t('textGenerationWorkingHint')}</p>
+          <h3>{isReviewReady ? t('reviewReadyTitle') : isWaitingForOwner ? t(`aiJob_${jobStatus}`) : t('textGenerationWorkingTitle')}</h3>
+          <p>{isReviewReady ? t('reviewReadyHint') : isWaitingForOwner ? t('chatgptApprovalHint') : t('textGenerationWorkingHint')}</p>
           <button
             className={`text-generation-review-btn ${isReviewReady ? 'text-generation-review-btn--ready' : ''}`}
             onClick={openReview}
@@ -2249,7 +2250,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
         </div>
       ) : null}
       {editing || !hasText ? (
-        (isGenerating || isReviewReady) ? null : (
+        (isGenerating || isReviewReady || isWaitingForOwner) ? null : (
           <textarea
             className="text-version-editor"
             value={draft}

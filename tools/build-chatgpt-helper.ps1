@@ -1,5 +1,5 @@
 param(
-    [string]$OutputDirectory = 'data-test/helper-patched'
+    [string]$OutputDirectory = 'app/backend/assets'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot

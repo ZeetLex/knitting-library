@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Bot, CheckCircle2, Clock3, FileText, Loader2, PauseCircle, PlayCircle, X, XCircle } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import './WorkQueueDock.css';
+import { approveSubscriptionJob } from '../utils/api';
 
 function statusIcon(status) {
   if (status === 'ready_to_review') return <CheckCircle2 size={16} />;
@@ -9,6 +10,7 @@ function statusIcon(status) {
   if (status === 'failed') return <XCircle size={16} />;
   if (status === 'cancelled') return <PauseCircle size={16} />;
   if (status === 'queued') return <Clock3 size={16} />;
+  if (['awaiting_approval', 'blocked_auth', 'blocked_usage', 'interrupted'].includes(status)) return <PauseCircle size={16} />;
   return <Loader2 size={16} className="wq-spin" />;
 }
 
@@ -56,6 +58,18 @@ export default function WorkQueueDock({
   onDismissAI,
 }) {
   const { t } = useApp();
+  const [approving, setApproving] = useState(null);
+  const [approvalError, setApprovalError] = useState('');
+  const approve = async (job) => {
+    const message = t('chatgptApproveConfirm').replace('{REQUESTER}', job.generated_by || '')
+      .replace('{PAGES}', String(job.requested_pages || 0)).replace('{MODEL}', job.model || '')
+      .replace('{CLEANUP}', job.cleanup_enabled ? t('chatgptCleanupYes') : t('chatgptCleanupNo'));
+    if (!window.confirm(message)) return;
+    setApproving(job.id); setApprovalError('');
+    try { await approveSubscriptionJob(job); }
+    catch (e) { const key = `chatgptError_${e.message}`; setApprovalError(t(key) === key ? t('chatgptConnectionFailed') : t(key)); }
+    finally { setApproving(null); }
+  };
   const jobs = queue?.ai_jobs || [];
   const imports = queue?.imports || { count: 0, items: [] };
   const hasWork = jobs.length > 0 || imports.count > 0;
@@ -68,6 +82,7 @@ export default function WorkQueueDock({
         <span>{t('workQueueTitle') || 'Work queue'}</span>
         <strong>{jobs.length + (imports.count ? 1 : 0)}</strong>
       </div>
+      {approvalError && <p className="status-error" role="alert">{approvalError}</p>}
 
       {imports.count > 0 && (
         <button className="wq-card wq-card--import" type="button" onClick={onOpenImport}>
@@ -83,6 +98,7 @@ export default function WorkQueueDock({
 
       {jobs.map(job => {
         const complete = ['finished', 'failed', 'cancelled', 'ready_to_review'].includes(job.status);
+        const waiting = ['awaiting_approval', 'blocked_auth', 'blocked_usage', 'interrupted'].includes(job.status);
         const initialView = job.status === 'ready_to_review' ? 'review' : 'text';
         return (
           <div
@@ -91,7 +107,7 @@ export default function WorkQueueDock({
             role="button"
             tabIndex={0}
             onClick={() => onOpenRecipe?.(job.recipe_id, initialView)}
-            onKeyDown={e => { if (e.key === 'Enter') onOpenRecipe?.(job.recipe_id, initialView); }}
+            onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpenRecipe?.(job.recipe_id, initialView); }}
           >
             <span className="wq-icon wq-icon--numbered">
               <Bot size={16} />
@@ -105,8 +121,13 @@ export default function WorkQueueDock({
                 {formatElapsed(job) && <> · {formatElapsed(job)}</>}
                 {job.pages_sent ? <> · {job.pages_sent} {t('aiPagesShort') || 'pages'}</> : null}
               </span>
-              {job.error && <span className="wq-error">{job.error}</span>}
-              <span className={`wq-progress ${complete ? 'wq-progress--done' : 'wq-progress--active'}`}><span /></span>
+              {job.provider === 'chatgpt_subscription' && <span className="wq-meta">{t('chatgptUsingPlan')}</span>}
+              {job.status === 'blocked_usage' && <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{t('chatgptManageUsage')}</a>}
+              {job.error && <span className="wq-error">{job.provider === 'chatgpt_subscription'
+                ? (t(`chatgptError_${job.error}`) === `chatgptError_${job.error}` ? t('chatgptConnectionFailed') : t(`chatgptError_${job.error}`)) : job.error}</span>}
+              {job.can_approve && <button type="button" className="btn-secondary wq-approve" disabled={approving === job.id}
+                onClick={e => { e.stopPropagation(); approve(job); }}>{t(job.status === 'awaiting_approval' ? 'chatgptApproveStart' : 'chatgptRetry')}</button>}
+              <span className={`wq-progress ${complete || waiting ? 'wq-progress--done' : 'wq-progress--active'}`}><span /></span>
             </span>
             {complete ? (
               <button

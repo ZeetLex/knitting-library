@@ -225,8 +225,12 @@ async def _create_review_session_from_ai_pages(
     _require_ai_vision_config(cfg)
     if job_id:
         _update_ai_job(job_id, progress_stage="ai_pages", pages_sent=0)
-    page_results, _usage, _prompt = await _scan_recipe_pages_with_ai(recipe_id, language, cfg, conn, max_pages, timeout, job_id)
-    conn.close()
+    try:
+        page_results, _usage, _prompt = await _scan_recipe_pages_with_ai(recipe_id, language, cfg, conn, max_pages, timeout, job_id)
+    finally:
+        conn.close()
+    if cfg.get("_subscription_guard"):
+        cfg["_subscription_guard"](True)
 
     now = datetime.utcnow().isoformat()
     session_id = str(uuid.uuid4())
@@ -260,6 +264,7 @@ async def _create_review_session_from_ai_pages(
     conn.commit()
     row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
     data = _review_session_dict(conn, row)
+    data["usage"] = _usage
     conn.close()
     return data
 
@@ -339,6 +344,8 @@ async def start_recipe_review_session(recipe_id: str, data: dict = Body(default=
         raise HTTPException(status_code=404, detail="Recipe not found")
     cfg = _ai_settings(conn, reveal_secret=True)
     conn.close()
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        return await create_recipe_text_job(recipe_id, {"language": language}, current_user)
     if cfg.get("ai_enabled", "false").lower() != "true":
         raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
     session = await _create_review_session_from_ai_pages(recipe_id, language, cfg, current_user["username"])

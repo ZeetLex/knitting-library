@@ -86,6 +86,7 @@ AI_SETTING_KEYS = {
     "ai_provider",
     "ai_base_url",
     "ai_model",
+    "ai_chatgpt_model",
     "ai_api_key",
     "ai_timeout",
     "ai_max_pages",
@@ -378,6 +379,13 @@ def get_db() -> sqlite3.Connection:
         if "dismissed" not in job_cols:
             conn.execute("ALTER TABLE ai_text_jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
             conn.commit()
+        for column, default in {
+            "requester_id": "", "approved_by": "", "connection_id": "",
+            "approval_fingerprint": "", "config_snapshot": "", "checkpoint_json": "[]", "provider_usage_json": "{}",
+        }.items():
+            if column not in job_cols:
+                conn.execute(f"ALTER TABLE ai_text_jobs ADD COLUMN {column} TEXT NOT NULL DEFAULT '{default}'")
+        conn.commit()
     if "project_sessions" in tables:
         project_session_cols = [r["name"] for r in conn.execute("PRAGMA table_info(project_sessions)").fetchall()]
         if "user_id" not in project_session_cols:
@@ -1225,7 +1233,9 @@ def init_db():
     # put those jobs back in line so they do not remain stuck as running.
     conn.execute("""
         UPDATE ai_text_jobs
-        SET status='queued', progress_stage='queued', started_at='', error=''
+        SET status=CASE WHEN provider='chatgpt_subscription' THEN 'interrupted' ELSE 'queued' END,
+            progress_stage=CASE WHEN provider='chatgpt_subscription' THEN 'interrupted' ELSE 'queued' END,
+            started_at='', error=''
         WHERE status='running'
     """)
     # Bulk PDF migration runs on a plain thread — if the process died mid-run,

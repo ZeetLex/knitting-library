@@ -40,15 +40,28 @@ visible in scans; no scanner exclusions or package-metadata edits are used.
 
 ## Validation
 
-- 68 backend tests pass in the candidate Linux image, including JPEG/image and
+- 71 backend tests pass in the candidate Linux image, including 15 isolated
+  subscription integration scenarios, JPEG/image and
   PDF conversion, SMTP certificate verification, deployment paths, saved-text
   visibility, and standalone OAuth protocol tests.
 - 14 frontend viewer tests pass.
 - Six locales validate and the Vite production build succeeds.
+- Live Windows OpenAI sign-in, encrypted Docker import, token refresh, two-page
+  subscription OCR, review/publication and container restart pass. A physical NAS
+  was unavailable for a separate device-specific check.
+- Approval bypasses, changed sources/settings, usage-limit recovery, stream
+  cancellation/incomplete output, redaction, serialized refresh, revocation and
+  credential path isolation are covered by tests.
 - Repeat the scan and container smoke check on the exact revision-labeled image
   before moving the public beta tag. Capture its published digest in the release
-  handoff; do not claim the subscription provider is integrated before the live
-  account and NAS checkpoints pass.
+  handoff.
+
+## ChatGPT setup
+
+The beta includes an administrator-only Windows-to-server connection wizard and
+packaged Windows helper. See [setup and recovery](../tools/CHATGPT-SETUP.md).
+Household jobs require the connection owner's approval; there is no automatic
+paid-API fallback. Runtime credentials are encrypted outside static/export data.
 
 ## Reproduce
 

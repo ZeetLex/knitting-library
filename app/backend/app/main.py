@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.service_registry import wire_services
 from app.admin.routes import router as admin_router
 from app.ai.routes import router as ai_router
+from app.ai.chatgpt_routes import router as chatgpt_router
 from app.auth.routes import router as auth_router
 from app.core.routes import router as core_router
 from app.inventory.routes import router as inventory_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(core_router)
     app.include_router(recipes_router)
     app.include_router(ai_router)
+    app.include_router(chatgpt_router)
     app.include_router(review_router)
     app.include_router(yarns_router)
     app.include_router(inventory_router)

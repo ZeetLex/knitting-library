@@ -1,13 +1,13 @@
 # ChatGPT subscription OCR access checkpoint
 
-This standalone diagnostic validates access before integrating a subscription
-provider into Knitting Library. It does not enable subscription OCR in the app.
+This standalone diagnostic validates subscription access independently of the
+app. For the integrated setup, see [CHATGPT-SETUP.md](CHATGPT-SETUP.md).
 Do not copy credentials from Codex or paste access tokens into API-key settings.
 
 ## Build on Windows
 
 Run `./tools/build-chatgpt-helper.ps1` from PowerShell. The helper and SHA-256
-checksum are written to `data-test/helper-patched/`. The executable includes
+checksum are written to `app/backend/assets/`. The executable includes
 Python and does not require Python on the computer that runs it.
 
 ## Run the checkpoint
@@ -25,8 +25,7 @@ The diagnostic keeps credentials in process memory and does not reuse existing
 Codex or ChatGPT credential files. Close the helper after completion.
 
 This local encrypted-transfer test is not a Docker/NAS end-to-end validation.
-That separate validation is required when the server connection workflow is
-implemented. An empty model list or unavailable image capability must not be
+The integrated Docker workflow is tested separately. An empty model list or unavailable image capability must not be
 reported as successful access.
 
 ## References

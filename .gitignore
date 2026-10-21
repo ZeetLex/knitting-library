@@ -25,6 +25,8 @@ Thumbs.db
 # Python
 .venv/
 .venv-helper/
+app/backend/assets/*.exe
+app/backend/assets/SHA256SUMS
 __pycache__/
 *.pyc
 *.pyo

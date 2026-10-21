@@ -5,6 +5,8 @@ from app.ai.prompts import *
 from app.ai.ocr import *
 from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, _convert_pdf_to_pages, _discover_pdf_pages
 from app.recipes.repository import _get_recipe_full, _source_fingerprint
+from app.ai import chatgpt_connection as cg_connection
+from app.ai.chatgpt_protocol import ChatGPTError
 
 def _ai_settings(conn, reveal_secret: bool = False) -> dict:
     rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
@@ -14,6 +16,7 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_provider": "openai_compatible",
         "ai_base_url": "http://host.docker.internal:11434/v1",
         "ai_model": "",
+        "ai_chatgpt_model": "",
         "ai_api_key": "",
         "ai_timeout": "600",
         "ai_max_pages": "8",
@@ -72,6 +75,11 @@ def _ai_cleanup_prompt(language: str, cfg: dict) -> str:
 
 
 def _require_ai_vision_config(cfg: dict) -> tuple[str, str]:
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        model = cfg.get("ai_chatgpt_model", "").strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="Select a ChatGPT model in AI settings")
+        return "https://api.openai.com/v1", model
     base_url = cfg.get("ai_base_url", "").rstrip("/")
     model = cfg.get("ai_model", "").strip()
     if not base_url or not model:
@@ -90,6 +98,17 @@ def _ai_temperature(cfg: dict, key: str, default: float) -> float:
 async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, language: str, cfg: dict, timeout: int) -> tuple[str, dict, str]:
     base_url, model = _require_ai_vision_config(cfg)
     prompt = _ai_scan_prompt(language, cfg)
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        guard = cfg.get("_subscription_guard")
+        if guard is None:
+            raise ChatGPTError("approval_required")
+        guard(True)
+        payload = _image_payload_for_path(path)
+        result = await asyncio.to_thread(cg_connection.request, model,
+            f"{prompt}\n\nPage {page_no}/{page_count}. Transcribe only this image. Return only the text.",
+            payload["image_url"]["url"], connection_id=cfg["_connection_id"], timeout=timeout, check=guard)
+        _add_subscription_usage(cfg["_job_id"], result["usage"])
+        return _clean_ai_transcription(result["text"]), result["usage"], prompt
     messages = [{
         "role": "user",
         "content": [
@@ -126,6 +145,16 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
 async def _call_ai_page_cleanup(text: str, page_no: int, page_count: int, language: str, cfg: dict, timeout: int) -> tuple[str, dict, str]:
     base_url, model = _require_ai_vision_config(cfg)
     prompt = _ai_cleanup_prompt(language, cfg)
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        guard = cfg.get("_subscription_guard")
+        if guard is None:
+            raise ChatGPTError("approval_required")
+        guard(True)
+        result = await asyncio.to_thread(cg_connection.request, model,
+            f"{prompt}\n\nPage {page_no}/{page_count} raw text:\n\n{text}",
+            connection_id=cfg["_connection_id"], timeout=timeout, check=guard)
+        _add_subscription_usage(cfg["_job_id"], result["usage"])
+        return _clean_ai_transcription(result["text"]), result["usage"], prompt
     messages = [{
         "role": "user",
         "content": f"{prompt}\n\nPage {page_no}/{page_count} raw text:\n\n{text}",
@@ -166,6 +195,16 @@ async def _scan_recipe_pages_with_ai(
     cleanup_enabled = _is_truthy(cfg.get("ai_cleanup_enabled"), False)
     cleanup_prompt = _ai_cleanup_prompt(language, cfg) if cleanup_enabled else ""
     results: list[dict] = []
+    subscription = cfg.get("ai_provider") == "chatgpt_subscription"
+    saved_pages = {}
+    if subscription and job_id:
+        checkpoint_row = conn.execute("SELECT checkpoint_json FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+        saved_pages = {page["page_key"]: page for page in json.loads(checkpoint_row["checkpoint_json"] or "[]")}
+
+    def checkpoint():
+        if subscription and job_id:
+            serializable = [{key: value for key, value in page.items() if key != "path"} for page in results]
+            _update_ai_job(job_id, checkpoint_json=json.dumps(serializable), pages_sent=len(results))
 
     def add_usage(usage: dict, prefix: str = "") -> None:
         for key, value in (usage or {}).items():
@@ -173,6 +212,14 @@ async def _scan_recipe_pages_with_ai(
                 usage_totals[f"{prefix}{key}"] = usage_totals.get(f"{prefix}{key}", 0) + int(value)
 
     for idx, path in enumerate(paths, start=1):
+        if subscription:
+            cfg["_subscription_guard"](True)
+            if path.name in saved_pages:
+                page = {**saved_pages[path.name], "path": path}
+                results.append(page)
+                add_usage(page.get("usage", {}))
+                add_usage(page.get("cleanup_usage", {}), "cleanup_")
+                continue
         if job_id:
             _update_ai_job(job_id, pages_sent=idx - 1, progress_stage=f"ai_scan_page_{idx}_of_{page_count}")
         text, usage, _prompt = await _call_ai_vision_page_scan(path, idx, page_count, language, cfg, timeout)
@@ -185,12 +232,20 @@ async def _scan_recipe_pages_with_ai(
             "source_text": source_text,
             "reviewed_text": reviewed_text,
             "path": path,
+            "usage": usage,
         })
+        checkpoint()
+        if subscription:
+            cfg["_subscription_guard"](True)
         if job_id:
             _update_ai_job(job_id, pages_sent=idx, progress_stage=f"ai_scanned_{idx}_of_{page_count}")
 
     if cleanup_enabled:
         for idx, page in enumerate(results, start=1):
+            if subscription:
+                cfg["_subscription_guard"](True)
+                if page.get("cleanup_done"):
+                    continue
             reviewed_text = _clean_ai_transcription(page["reviewed_text"])
             if not reviewed_text.strip():
                 continue
@@ -201,7 +256,14 @@ async def _scan_recipe_pages_with_ai(
                 add_usage(cleanup_usage, "cleanup_")
                 if cleaned.strip():
                     page["reviewed_text"] = cleaned.strip()
+                page["cleanup_done"] = True
+                page["cleanup_usage"] = cleanup_usage
+                checkpoint()
+            except ChatGPTError:
+                raise
             except Exception:
+                if subscription:
+                    raise
                 pass
         if job_id:
             _update_ai_job(job_id, pages_sent=page_count, progress_stage=f"ai_cleanup_done_{page_count}_of_{page_count}")
@@ -241,6 +303,9 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
     start_ts = time.time()
     conn = get_db()
     cfg = _ai_settings(conn, reveal_secret=True)
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        conn.close()
+        return await create_recipe_text_job(recipe_id, {"language": language}, current_user)
     if cfg.get("ai_enabled", "false").lower() != "true":
         conn.close()
         raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
@@ -288,6 +353,8 @@ async def _generate_text_version(recipe_id: str, language: str, current_user: di
 
 def _job_dict(row: sqlite3.Row) -> dict:
     data = dict(row)
+    for private_field in ("checkpoint_json", "config_snapshot", "approval_fingerprint", "provider_usage_json"):
+        data.pop(private_field, None)
     for key in ("pages_sent", "result_text_chars", "dismissed"):
         data[key] = int(data.get(key) or 0)
     data["dismissed"] = bool(data["dismissed"])
@@ -302,7 +369,7 @@ def _update_ai_job(job_id: str, **fields) -> None:
     allowed = {
         "status", "progress_stage", "error", "provider", "model", "pages_sent",
         "result_text_chars", "duration_seconds", "started_at", "finished_at",
-        "dismissed",
+        "dismissed", "checkpoint_json",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
@@ -333,11 +400,18 @@ def _record_ai_usage(
     success: bool,
 ) -> None:
     conn = get_db()
+    if provider == "chatgpt_subscription":
+        totals = conn.execute("SELECT provider_usage_json FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+        if totals:
+            usage = json.loads(totals["provider_usage_json"] or "{}")
     conn.execute(
         "INSERT INTO ai_usage_events (id,job_id,recipe_id,provider,model,prompt_tokens,completion_tokens,total_tokens,generated_chars,generated_words,pages_sent,duration_seconds,success,created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+        "prompt_tokens=excluded.prompt_tokens, completion_tokens=excluded.completion_tokens, total_tokens=excluded.total_tokens, "
+        "generated_chars=excluded.generated_chars, generated_words=excluded.generated_words, pages_sent=excluded.pages_sent, "
+        "duration_seconds=excluded.duration_seconds, success=excluded.success, model=excluded.model",
         (
-            str(uuid.uuid4()),
+            job_id if provider == "chatgpt_subscription" else str(uuid.uuid4()),
             job_id,
             recipe_id,
             provider,
@@ -539,19 +613,67 @@ def _refresh_recipe_charts(recipe_id: str, language: str, cfg: dict, current_use
 
 
 
+def _add_subscription_usage(job_id: str, usage: dict):
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT provider_usage_json FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+        totals = json.loads(row["provider_usage_json"] or "{}")
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            totals[key] = totals.get(key, 0) + int(usage.get(key) or 0)
+        conn.execute("UPDATE ai_text_jobs SET provider_usage_json=? WHERE id=?", (json.dumps(totals), job_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _subscription_config(cfg: dict, language: str) -> str:
+    keys = ("ai_provider", "ai_chatgpt_model", "ai_timeout", "ai_max_pages", "ai_prompt_mode",
+            "ai_custom_prompt", "ai_cleanup_enabled", "ai_cleanup_custom_prompt")
+    return json.dumps({"language": language, **{key: cfg.get(key, "") for key in keys}}, sort_keys=True)
+
+
+def _subscription_guard(job_id: str):
+    last_check = [0.0]
+
+    def check(force=False):
+        if not force and time.monotonic() - last_check[0] < 1:
+            return
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+            if not row or row["status"] not in {"queued", "running"}:
+                raise ChatGPTError("request_cancelled")
+            cfg = _ai_settings(conn)
+            if cfg.get("ai_enabled", "false").lower() != "true":
+                raise ChatGPTError("ai_disabled")
+            if not row["approved_by"] or row["config_snapshot"] != _subscription_config(cfg, row["language"]):
+                raise ChatGPTError("approval_required")
+            current = cg_connection.status()
+            if not current.get("connected") or current["connection_id"] != row["connection_id"]:
+                raise ChatGPTError("connection_changed")
+            if current["owner_id"] != row["approved_by"]:
+                raise ChatGPTError("approval_required")
+            if _source_fingerprint(row["recipe_id"], conn) != row["approval_fingerprint"]:
+                raise ChatGPTError("source_changed")
+            last_check[0] = time.monotonic()
+        finally:
+            conn.close()
+    return check
+
+
 async def _run_ai_text_job(job_id: str) -> None:
     conn = get_db()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
     conn.close()
-    if not row or row["status"] == "cancelled":
+    if not row or row["status"] != "queued":
         return
     start_ts = time.time()
     started_at = datetime.utcnow().isoformat()
     _update_ai_job(job_id, status="running", progress_stage="loading", started_at=started_at, error="")
     recipe_id = row["recipe_id"]
     language = row["language"] or "en"
-    provider = ""
-    model = ""
+    provider = row["provider"] or ""
+    model = row["model"] or ""
     pages_sent = 0
     content = ""
     usage = {}
@@ -559,9 +681,17 @@ async def _run_ai_text_job(job_id: str) -> None:
         conn = get_db()
         cfg = _ai_settings(conn, reveal_secret=True)
         if cfg.get("ai_enabled", "false").lower() != "true":
+            if row["provider"] == "chatgpt_subscription":
+                raise ChatGPTError("ai_disabled")
             raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
-        base_url = cfg.get("ai_base_url", "").rstrip("/")
-        model = cfg.get("ai_model", "").strip()
+        if row["provider"] == "chatgpt_subscription":
+            cfg["_subscription_guard"] = _subscription_guard(job_id)
+            cfg["_subscription_guard"](True)
+            cfg["_connection_id"] = row["connection_id"]
+            cfg["_job_id"] = job_id
+        elif cfg.get("ai_provider") == "chatgpt_subscription":
+            raise ChatGPTError("approval_required")
+        base_url, model = _require_ai_vision_config(cfg)
         provider = cfg.get("ai_provider", "openai_compatible")
         display_model = model
         _update_ai_job(job_id, provider=provider, model=display_model)
@@ -574,10 +704,10 @@ async def _run_ai_text_job(job_id: str) -> None:
         finally:
             conn.close()
         content = "\n\n".join((page.get("reviewed_text") or page.get("ocr_text") or "") for page in result.get("pages", []))
-        usage = {}
+        usage = result.get("usage") or {}
         pages_sent = result.get("page_count") or len(result.get("pages", []))
         provider = cfg.get("ai_provider", "openai_compatible")
-        model = cfg.get("ai_model", "").strip()
+        model = _require_ai_vision_config(cfg)[1]
         _update_ai_job(job_id, provider=provider, model=model, pages_sent=pages_sent, progress_stage="ready_to_review")
         duration = time.time() - start_ts
         _record_ai_usage(job_id, recipe_id, provider, model, usage, content, pages_sent, duration, True)
@@ -599,15 +729,28 @@ async def _run_ai_text_job(job_id: str) -> None:
         if not content:
             _record_ai_usage(job_id, recipe_id, provider, model, usage or {}, "", pages_sent, duration, False)
         detail = getattr(e, "detail", None) or str(e) or e.__class__.__name__
+        failure_status = "failed"
+        if row["provider"] == "chatgpt_subscription":
+            detail = e.code if isinstance(e, ChatGPTError) else "provider_error"
+            if detail in {"approval_required", "source_changed", "connection_changed"}:
+                failure_status = "awaiting_approval"
+            elif detail in {"subscription_sharing_usage_limit_exceeded", "usage_limited"}:
+                failure_status = "blocked_usage"
+            elif detail in {"authentication_failed", "authentication_required", "subscription_sharing_invalid_user"}:
+                failure_status = "blocked_auth"
+            elif detail == "ai_disabled":
+                failure_status = "interrupted"
         if not _ai_job_cancelled(job_id):
             _update_ai_job(
                 job_id,
-                status="failed",
-                progress_stage="failed",
+                status=failure_status,
+                progress_stage=failure_status,
                 error=str(detail),
                 duration_seconds=duration,
                 finished_at=datetime.utcnow().isoformat(),
             )
+    finally:
+        conn.close()
 
 
 async def _process_ai_text_queue() -> None:
@@ -656,12 +799,16 @@ async def create_recipe_text_job(
 ):
     language = str(data.get("language", "") or current_user.get("language", "en"))
     conn = get_db()
+    cfg = _ai_settings(conn, reveal_secret=False)
+    if cfg.get("ai_enabled", "false").lower() != "true":
+        conn.close()
+        raise HTTPException(status_code=400, detail="AI text recognition is not enabled")
     recipe = conn.execute("SELECT id, title FROM recipes WHERE id=?", (recipe_id,)).fetchone()
     if not recipe:
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
     existing = conn.execute(
-        "SELECT * FROM ai_text_jobs WHERE recipe_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
+        "SELECT * FROM ai_text_jobs WHERE recipe_id=? AND status IN ('queued','running','awaiting_approval','blocked_auth','blocked_usage','interrupted') ORDER BY created_at DESC LIMIT 1",
         (recipe_id,)
     ).fetchone()
     if existing:
@@ -669,7 +816,27 @@ async def create_recipe_text_job(
         return {"job": _job_dict(existing)}
     job_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
-    cfg = _ai_settings(conn, reveal_secret=False)
+    status = "queued"
+    subscription = cfg.get("ai_provider") == "chatgpt_subscription"
+    connection_id, approved_by, fingerprint, snapshot = "", "", "", ""
+    model = cfg.get("ai_model", "")
+    if subscription:
+        current = cg_connection.status()
+        if not current.get("connected"):
+            conn.close()
+            raise HTTPException(status_code=409, detail="connection_changed")
+        model = _require_ai_vision_config(cfg)[1]
+        connection_id = current["connection_id"]
+        _collect_recipe_image_paths(recipe_id, conn, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30)))
+        fingerprint = _source_fingerprint(recipe_id, conn)
+        snapshot = _subscription_config(cfg, language)
+        if current["owner_id"] == current_user["id"]:
+            approved_by = current_user["id"]
+            status = current.get("health", "connected")
+            if status not in {"blocked_auth", "blocked_usage"}:
+                status = "queued"
+        else:
+            status = "awaiting_approval"
     conn.execute(
         "INSERT INTO ai_text_jobs (id,recipe_id,recipe_title,status,progress_stage,language,provider,model,generated_by,created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -677,20 +844,71 @@ async def create_recipe_text_job(
             job_id,
             recipe_id,
             recipe["title"],
-            "queued",
-            "queued",
+            status,
+            status,
             language,
             cfg.get("ai_provider", "openai_compatible"),
-            cfg.get("ai_model", ""),
+            model,
             current_user["username"],
             now,
         )
     )
+    conn.execute("UPDATE ai_text_jobs SET requester_id=?, approved_by=?, connection_id=?, approval_fingerprint=?, config_snapshot=? WHERE id=?",
+                 (current_user["id"], approved_by, connection_id, fingerprint, snapshot, job_id))
     conn.commit()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
     conn.close()
     _ensure_ai_queue_processor()
     return {"job": _job_dict(row)}
+
+
+def _subscription_approval_context(row, cfg, conn, current):
+    fingerprint = _source_fingerprint(row["recipe_id"], conn)
+    snapshot = _subscription_config(cfg, row["language"])
+    recipe = _get_recipe_full(row["recipe_id"], conn)
+    page_count = len(recipe.get("images", [])) if recipe["file_type"] == "images" else len(_discover_pdf_pages(DATA_DIR / row["recipe_id"]))
+    page_count = min(page_count, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30)))
+    token = hashlib.sha256(json.dumps([fingerprint, snapshot, current["connection_id"], page_count]).encode()).hexdigest()
+    return {"approval_token": token, "requested_pages": page_count, "model": cfg.get("ai_chatgpt_model", ""),
+            "cleanup_enabled": _is_truthy(cfg.get("ai_cleanup_enabled"), False)}
+
+
+async def approve_subscription_job(job_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    current = cg_connection.status()
+    if not current.get("connected") or current.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="owner_required")
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+        if not row or row["provider"] != "chatgpt_subscription":
+            raise HTTPException(status_code=404, detail="Job not found")
+        if row["status"] not in {"awaiting_approval", "blocked_auth", "blocked_usage", "interrupted", "failed"}:
+            raise HTTPException(status_code=409, detail="Job is not awaiting approval or retry")
+        cfg = _ai_settings(conn)
+        if cfg.get("ai_enabled", "false").lower() != "true" or cfg.get("ai_provider") != "chatgpt_subscription":
+            raise HTTPException(status_code=409, detail="ai_disabled")
+        context = _subscription_approval_context(row, cfg, conn, current)
+        if not secrets.compare_digest(str(data.get("approval_token", "")), context["approval_token"]):
+            raise HTTPException(status_code=409, detail="approval_changed")
+        model = _require_ai_vision_config(cfg)[1]
+        cg_connection.unblock(current_user["id"])
+        _collect_recipe_image_paths(row["recipe_id"], conn, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30)))
+        fingerprint = _source_fingerprint(row["recipe_id"], conn)
+        snapshot = _subscription_config(cfg, row["language"])
+        unchanged = (row["connection_id"] == current["connection_id"] and row["approval_fingerprint"] == fingerprint
+                     and row["config_snapshot"] == snapshot)
+        conn.execute("UPDATE ai_text_jobs SET status='queued', progress_stage='queued', dismissed=0, error='', finished_at='', started_at='', "
+                     "approved_by=?, connection_id=?, approval_fingerprint=?, config_snapshot=?, model=?, checkpoint_json=? WHERE id=?",
+                     (current_user["id"], current["connection_id"], fingerprint, snapshot, model,
+                      row["checkpoint_json"] if unchanged else "[]", job_id))
+        conn.commit()
+        updated = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    except ChatGPTError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from None
+    finally:
+        conn.close()
+    _ensure_ai_queue_processor()
+    return {"job": _job_dict(updated)}
 
 
 
@@ -700,7 +918,7 @@ def get_work_queue(current_user: dict = Depends(get_current_user)):
     conn.commit()
     job_rows = conn.execute(
         "SELECT * FROM ai_text_jobs "
-        "WHERE dismissed=0 AND (status IN ('queued','running') OR finished_at > datetime('now', '-7 days')) "
+        "WHERE dismissed=0 AND (status IN ('queued','running','awaiting_approval','blocked_auth','blocked_usage','interrupted') OR finished_at > datetime('now', '-7 days')) "
         "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 WHEN 'finished' THEN 3 ELSE 4 END, "
         "CASE WHEN status IN ('running','queued') THEN created_at END ASC, created_at DESC"
     ).fetchall()
@@ -709,17 +927,25 @@ def get_work_queue(current_user: dict = Depends(get_current_user)):
         "FROM import_queue iq JOIN recipes r ON r.id=iq.recipe_id "
         "WHERE iq.status='staged' ORDER BY iq.rowid"
     ).fetchall()
-    conn.close()
     ai_jobs = []
+    current_subscription = cg_connection.status()
+    cfg = _ai_settings(conn)
+    subscription_owner = current_subscription.get("owner_id")
     queue_position = 1
     for row in job_rows:
         job = _job_dict(row)
+        job["can_approve"] = (job.get("provider") == "chatgpt_subscription" and cfg.get("ai_provider") == "chatgpt_subscription"
+                              and subscription_owner == current_user["id"]
+                              and job["status"] in {"awaiting_approval", "blocked_auth", "blocked_usage", "interrupted", "failed"})
+        if job["can_approve"]:
+            job.update(_subscription_approval_context(row, cfg, conn, current_subscription))
         if job["status"] in ("running", "queued"):
             job["queue_position"] = queue_position
             queue_position += 1
         else:
             job["queue_position"] = None
         ai_jobs.append(job)
+    conn.close()
     return {
         "ai_jobs": ai_jobs,
         "imports": {
@@ -735,6 +961,9 @@ def cancel_ai_job(job_id: str, current_user: dict = Depends(get_current_user)):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Job not found")
+    if row["provider"] == "chatgpt_subscription" and current_user["id"] not in {row["requester_id"], cg_connection.status().get("owner_id")}:
+        conn.close()
+        raise HTTPException(status_code=403, detail="owner_required")
     if row["status"] in ("finished", "failed"):
         conn.close()
         return {"job": _job_dict(row)}
@@ -755,6 +984,9 @@ def dismiss_ai_job(job_id: str, current_user: dict = Depends(get_current_user)):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Job not found")
+    if row["connection_id"] and current_user["id"] not in (row["requester_id"], cg_connection.status().get("owner_id")):
+        conn.close()
+        raise HTTPException(status_code=403, detail="owner_required")
     if row["status"] in ("queued", "running"):
         conn.close()
         raise HTTPException(status_code=400, detail="Only completed jobs can be dismissed")

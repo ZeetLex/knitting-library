@@ -415,6 +415,39 @@ export async function createTextVersionJob(recipeId, language) {
   return data;
 }
 
+async function chatgptRequest(path = '', options = {}) {
+  const res = await fetch(`${API_BASE}/admin/ai/chatgpt${path}`, {
+    ...options, headers: { ...authHeaders(), ...(options.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'connection_failed');
+  return data;
+}
+
+export const fetchChatGPTConnection = () => chatgptRequest();
+export const beginChatGPTSetup = () => chatgptRequest('/setup', { method: 'POST' });
+export const refreshChatGPTModels = () => chatgptRequest('/models', { method: 'POST' });
+export const disconnectChatGPT = () => chatgptRequest('', { method: 'DELETE' });
+export function importChatGPTConnection(file) {
+  const body = new FormData();
+  body.append('file', file);
+  return chatgptRequest('/import', { method: 'POST', body });
+}
+export async function downloadChatGPTHelper() {
+  const res = await fetch(`${API_BASE}/admin/ai/chatgpt/helper`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('helper_unavailable');
+  return res.blob();
+}
+export async function approveSubscriptionJob(job) {
+  const res = await fetch(`${API_BASE}/work-queue/ai/${job.id}/approve`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ approval_token: job.approval_token }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'provider_error');
+  return data;
+}
+
 export async function fetchReviewSession(recipeId) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/review-session`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to load review session');

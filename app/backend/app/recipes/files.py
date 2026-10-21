@@ -6,6 +6,7 @@ import hmac
 import functools
 import asyncio
 from starlette.background import BackgroundTask
+from app.ai import chatgpt_connection as cg_connection
 
 GENERATED_PDF_MANIFEST = ".generated-pdf.json"
 PDF_PAGES_DIR = "pdf-pages"
@@ -1042,9 +1043,12 @@ def get_recipe_text_version(recipe_id: str, current_user: dict = Depends(get_cur
     row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
     audit = conn.execute("SELECT * FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,)).fetchone()
     ai_setting = conn.execute("SELECT value FROM app_settings WHERE key='ai_enabled'").fetchone()
+    provider_setting = conn.execute("SELECT value FROM app_settings WHERE key='ai_provider'").fetchone()
     conn.close()
     data = _text_version_dict(row, fingerprint)
     data["ai_enabled"] = bool(ai_setting and ai_setting["value"].lower() == "true")
+    data["requires_owner_approval"] = bool(provider_setting and provider_setting["value"] == "chatgpt_subscription"
+                                           and cg_connection.status().get("owner_id") != current_user.get("id"))
     data["generation_audit"] = _audit_dict(audit)
     return data
 

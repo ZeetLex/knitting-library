@@ -5,6 +5,8 @@
   gap: 8px;
 }
 
+.wq-approve { margin-top: 6px; font-size: 12px; padding: 6px 10px; }
+
 .work-queue-head {
   display: flex;
   align-items: center;

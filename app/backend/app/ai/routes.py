@@ -10,3 +10,5 @@ router.add_api_route('/api/recipes/{recipe_id}/text-version/jobs', services.crea
 router.add_api_route('/api/work-queue', services.get_work_queue, methods=['GET'])  # legacy line 5470
 router.add_api_route('/api/work-queue/ai/{job_id}/cancel', services.cancel_ai_job, methods=['POST'])  # legacy line 5506
 router.add_api_route('/api/work-queue/ai/{job_id}/dismiss', services.dismiss_ai_job, methods=['POST'])  # legacy line 5527
+router.add_api_route('/api/work-queue/ai/{job_id}/approve', services.approve_subscription_job, methods=['POST'])
+router.add_api_route('/api/work-queue/ai/{job_id}/retry', services.approve_subscription_job, methods=['POST'])

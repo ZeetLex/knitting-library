@@ -24,6 +24,7 @@ import {
   startPdfMigration, fetchPdfMigrationStatus, cancelPdfMigration,
 } from '../utils/api';
 import './SettingsPage.css';
+import ChatGPTConnectionPanel from '../components/ChatGPTConnectionPanel';
 
 export default function SettingsPage({ onBack }) {
   const { user, t } = useApp();
@@ -1199,6 +1200,7 @@ function AISection() {
     ai_provider: 'openai_compatible',
     ai_base_url: 'http://host.docker.internal:11434/v1',
     ai_model: '',
+    ai_chatgpt_model: '',
     ai_api_key: '',
     ai_timeout: '600',
     ai_max_pages: '8',
@@ -1258,10 +1260,10 @@ function AISection() {
   }, []);
 
   useEffect(() => {
-    if (loading || !cfg.ai_base_url) return;
+    if (loading || !cfg.ai_base_url || cfg.ai_provider === 'chatgpt_subscription') return;
     const timer = setTimeout(() => loadModels(cfg), 650);
     return () => clearTimeout(timer);
-  }, [cfg.ai_base_url, cfg.ai_api_key, loading, loadModels]);
+  }, [cfg.ai_base_url, cfg.ai_api_key, cfg.ai_provider, loading, loadModels]);
 
   const handleSave = async () => {
     setSaving(true); setStatus(null);
@@ -1289,6 +1291,14 @@ function AISection() {
       <p className="settings-row-sub ai-section-intro">{t('aiDesc')}</p>
 
       <div className="form-stack ai-settings-form">
+        <div className="form-field">
+          <label className="form-label" htmlFor="ai-provider">{t('aiConnection')}</label>
+          <select id="ai-provider" className="form-input" value={cfg.ai_provider} onChange={e => f('ai_provider', e.target.value)}>
+            <option value="openai_compatible">{t('chatgptOtherProvider')}</option>
+            <option value="chatgpt_subscription">{t('chatgptPlan')}</option>
+          </select>
+        </div>
+        {cfg.ai_provider === 'chatgpt_subscription' && <ChatGPTConnectionPanel model={cfg.ai_chatgpt_model} onModelChange={value => f('ai_chatgpt_model', value)} />}
         <div className="ai-settings-card ai-enable-card">
           <div className="settings-row-info">
             <p className="settings-row-label">{t('aiEnable')}</p>
@@ -1315,7 +1325,7 @@ function AISection() {
           </div>
         </div>
 
-        <div className="ai-settings-card">
+        {cfg.ai_provider !== 'chatgpt_subscription' && <div className="ai-settings-card">
           <div className="ai-card-heading">
             <div>
               <h4>{t('aiConnection')}</h4>
@@ -1388,9 +1398,13 @@ function AISection() {
               <input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} />
             </div>
           </div>
-        </div>
+        </div>}
 
-        <div className="ai-settings-card">
+        {cfg.ai_provider === 'chatgpt_subscription' && <div className="ai-settings-card ai-number-grid">
+          <div className="form-field"><label className="form-label">{t('aiTimeout')}</label><input className="form-input" type="number" min="60" max="1800" value={cfg.ai_timeout} onChange={e => f('ai_timeout', e.target.value)} /></div>
+          <div className="form-field"><label className="form-label">{t('aiMaxPages')}</label><input className="form-input" type="number" min="1" max="30" value={cfg.ai_max_pages} onChange={e => f('ai_max_pages', e.target.value)} /></div>
+        </div>}
+        {cfg.ai_provider !== 'chatgpt_subscription' && <div className="ai-settings-card">
           <div className="ai-card-heading">
             <div>
               <h4>{t('aiGenerationSettings')}</h4>
@@ -1412,7 +1426,7 @@ function AISection() {
             </div>
           </div>
           <p className="settings-row-sub ai-inline-help">{t('aiGenerationSettingsHint')}</p>
-        </div>
+        </div>}
 
         <div className="ai-settings-card">
           <div className="ai-card-heading ai-card-heading-row">
@@ -1473,7 +1487,7 @@ function AISection() {
 
         <div className="mail-test-row">
           <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? t('saving') : t('saveSettings')}</button>
-          <button className="btn-secondary" onClick={handleTest} disabled={testing || !cfg.ai_base_url || !cfg.ai_model}>
+          <button className="btn-secondary" onClick={handleTest} disabled={testing || (cfg.ai_provider === 'chatgpt_subscription' ? !cfg.ai_chatgpt_model : (!cfg.ai_base_url || !cfg.ai_model))}>
             <Send size={15} /> {testing ? t('testing') : t('testConnection')}
           </button>
         </div>

@@ -147,9 +147,11 @@ def consume_event(event: dict, chunks: list[str]) -> dict | None:
     return None
 
 
-def infer(access_token: str, payload: dict, timeout: int = 600) -> dict:
+def infer(access_token: str, payload: dict, timeout: int = 600, check=None) -> dict:
     chunks: list[str] = []
     try:
+        if check:
+            check()
         with httpx.stream("POST", RESOURCE + "/responses", json=payload,
                           headers={"Authorization": "Bearer " + access_token}, timeout=timeout) as response:
             if response.status_code != 200:
@@ -159,12 +161,17 @@ def infer(access_token: str, payload: dict, timeout: int = 600) -> dict:
                     consume_event({"type": "error", "error": error}, chunks)
                 except ValueError:
                     pass
-                raise ChatGPTError("provider_error")
+                raise ChatGPTError({401: "authentication_required", 429: "usage_limited"}.get(response.status_code, "provider_error"))
             for line in response.iter_lines():
+                if check:
+                    check()
                 if line.startswith("data: ") and line[6:] != "[DONE]":
                     result = consume_event(json.loads(line[6:]), chunks)
                     if result is not None:
                         return result
+    except ChatGPTError as exc:
+        exc.partial_output = bool(chunks)
+        raise
     except (httpx.HTTPError, ValueError):
         raise ChatGPTError("connection_failed", "The ChatGPT request was interrupted.") from None
     raise ChatGPTError("incomplete_response", "ChatGPT ended the stream before completing the page.")

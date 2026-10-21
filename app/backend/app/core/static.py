@@ -13,7 +13,9 @@ async def spa_static_middleware(request: Request, call_next):
     # Try to serve as a static file
     if _static_app is not None:
         static_path = path.lstrip("/") or "index.html"
-        candidate = STATIC_DIR / static_path
+        candidate = (STATIC_DIR / static_path).resolve()
+        if not candidate.is_relative_to(STATIC_DIR.resolve()):
+            return await call_next(request)
         if candidate.is_file():
             resp = FileResponse(str(candidate))
             ct = resp.media_type or ""

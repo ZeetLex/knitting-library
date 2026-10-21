@@ -94,6 +94,29 @@ class OAuthTests(unittest.TestCase):
 
 
 class StreamTests(unittest.TestCase):
+    @patch.object(protocol.httpx, "stream")
+    def test_transport_drop_and_unfinished_stream_never_return_partial_text(self, stream):
+        response = Mock(status_code=200)
+        stream.return_value.__enter__ = Mock(return_value=response)
+        stream.return_value.__exit__ = Mock(return_value=False)
+        delta = 'data: ' + json.dumps(dict(type="response.output_text.delta", delta="partial"))
+        response.iter_lines.return_value = iter([delta, "data: [DONE]"])
+        with self.assertRaises(protocol.ChatGPTError) as caught:
+            protocol.infer("secret", {})
+        self.assertEqual(caught.exception.code, "incomplete_response")
+
+    @patch.object(protocol.httpx, "stream")
+    def test_cancellation_closes_stream_without_accepting_partial_text(self, stream):
+        response = Mock(status_code=200)
+        stream.return_value.__enter__ = Mock(return_value=response)
+        stream.return_value.__exit__ = Mock(return_value=False)
+        response.iter_lines.return_value = iter(['data: ' + json.dumps(dict(type="response.output_text.delta", delta="partial"))])
+        guard = Mock(side_effect=[None, protocol.ChatGPTError("request_cancelled")])
+        with self.assertRaises(protocol.ChatGPTError) as caught:
+            protocol.infer("secret", {}, check=guard)
+        self.assertEqual(caught.exception.code, "request_cancelled")
+        stream.return_value.__exit__.assert_called_once()
+
     def test_image_payload_uses_supported_fields_only(self):
         payload = protocol.response_payload("model", "transcribe", "data:image/png;base64,AA")
         self.assertEqual(set(payload), {"model", "input", "store", "stream"})

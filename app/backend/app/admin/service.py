@@ -1,5 +1,7 @@
 """Admin users, logs, mail, AI settings, 2FA administration, and announcements."""
 from app.core.foundation import *
+from app.ai import chatgpt_connection as cg_connection
+from app.ai.chatgpt_protocol import ChatGPTError
 from app.core.mail import (
     parse_mail_boolean,
     resolve_mail_settings,
@@ -442,6 +444,8 @@ def get_ai_settings(admin: dict = Depends(require_admin)):
 
 
 def save_ai_settings(data: dict, admin: dict = Depends(require_admin)):
+    if "ai_provider" in data and data["ai_provider"] not in {"openai_compatible", "chatgpt_subscription"}:
+        raise HTTPException(status_code=400, detail="Unsupported AI provider")
     conn = get_db()
     existing = _ai_settings(conn, reveal_secret=True)
     for key in AI_SETTING_KEYS:
@@ -465,6 +469,12 @@ async def list_ai_models(data: dict = Body(default={}), admin: dict = Depends(re
     saved = _ai_settings(conn, reveal_secret=True)
     conn.close()
     cfg = {**saved, **{k: str(v) for k, v in data.items() if k in AI_SETTING_KEYS}}
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        try:
+            result = await asyncio.to_thread(cg_connection.refresh_models)
+            return {"models": [item["id"] for item in result["models"]]}
+        except ChatGPTError as exc:
+            raise HTTPException(status_code=400, detail=exc.code) from None
     if cfg.get("ai_api_key") == "••••••••":
         cfg["ai_api_key"] = saved.get("ai_api_key", "")
     base_url = cfg.get("ai_base_url", "").rstrip("/")
@@ -499,6 +509,19 @@ async def test_ai_settings(data: dict = Body(default={}), admin: dict = Depends(
     saved = _ai_settings(conn, reveal_secret=True)
     conn.close()
     cfg = {**saved, **{k: str(v) for k, v in data.items() if k in AI_SETTING_KEYS}}
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        current = cg_connection.status()
+        if current.get("owner_id") != admin["id"]:
+            raise HTTPException(status_code=403, detail="owner_required")
+        try:
+            model = cfg.get("ai_chatgpt_model", "").strip()
+            if not model:
+                raise HTTPException(status_code=400, detail="Select a ChatGPT model")
+            cg_connection.unblock(admin["id"])
+            result = await asyncio.to_thread(cg_connection.request, model, "Reply with OK.", connection_id=current["connection_id"], timeout=60)
+            return {"message": "AI test succeeded", "response": result["text"]}
+        except ChatGPTError as exc:
+            raise HTTPException(status_code=400, detail=exc.code) from None
     if cfg.get("ai_api_key") == "••••••••":
         cfg["ai_api_key"] = saved.get("ai_api_key", "")
     base_url = cfg.get("ai_base_url", "").rstrip("/")
