@@ -1,5 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { recipeViewAvailability } from './viewerResume.mjs';
+
+test('AI disabled without saved text hides the entire tab bar and rejects saved AI tabs', () => {
+  for (const mode of ['original', 'text', 'review']) {
+    assert.deepEqual(recipeViewAvailability(mode, false, false), {
+      showTabs: false, showText: false, showReview: false, viewMode: 'original',
+    });
+  }
+});
+
+test('AI disabled preserves saved text and original navigation, but excludes review', () => {
+  assert.deepEqual(recipeViewAvailability('text', false, true), {
+    showTabs: true, showText: true, showReview: false, viewMode: 'text',
+  });
+  assert.equal(recipeViewAvailability('review', false, true).viewMode, 'original');
+  assert.equal(recipeViewAvailability('original', false, true).viewMode, 'original');
+});
+
+test('AI enabled retains all recipe views with or without saved text', () => {
+  for (const saved of [false, true]) {
+    for (const mode of ['original', 'text', 'review']) {
+      assert.deepEqual(recipeViewAvailability(mode, true, saved), {
+        showTabs: true, showText: true, showReview: true, viewMode: mode,
+      });
+    }
+  }
+});
 
 import { createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, resolveRecipeSourceMode, resolveViewerResume } from './viewerResume.mjs';
 

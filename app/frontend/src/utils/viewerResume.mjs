@@ -77,6 +77,18 @@ function resolveResumeView(saved, requested) {
   return normalizeViewMode(saved?.viewMode || requested);
 }
 
+export function recipeViewAvailability(requested, aiEnabled, hasSavedText) {
+  const showReview = aiEnabled === true;
+  const showText = showReview || hasSavedText === true;
+  return {
+    showTabs: showText,
+    showText,
+    showReview,
+    viewMode: requested === 'review' && showReview ? 'review'
+      : requested === 'text' && showText ? 'text' : 'original',
+  };
+}
+
 export function normalizeViewerResume(saved, requested = 'original') {
   const sourceMode = saved?.sourceMode === 'pdf' || saved?.sourceMode === 'images'
     ? saved.sourceMode

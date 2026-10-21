@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ZoomIn, ZoomOut, Maximize2, Pencil, Trash2, Tag, FolderOpen, X, Image as LucideImage, Download, GripVertical, RotateCw, RotateCcw, Scissors, ImagePlus, SlidersHorizontal, FileText, Info, Sparkles, Save, Grid3X3, CheckCircle2, Clock3, Minus, Plus, Wrench } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPages, convertPdf, convertImagesToPdf, pdfPageUrl, setThumbnail, thumbnailUrl, downloadUrl, rotateImage, deleteRecipeImage, cropImage, addImagesToRecipe, adjustImage, restoreOriginalImage, fetchTextVersion, fetchViewerProgress, saveViewerProgress as saveViewerProgressApi, saveTextVersion, createTextVersionJob, fetchReviewSession, fetchWorkQueue, saveReviewPage, pauseReviewSession, cancelReviewSession, completeReviewSession, createReviewDiagram, createReviewLegend, reviewAssetUrl } from '../utils/api';
-import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, readViewerResume, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
+import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, readViewerResume, recipeViewAvailability, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
 import KnittingToolbar from '../components/KnittingToolbar';
@@ -42,6 +42,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [addingImages, setAddingImages] = useState(false);
   const [viewMode, setViewMode] = useState(initialState.viewMode);
   const [textVersion, setTextVersion] = useState(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const { showText: showTextView } = recipeViewAvailability(viewMode, aiEnabled, !!textVersion?.exists);
   const [textLoading, setTextLoading] = useState(false);
   const [reviewSession, setReviewSession] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -343,17 +345,23 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     setZoom(fallbackResume.zoom);
     setFullscreen(fallbackResume.fullscreen && fallbackResume.viewMode === 'original');
     setTextVersion(null);
+    setAiEnabled(false);
     setReviewSession(null);
 
     const load = async () => {
       try {
-        const [r, serverSaved] = await Promise.all([
+        const [r, serverSaved, text] = await Promise.all([
           fetchRecipe(recipeId),
           fetchViewerProgress(recipeId).catch(() => null),
+          fetchTextVersion(recipeId).catch(() => ({ exists: false, ai_enabled: false })),
         ]);
         if (cancelled) return;
         const saved = mergeLocalViewerPresentation(resolveViewerResume(localSaved, serverSaved), localSaved);
         const resume = normalizeViewerResume(saved, initialViewMode);
+        // A saved tab or queue link must not reopen a disabled AI view.
+        resume.viewMode = recipeViewAvailability(resume.viewMode, !!text.ai_enabled, !!text.exists).viewMode;
+        setAiEnabled(!!text.ai_enabled);
+        setTextVersion(text);
         pendingScrollY.current = resume.scrollY;
         pendingPdfScrollY.current = resume.pdfScrollY;
         pendingPdfAnchor.current = resume.pdfAnchor;
@@ -403,22 +411,30 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   }, [recipeId, initialViewMode, user]);
 
   useEffect(() => {
-    if (viewMode !== 'text') return;
+    if (loading || viewMode !== 'text' || !showTextView) return;
+    let cancelled = false;
     setTextLoading(true);
     fetchTextVersion(recipeId)
-      .then(setTextVersion)
-      .catch(() => setTextVersion({ exists: false, error: true }))
-      .finally(() => setTextLoading(false));
-  }, [recipeId, viewMode]);
+      .then(text => { if (!cancelled) { setTextVersion(text); setAiEnabled(!!text.ai_enabled); } })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setTextLoading(false); });
+    return () => { cancelled = true; };
+  }, [recipeId, viewMode, loading, showTextView]);
 
   useEffect(() => {
-    if (viewMode !== 'review') return;
+    if (loading) return;
+    const availableMode = recipeViewAvailability(viewMode, aiEnabled, !!textVersion?.exists).viewMode;
+    if (availableMode !== viewMode) setViewMode(availableMode);
+  }, [loading, aiEnabled, textVersion?.exists, viewMode]);
+
+  useEffect(() => {
+    if (loading || !aiEnabled || viewMode !== 'review') return;
     setReviewLoading(true);
     fetchReviewSession(recipeId)
       .then(setReviewSession)
       .catch(() => setReviewSession({ exists: false, error: true }))
       .finally(() => setReviewLoading(false));
-  }, [recipeId, viewMode]);
+  }, [recipeId, viewMode, loading, aiEnabled]);
 
   const capturePdfAnchor = useCallback(() => {
     const container = pdfPagesRef.current;
@@ -877,7 +893,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         </div>
       </div>
 
-      <div className="viewer-mode-tabs" role="tablist" aria-label={t('recipeViewTabs')}>
+      {showTextView && <div className="viewer-mode-tabs" role="tablist" aria-label={t('recipeViewTabs')}>
         <button
           className={`viewer-mode-tab ${viewMode === 'original' ? 'active' : ''}`}
           onClick={() => updateViewMode('original')}
@@ -896,7 +912,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
           <FileText size={16} />
           <span>{t('textVersion')}</span>
         </button>
-        <button
+        {aiEnabled && <button
           className={`viewer-mode-tab viewer-mode-tab--review ${viewMode === 'review' ? 'active' : ''}`}
           onClick={() => updateViewMode('review')}
           role="tab"
@@ -904,8 +920,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
         >
           <CheckCircle2 size={16} />
           <span>{t('reviewText')}</span>
-        </button>
-      </div>
+        </button>}
+      </div>}
 
       {viewMode === 'original' && recipe.file_type === 'images' && recipe.has_pdf && recipe.has_images && (
         <div className="viewer-source-tabs" role="group" aria-label={t('recipeSourceView')}>
@@ -933,6 +949,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
               t={t}
               recipeId={recipeId}
               language={language}
+              aiEnabled={aiEnabled}
               textVersion={textVersion}
               setTextVersion={setTextVersion}
               loading={textLoading}
@@ -1368,13 +1385,13 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 <Info size={19} />
                 <span>{t('mobileTabInfo') || 'Info'}</span>
               </button>
-              <button
+              {aiEnabled && <button
                 className="mobile-action-row"
                 onClick={() => { updateViewMode('review'); setMobilePanel(null); }}
               >
                 <CheckCircle2 size={19} />
                 <span>{t('reviewOcrText') || t('reviewText') || 'Review AI scan'}</span>
-              </button>
+              </button>}
               <a
                 className="mobile-action-row"
                 href={downloadUrl(recipeId)}
@@ -2103,7 +2120,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   );
 }
 
-function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
+function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -2122,7 +2139,7 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
   const isReviewReady = !!readySession?.exists || jobStatus === 'ready_to_review';
 
   const refreshGenerationState = useCallback(async () => {
-    if (hasText) {
+    if (!aiEnabled || hasText) {
       setGenerationJob(null);
       setReadySession(null);
       return;
@@ -2137,10 +2154,10 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
     const job = queue?.ai_jobs?.find(item => item.recipe_id === recipeId && ['queued', 'running', 'ready_to_review'].includes(item.status));
     setGenerationJob(job || null);
     setReadySession(null);
-  }, [hasText, recipeId]);
+  }, [aiEnabled, hasText, recipeId]);
 
   useEffect(() => {
-    if (hasText) {
+    if (!aiEnabled || hasText) {
       setGenerationJob(null);
       setReadySession(null);
       return undefined;
@@ -2156,7 +2173,7 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [hasText, refreshGenerationState]);
+  }, [aiEnabled, hasText, refreshGenerationState]);
 
   const generate = async () => {
     if (textVersion?.exists && !window.confirm(t('regenerateTextConfirm'))) return;
@@ -2207,9 +2224,9 @@ function TextVersionPanel({ t, recipeId, language, textVersion, setTextVersion, 
         <div className="text-version-actions">
           {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
           {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
-          <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
+          {aiEnabled && <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
             <Sparkles size={15} />{hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
-          </button>
+          </button>}
         </div>
       </div>
       {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}

@@ -24,6 +24,7 @@ Thumbs.db
 
 # Python
 .venv/
+.venv-helper/
 __pycache__/
 *.pyc
 *.pyo
