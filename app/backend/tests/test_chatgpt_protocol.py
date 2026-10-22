@@ -129,7 +129,9 @@ class StreamTests(unittest.TestCase):
         self.assertIsNone(protocol.consume_event(dict(type="response.output_text.delta", delta="Recipe "), chunks))
         self.assertIsNone(protocol.consume_event(dict(type="response.output_text.delta", delta="text"), chunks))
         result = protocol.consume_event(dict(type="response.completed", response=dict(status="completed", usage=dict(input_tokens=4, output_tokens=2, total_tokens=6))), chunks)
-        self.assertEqual(result, dict(text="Recipe text", usage=dict(prompt_tokens=4, completion_tokens=2, total_tokens=6)))
+        self.assertEqual(result["text"], "Recipe text")
+        self.assertEqual(result["usage"], dict(prompt_tokens=4, completion_tokens=2, total_tokens=6))
+        self.assertEqual(result["token_details"], dict(reasoning_tokens=None, cached_tokens=None))
 
     def test_error_after_partial_output_is_not_success(self):
         chunks = ["partial result"]

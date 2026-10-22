@@ -30,6 +30,11 @@ not be confirmed, with a link to manage access at OpenAI.
 
 ## Household requests and recovery
 
+New beta defaults use one formatted transcription per page, low reasoning,
+original image detail and two pages at a time. Keep the selected model. Advanced
+settings allow an explicit alternative; legacy mode retains the separate cleanup
+step. See [measured results and reader changes](../docs/beta-transcription-reader-2026-10-22.md).
+
 The administrator who connects the account owns the connection. Their jobs queue
 immediately. Other household users request OCR; only the connection owner can
 approve usage after seeing the recipe, page count, model and cleanup setting.

@@ -87,6 +87,10 @@ AI_SETTING_KEYS = {
     "ai_base_url",
     "ai_model",
     "ai_chatgpt_model",
+    "ai_chatgpt_mode",
+    "ai_chatgpt_reasoning",
+    "ai_chatgpt_detail",
+    "ai_chatgpt_concurrency",
     "ai_api_key",
     "ai_timeout",
     "ai_max_pages",
@@ -382,6 +386,7 @@ def get_db() -> sqlite3.Connection:
         for column, default in {
             "requester_id": "", "approved_by": "", "connection_id": "",
             "approval_fingerprint": "", "config_snapshot": "", "checkpoint_json": "[]", "provider_usage_json": "{}",
+            "active_pages_json": "[]", "total_pages": "0",
         }.items():
             if column not in job_cols:
                 conn.execute(f"ALTER TABLE ai_text_jobs ADD COLUMN {column} TEXT NOT NULL DEFAULT '{default}'")
@@ -760,6 +765,19 @@ def get_db() -> sqlite3.Connection:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_recipe_pdf_migration_started ON recipe_pdf_migration_jobs (started_at)")
         conn.commit()
+    for table in ("recipe_text_versions", "recipe_review_sessions"):
+        if table in tables and "format_version" not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN format_version TEXT NOT NULL DEFAULT 'legacy'")
+            conn.commit()
+    conn.execute("""CREATE TABLE IF NOT EXISTS ai_request_metrics (
+        id TEXT PRIMARY KEY, job_id TEXT NOT NULL, page_order INTEGER NOT NULL,
+        stage TEXT NOT NULL, model TEXT NOT NULL, settings_json TEXT NOT NULL,
+        preparation_seconds REAL, first_text_seconds REAL, duration_seconds REAL,
+        prompt_tokens INTEGER, completion_tokens INTEGER, total_tokens INTEGER,
+        reasoning_tokens INTEGER, cached_tokens INTEGER, outcome TEXT NOT NULL,
+        created_at TEXT NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_requests_job ON ai_request_metrics(job_id, page_order)")
+    conn.commit()
     return conn
 
 
@@ -1207,6 +1225,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_review_legends_session ON recipe_review_legends (session_id, page_id);
         CREATE INDEX IF NOT EXISTS idx_recipe_pdf_migration_started ON recipe_pdf_migration_jobs (started_at);
     """)
+    # Apply additive column migrations to tables just created on a fresh install.
+    conn.commit()
+    conn.close()
+    conn = get_db()
     # Add 2FA columns to users if this is an existing database
     existing = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "totp_secret"  not in existing:
@@ -1235,9 +1257,10 @@ def init_db():
         UPDATE ai_text_jobs
         SET status=CASE WHEN provider='chatgpt_subscription' THEN 'interrupted' ELSE 'queued' END,
             progress_stage=CASE WHEN provider='chatgpt_subscription' THEN 'interrupted' ELSE 'queued' END,
-            started_at='', error=''
+            started_at='', error='', active_pages_json='[]'
         WHERE status='running'
     """)
+    conn.execute("UPDATE ai_request_metrics SET outcome='interrupted' WHERE outcome='running'")
     # Bulk PDF migration runs on a plain thread — if the process died mid-run,
     # the row is left at status='running' forever. Mark it interrupted so the
     # admin UI doesn't show a stuck spinner; re-running is safely idempotent.

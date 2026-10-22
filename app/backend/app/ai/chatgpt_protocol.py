@@ -119,12 +119,17 @@ def list_models(access_token: str) -> list[dict]:
         raise ChatGPTError("model_access_failed") from None
 
 
-def response_payload(model: str, text: str, image_url: str | None = None) -> dict:
+def response_payload(model: str, text: str, image_url: str | None = None, *, reasoning=None, detail=None) -> dict:
     content = [{"type": "input_text", "text": text}]
     if image_url:
         content.append({"type": "input_image", "image_url": image_url})
-    return {"model": model, "store": False, "stream": True,
+        if detail is not None:
+            content[-1]["detail"] = detail
+    payload = {"model": model, "store": False, "stream": True,
             "input": [{"role": "user", "content": content}]}
+    if reasoning is not None:
+        payload["reasoning"] = {"effort": reasoning}
+    return payload
 
 
 def consume_event(event: dict, chunks: list[str]) -> dict | None:
@@ -136,8 +141,10 @@ def consume_event(event: dict, chunks: list[str]) -> dict | None:
         if response.get("status") != "completed":
             raise ChatGPTError("incomplete_response", "ChatGPT did not complete the page.")
         usage = response.get("usage", {})
-        return {"text": "".join(chunks), "usage": {"prompt_tokens": usage.get("input_tokens", 0),
-                "completion_tokens": usage.get("output_tokens", 0), "total_tokens": usage.get("total_tokens", 0)}}
+        return {"text": "".join(chunks), "usage": {"prompt_tokens": usage.get("input_tokens"),
+                "completion_tokens": usage.get("output_tokens"), "total_tokens": usage.get("total_tokens")},
+                "token_details": {"reasoning_tokens": (usage.get("output_tokens_details") or {}).get("reasoning_tokens"),
+                                  "cached_tokens": (usage.get("input_tokens_details") or {}).get("cached_tokens")}}
     elif kind in {"response.failed", "response.incomplete", "error"}:
         code = event.get("error", event.get("response", {}).get("error") or {}).get("code", "incomplete_response")
         # Only expose a bounded identifier, never arbitrary provider text.
@@ -149,6 +156,8 @@ def consume_event(event: dict, chunks: list[str]) -> dict | None:
 
 def infer(access_token: str, payload: dict, timeout: int = 600, check=None) -> dict:
     chunks: list[str] = []
+    started = time.monotonic()
+    metrics = {"first_text_seconds": None}
     try:
         if check:
             check()
@@ -166,15 +175,24 @@ def infer(access_token: str, payload: dict, timeout: int = 600, check=None) -> d
                 if check:
                     check()
                 if line.startswith("data: ") and line[6:] != "[DONE]":
-                    result = consume_event(json.loads(line[6:]), chunks)
+                    event = json.loads(line[6:])
+                    if event.get("type") == "response.output_text.delta" and event.get("delta") and metrics["first_text_seconds"] is None:
+                        metrics["first_text_seconds"] = time.monotonic() - started
+                    result = consume_event(event, chunks)
                     if result is not None:
+                        result["metrics"] = {**metrics, "duration_seconds": time.monotonic() - started}
                         return result
     except ChatGPTError as exc:
         exc.partial_output = bool(chunks)
+        exc.metrics = {**metrics, "duration_seconds": time.monotonic() - started}
         raise
     except (httpx.HTTPError, ValueError):
-        raise ChatGPTError("connection_failed", "The ChatGPT request was interrupted.") from None
-    raise ChatGPTError("incomplete_response", "ChatGPT ended the stream before completing the page.")
+        error = ChatGPTError("connection_failed", "The ChatGPT request was interrupted.")
+        error.metrics = {**metrics, "duration_seconds": time.monotonic() - started}
+        raise error from None
+    error = ChatGPTError("incomplete_response", "ChatGPT ended the stream before completing the page.")
+    error.metrics = {**metrics, "duration_seconds": time.monotonic() - started}
+    raise error
 
 
 def new_transfer_key() -> tuple[str, str]:

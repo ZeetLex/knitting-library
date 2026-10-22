@@ -262,6 +262,9 @@ async def _create_review_session_from_ai_pages(
             )
         )
     conn.commit()
+    if cfg.get("ai_provider") == "chatgpt_subscription" and cfg.get("ai_chatgpt_mode", "formatted") == "formatted":
+        conn.execute("UPDATE recipe_review_sessions SET format_version='gfm-v1' WHERE id=?", (session_id,))
+        conn.commit()
     row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
     data = _review_session_dict(conn, row)
     data["usage"] = _usage
@@ -304,7 +307,7 @@ def _complete_review_session(session_id: str, username: str) -> dict:
         for legend in legends:
             title = legend["title"] or "Legend"
             parts.extend(["", f"### {title}", "", f"![{title}](/api/recipes/{recipe_id}/review-assets/{legend['image_path']})"])
-    content = "\n".join(parts).strip()
+    content = "\n\n".join(parts).strip()
     fingerprint = _source_fingerprint(recipe_id, conn)
     conn.execute(
         "INSERT INTO recipe_text_versions (recipe_id,content_markdown,status,language,prompt,provider,model,source_fingerprint,generated_by,created_at,updated_at) "
@@ -313,6 +316,8 @@ def _complete_review_session(session_id: str, username: str) -> dict:
         (recipe_id, content, "ready", session["language"], "review_session", "reviewed_ai_scan", "", fingerprint, username, now, now)
     )
     conn.execute("UPDATE recipe_review_sessions SET status='completed', completed_at=?, updated_at=? WHERE id=?", (now, now, session_id))
+    conn.execute("UPDATE recipe_text_versions SET format_version=? WHERE recipe_id=?", (session["format_version"], recipe_id))
+    conn.execute("UPDATE ai_text_jobs SET status='finished',progress_stage='finished' WHERE id=? AND status='ready_to_review'", (session["job_id"],))
     conn.commit()
     row = conn.execute("SELECT * FROM recipe_review_sessions WHERE id=?", (session_id,)).fetchone()
     data = _review_session_dict(conn, row)

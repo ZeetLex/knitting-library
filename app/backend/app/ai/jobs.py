@@ -7,6 +7,8 @@ from app.recipes.files import IMAGE_PDF_CONVERSION_LOCK, _convert_pdf_to_pages, 
 from app.recipes.repository import _get_recipe_full, _source_fingerprint
 from app.ai import chatgpt_connection as cg_connection
 from app.ai.chatgpt_protocol import ChatGPTError
+from app.ai import transcription as transcription_options
+from app.ai import request_metrics as transcription_metrics
 
 def _ai_settings(conn, reveal_secret: bool = False) -> dict:
     rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'ai_%'").fetchall()
@@ -29,6 +31,8 @@ def _ai_settings(conn, reveal_secret: bool = False) -> dict:
         "ai_cleanup_custom_prompt": "",
     }
     defaults.update(cfg)
+    for key, value in transcription_options.DEFAULTS.items():
+        defaults.setdefault(key, value)
     if defaults.get("ai_api_key") and not reveal_secret:
         defaults["ai_api_key"] = "••••••••"
     return defaults
@@ -67,6 +71,8 @@ def _image_payload_for_path(path: Path) -> dict:
 
 
 def _ai_scan_prompt(language: str, cfg: dict) -> str:
+    if cfg.get("ai_provider") == "chatgpt_subscription" and cfg.get("ai_chatgpt_mode", "formatted") == "formatted":
+        return (cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else transcription_options.formatted_prompt(language))
     return cfg.get("ai_custom_prompt", "").strip() if cfg.get("ai_prompt_mode") == "custom" else _default_ai_scan_prompt(language)
 
 
@@ -102,12 +108,12 @@ async def _call_ai_vision_page_scan(path: Path, page_no: int, page_count: int, l
         guard = cfg.get("_subscription_guard")
         if guard is None:
             raise ChatGPTError("approval_required")
+        prepared = time.monotonic()
         guard(True)
         payload = _image_payload_for_path(path)
-        result = await asyncio.to_thread(cg_connection.request, model,
+        result = await _subscription_request(cfg, page_no, "scan", model,
             f"{prompt}\n\nPage {page_no}/{page_count}. Transcribe only this image. Return only the text.",
-            payload["image_url"]["url"], connection_id=cfg["_connection_id"], timeout=timeout, check=guard)
-        _add_subscription_usage(cfg["_job_id"], result["usage"])
+            timeout, image_url=payload["image_url"]["url"], preparation=time.monotonic() - prepared)
         return _clean_ai_transcription(result["text"]), result["usage"], prompt
     messages = [{
         "role": "user",
@@ -150,10 +156,9 @@ async def _call_ai_page_cleanup(text: str, page_no: int, page_count: int, langua
         if guard is None:
             raise ChatGPTError("approval_required")
         guard(True)
-        result = await asyncio.to_thread(cg_connection.request, model,
+        result = await _subscription_request(cfg, page_no, "cleanup", model,
             f"{prompt}\n\nPage {page_no}/{page_count} raw text:\n\n{text}",
-            connection_id=cfg["_connection_id"], timeout=timeout, check=guard)
-        _add_subscription_usage(cfg["_job_id"], result["usage"])
+            timeout)
         return _clean_ai_transcription(result["text"]), result["usage"], prompt
     messages = [{
         "role": "user",
@@ -179,6 +184,104 @@ async def _call_ai_page_cleanup(text: str, page_no: int, page_count: int, langua
     return _clean_ai_transcription(data["choices"][0]["message"]["content"]), data.get("usage") or {}, prompt
 
 
+async def _subscription_request(cfg, page_no, stage, model, prompt, timeout, image_url=None, preparation=0):
+    try:
+        effective = transcription_options.options(cfg)
+    except ValueError as exc:
+        raise ChatGPTError(str(exc)) from None
+    cfg["_subscription_guard"](True)
+    attempt, started = transcription_metrics.start(cfg["_job_id"], page_no, stage, model,
+        {**effective, "prompt_version": transcription_options.PROMPT_VERSION}, preparation)
+    try:
+        result = await asyncio.to_thread(cg_connection.request, model, prompt, image_url,
+            connection_id=cfg["_connection_id"], timeout=timeout, check=cfg["_subscription_guard"],
+            reasoning=effective["ai_chatgpt_reasoning"], detail=effective["ai_chatgpt_detail"])
+    except Exception as exc:
+        transcription_metrics.finish(attempt, started, error=exc)
+        raise
+    transcription_metrics.finish(attempt, started, result=result)
+    return result
+
+
+async def _scan_subscription_pages(paths, language, cfg, conn, timeout, job_id):
+    """Bounded dispatch; only the event-loop coordinator persists page results."""
+    count = len(paths)
+    width = int(transcription_options.options(cfg)["ai_chatgpt_concurrency"])
+    cleanup = cfg.get("ai_chatgpt_mode", "formatted") == "legacy" and _is_truthy(cfg.get("ai_cleanup_enabled"), False)
+    row = conn.execute("SELECT checkpoint_json FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+    saved = {p["page_key"]: p for p in json.loads(row["checkpoint_json"] or "[]")}
+    results = {i: {**saved[path.name], "path": path} for i, path in enumerate(paths, 1) if path.name in saved}
+    pending = [i for i in range(1, count + 1) if i not in results or (cleanup and not results[i].get("cleanup_done"))]
+    running = {}
+    failure = None
+
+    def persist():
+        ordered = [results[i] for i in sorted(results)]
+        checkpoint = [{k: v for k, v in p.items() if k != "path"} for p in ordered]
+        _update_ai_job(job_id, checkpoint_json=json.dumps(checkpoint), pages_sent=len(results), total_pages=str(count),
+                       active_pages_json=json.dumps(sorted(running.values())), progress_stage=f"ai_scanned_{len(results)}_of_{count}")
+
+    async def page_work(i):
+        path = paths[i - 1]
+        if i in results:
+            page = dict(results[i])
+        else:
+            text, usage, _ = await _call_ai_vision_page_scan(path, i, count, language, cfg, timeout)
+            page = dict(page_order=i, page_key=path.name, source_text=text, reviewed_text=text, path=path, usage=usage)
+        return page
+
+    try:
+        while pending or running:
+            while pending and len(running) < width and failure is None:
+                try:
+                    cfg["_subscription_guard"](True)
+                except Exception as exc:
+                    failure = exc
+                    break
+                i = pending.pop(0)
+                running[asyncio.create_task(page_work(i))] = i
+            persist()
+            if not running:
+                break
+            done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                i = running.pop(task)
+                try:
+                    results[i] = task.result()
+                except Exception as exc:
+                    if failure is None:
+                        failure = exc
+            persist()
+            if failure is not None and not running:
+                break
+        if failure is not None:
+            raise failure
+        # Legacy cleanup remains a distinct optional stage; successful scans are
+        # checkpointed before any cleanup failure or interruption.
+        if cleanup:
+            for i in sorted(results):
+                page = results[i]
+                if page.get("cleanup_done"):
+                    continue
+                cfg["_subscription_guard"](True)
+                text, usage, _ = await _call_ai_page_cleanup(page["reviewed_text"], i, count, language, cfg, timeout)
+                page.update(reviewed_text=text or page["reviewed_text"], cleanup_done=True, cleanup_usage=usage)
+                persist()
+        cfg["_subscription_guard"](True)
+    finally:
+        # Do not cancel to_thread work: settle every submitted request first.
+        if running:
+            await asyncio.gather(*running, return_exceptions=True)
+        _update_ai_job(job_id, active_pages_json="[]")
+    usage = {}
+    for page in results.values():
+        for values in (page.get("usage", {}), page.get("cleanup_usage", {})):
+            for key, value in values.items():
+                if isinstance(value, (int, float)):
+                    usage[key] = usage.get(key, 0) + value
+    return [results[i] for i in sorted(results)], usage, _ai_scan_prompt(language, cfg)
+
+
 async def _scan_recipe_pages_with_ai(
     recipe_id: str,
     language: str,
@@ -190,6 +293,10 @@ async def _scan_recipe_pages_with_ai(
 ) -> tuple[list[dict], dict, str]:
     paths = _collect_recipe_image_paths(recipe_id, conn, max_pages)
     page_count = len(paths)
+    if job_id:
+        _update_ai_job(job_id, total_pages=str(page_count))
+    if cfg.get("ai_provider") == "chatgpt_subscription":
+        return await _scan_subscription_pages(paths, language, cfg, conn, timeout, job_id)
     usage_totals: dict[str, int] = {}
     prompt = _ai_scan_prompt(language, cfg)
     cleanup_enabled = _is_truthy(cfg.get("ai_cleanup_enabled"), False)
@@ -357,6 +464,9 @@ def _job_dict(row: sqlite3.Row) -> dict:
         data.pop(private_field, None)
     for key in ("pages_sent", "result_text_chars", "dismissed"):
         data[key] = int(data.get(key) or 0)
+    data["total_pages"] = int(data.get("total_pages") or 0)
+    data["completed_pages"] = data["pages_sent"]
+    data["active_pages"] = json.loads(data.pop("active_pages_json", "[]") or "[]")
     data["dismissed"] = bool(data["dismissed"])
     if data.get("duration_seconds") is not None:
         data["duration_seconds"] = round(float(data["duration_seconds"]), 1)
@@ -369,7 +479,7 @@ def _update_ai_job(job_id: str, **fields) -> None:
     allowed = {
         "status", "progress_stage", "error", "provider", "model", "pages_sent",
         "result_text_chars", "duration_seconds", "started_at", "finished_at",
-        "dismissed", "checkpoint_json",
+        "dismissed", "checkpoint_json", "active_pages_json", "total_pages",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
@@ -629,7 +739,8 @@ def _add_subscription_usage(job_id: str, usage: dict):
 def _subscription_config(cfg: dict, language: str) -> str:
     keys = ("ai_provider", "ai_chatgpt_model", "ai_timeout", "ai_max_pages", "ai_prompt_mode",
             "ai_custom_prompt", "ai_cleanup_enabled", "ai_cleanup_custom_prompt")
-    return json.dumps({"language": language, **{key: cfg.get(key, "") for key in keys}}, sort_keys=True)
+    return json.dumps({"language": language, **{key: cfg.get(key, "") for key in keys},
+                       **transcription_options.options(cfg), "prompt_version": transcription_options.PROMPT_VERSION}, sort_keys=True)
 
 
 def _subscription_guard(job_id: str):
@@ -819,6 +930,7 @@ async def create_recipe_text_job(
     status = "queued"
     subscription = cfg.get("ai_provider") == "chatgpt_subscription"
     connection_id, approved_by, fingerprint, snapshot = "", "", "", ""
+    total_pages = 0
     model = cfg.get("ai_model", "")
     if subscription:
         current = cg_connection.status()
@@ -827,7 +939,7 @@ async def create_recipe_text_job(
             raise HTTPException(status_code=409, detail="connection_changed")
         model = _require_ai_vision_config(cfg)[1]
         connection_id = current["connection_id"]
-        _collect_recipe_image_paths(recipe_id, conn, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30)))
+        total_pages = len(_collect_recipe_image_paths(recipe_id, conn, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30))))
         fingerprint = _source_fingerprint(recipe_id, conn)
         snapshot = _subscription_config(cfg, language)
         if current["owner_id"] == current_user["id"]:
@@ -853,8 +965,8 @@ async def create_recipe_text_job(
             now,
         )
     )
-    conn.execute("UPDATE ai_text_jobs SET requester_id=?, approved_by=?, connection_id=?, approval_fingerprint=?, config_snapshot=? WHERE id=?",
-                 (current_user["id"], approved_by, connection_id, fingerprint, snapshot, job_id))
+    conn.execute("UPDATE ai_text_jobs SET requester_id=?, approved_by=?, connection_id=?, approval_fingerprint=?, config_snapshot=?, total_pages=? WHERE id=?",
+                 (current_user["id"], approved_by, connection_id, fingerprint, snapshot, str(total_pages), job_id))
     conn.commit()
     row = conn.execute("SELECT * FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
     conn.close()
@@ -870,7 +982,8 @@ def _subscription_approval_context(row, cfg, conn, current):
     page_count = min(page_count, int(_clamped_float(cfg.get("ai_max_pages"), 8, 1, 30)))
     token = hashlib.sha256(json.dumps([fingerprint, snapshot, current["connection_id"], page_count]).encode()).hexdigest()
     return {"approval_token": token, "requested_pages": page_count, "model": cfg.get("ai_chatgpt_model", ""),
-            "cleanup_enabled": _is_truthy(cfg.get("ai_cleanup_enabled"), False)}
+            "cleanup_enabled": cfg.get("ai_chatgpt_mode", "formatted") == "legacy" and _is_truthy(cfg.get("ai_cleanup_enabled"), False),
+            "transcription_options": transcription_options.options(cfg)}
 
 
 async def approve_subscription_job(job_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):

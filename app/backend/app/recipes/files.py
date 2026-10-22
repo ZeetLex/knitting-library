@@ -1069,6 +1069,8 @@ def save_recipe_text_version(recipe_id: str, data: dict = Body(...), current_use
         (recipe_id, content, "ready", language, "", "manual", "", fingerprint, current_user["username"], now, now)
     )
     conn.execute("DELETE FROM recipe_text_generation_audits WHERE recipe_id=?", (recipe_id,))
+    if data.get("format_version") in {"legacy", "gfm-v1"}:
+        conn.execute("UPDATE recipe_text_versions SET format_version=? WHERE recipe_id=?", (data["format_version"], recipe_id))
     conn.commit()
     row = conn.execute("SELECT * FROM recipe_text_versions WHERE recipe_id=?", (recipe_id,)).fetchone()
     conn.close()

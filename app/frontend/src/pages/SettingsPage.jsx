@@ -22,7 +22,9 @@ import {
   saveBrandingTitle, uploadBrandingIcon, deleteBrandingIcon, resetBranding,
   fetchRecipeSettings, saveRecipeSettings,
   startPdfMigration, fetchPdfMigrationStatus, cancelPdfMigration,
+  fetchFormattedPrompt,
 } from '../utils/api';
+import TranscriptionControls, { supportsNoReasoning } from '../components/TranscriptionControls';
 import './SettingsPage.css';
 import ChatGPTConnectionPanel from '../components/ChatGPTConnectionPanel';
 
@@ -1172,6 +1174,12 @@ function MailSection() {
 /* ─── AI Text Recognition Section (Admin) ─────────────────────────────────── */
 function AISection() {
   const { t, language } = useApp();
+  const [formattedPrompt, setFormattedPrompt] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    fetchFormattedPrompt(language).then(value => { if (!cancelled) setFormattedPrompt(value); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [language]);
   const providerPresets = [
     {
       id: 'openai',
@@ -1201,6 +1209,10 @@ function AISection() {
     ai_base_url: 'http://host.docker.internal:11434/v1',
     ai_model: '',
     ai_chatgpt_model: '',
+    ai_chatgpt_mode: 'formatted',
+    ai_chatgpt_reasoning: 'low',
+    ai_chatgpt_detail: 'original',
+    ai_chatgpt_concurrency: '2',
     ai_api_key: '',
     ai_timeout: '600',
     ai_max_pages: '8',
@@ -1298,7 +1310,9 @@ function AISection() {
             <option value="chatgpt_subscription">{t('chatgptPlan')}</option>
           </select>
         </div>
-        {cfg.ai_provider === 'chatgpt_subscription' && <ChatGPTConnectionPanel model={cfg.ai_chatgpt_model} onModelChange={value => f('ai_chatgpt_model', value)} />}
+        {cfg.ai_provider === 'chatgpt_subscription' && <><ChatGPTConnectionPanel model={cfg.ai_chatgpt_model} onModelChange={value => {
+          setCfg(prev => ({ ...prev, ai_chatgpt_model: value, ai_chatgpt_reasoning: prev.ai_chatgpt_reasoning === 'none' && !supportsNoReasoning(value) ? 'low' : prev.ai_chatgpt_reasoning }));
+        }} /><TranscriptionControls cfg={cfg} onChange={f} /></>}
         <div className="ai-settings-card ai-enable-card">
           <div className="settings-row-info">
             <p className="settings-row-label">{t('aiEnable')}</p>
@@ -1443,7 +1457,7 @@ function AISection() {
             <label className="form-label">{cfg.ai_prompt_mode === 'custom' ? t('aiCustomPrompt') : t('aiDefaultPromptPreview')}</label>
             <textarea
               className="form-input form-textarea ai-prompt-textarea"
-              value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : t('defaultOcrPrompt')}
+              value={cfg.ai_prompt_mode === 'custom' ? cfg.ai_custom_prompt : cfg.ai_provider === 'chatgpt_subscription' && cfg.ai_chatgpt_mode !== 'legacy' ? formattedPrompt : t('defaultOcrPrompt')}
               onChange={e => f('ai_custom_prompt', e.target.value)}
               readOnly={cfg.ai_prompt_mode !== 'custom'}
               rows={7}
@@ -1454,7 +1468,7 @@ function AISection() {
           </div>
         </div>
 
-        <div className="ai-settings-card">
+        {(cfg.ai_provider !== 'chatgpt_subscription' || cfg.ai_chatgpt_mode === 'legacy') && <div className="ai-settings-card">
           <div className="ai-card-heading ai-card-heading-row">
             <div>
               <h4>{t('aiCleanupWorkflow')}</h4>
@@ -1481,6 +1495,7 @@ function AISection() {
           </div>
         </div>
 
+        }
         {status === 'saved' && <p className="status-success">{t('saved')}</p>}
         {status?.startsWith('test_ok:') && <p className="status-success">{t('aiTestOk')} {status.slice(8)}</p>}
         {status?.startsWith('error:') && <p className="status-error">{status.slice(6)}</p>}

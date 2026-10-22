@@ -230,17 +230,14 @@ def disconnect() -> dict:
 
 
 def request(model: str, text: str, image_url: str | None = None, *, connection_id: str,
-            timeout: int = 600, check=None) -> dict:
-    for attempt in range(3):
-        try:
-            return protocol.infer(access_token(connection_id), protocol.response_payload(model, text, image_url), timeout, check=check)
-        except protocol.ChatGPTError as exc:
-            if exc.code in {"subscription_sharing_usage_limit_exceeded", "usage_limited"}:
-                mark_health(connection_id, "blocked_usage")
-            elif exc.code in {"authentication_failed", "authentication_required", "subscription_sharing_invalid_user"}:
-                mark_health(connection_id, "blocked_auth")
-            if (exc.code not in {"subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable"}
-                    or getattr(exc, "partial_output", False) or attempt == 2):
-                raise
-            time.sleep(2 ** attempt)
-    raise protocol.ChatGPTError("provider_error")
+            timeout: int = 600, check=None, reasoning=None, detail=None) -> dict:
+    # Never automatically repeat an inference that may have consumed plan usage.
+    try:
+        return protocol.infer(access_token(connection_id),
+            protocol.response_payload(model, text, image_url, reasoning=reasoning, detail=detail), timeout, check=check)
+    except protocol.ChatGPTError as exc:
+        if exc.code in {"subscription_sharing_usage_limit_exceeded", "usage_limited"}:
+            mark_health(connection_id, "blocked_usage")
+        elif exc.code in {"authentication_failed", "authentication_required", "subscription_sharing_invalid_user"}:
+            mark_health(connection_id, "blocked_auth")
+        raise

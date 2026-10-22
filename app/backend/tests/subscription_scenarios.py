@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import time
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -62,6 +63,7 @@ class SubscriptionScenarios(unittest.TestCase):
 
     def save_settings(self, **changes):
         values = {'ai_enabled': 'true', 'ai_provider': 'chatgpt_subscription', 'ai_chatgpt_model': 'test-model',
+                  'ai_chatgpt_mode': 'legacy', 'ai_chatgpt_concurrency': '1',
                   'ai_cleanup_enabled': 'false', **changes}
         self.assertEqual(self.owner.put('/api/admin/ai', json=values).status_code, 200)
 
@@ -153,7 +155,9 @@ class SubscriptionScenarios(unittest.TestCase):
         conn = foundation.get_db()
         usage = conn.execute('SELECT * FROM ai_usage_events WHERE job_id=?', (job['id'],)).fetchall()
         self.assertEqual(len(usage), 1)
-        self.assertEqual(usage[0]['total_tokens'], 16)
+        self.assertIsNone(usage[0]['total_tokens'])  # failed attempt usage is unknown
+        known = conn.execute("SELECT SUM(total_tokens) FROM ai_request_metrics WHERE job_id=?", (job['id'],)).fetchone()[0]
+        self.assertEqual(known, 16)
         conn.close()
 
     def test_setting_change_during_scan_stops_the_next_request(self):
@@ -178,8 +182,14 @@ class SubscriptionScenarios(unittest.TestCase):
         conn.execute("UPDATE ai_text_jobs SET status='running' WHERE id=?", (job['id'],))
         conn.commit()
         conn.close()
+        from app.ai import request_metrics
+        attempt, _ = request_metrics.start(job['id'],1,'scan','test-model',{},0)
         foundation.init_db()
         self.assertEqual(self.row(job['id'])['status'], 'interrupted')
+        self.assertIsNone(json.loads(self.row(job['id'])['provider_usage_json'])['total_tokens'])
+        conn = foundation.get_db()
+        self.assertEqual(conn.execute('SELECT outcome FROM ai_request_metrics WHERE id=?',(attempt,)).fetchone()[0], 'interrupted')
+        conn.close()
 
     def test_non_owner_cannot_test_inference_or_access_credentials(self):
         self.assertEqual(self.other.get('/api/admin/ai/chatgpt').status_code, 403)
@@ -249,6 +259,112 @@ class SubscriptionScenarios(unittest.TestCase):
                 request = Request({'type': 'http', 'path': '/../secret', 'method': 'GET', 'headers': []})
                 result = asyncio.run(static.spa_static_middleware(request, not_found))
                 self.assertEqual(result.status_code, 404)
+
+    def test_formatted_parallel_pages_finish_out_of_order_without_lost_usage(self):
+        self.save_settings(ai_chatgpt_mode='formatted', ai_chatgpt_concurrency='2', ai_cleanup_enabled='true')
+        job = self.enqueue(self.owner)
+        second_started = threading.Event()
+        state = {'active': 0, 'maximum': 0}
+        lock = threading.Lock()
+        def response(model, prompt, *args, **kwargs):
+            with lock:
+                state['active'] += 1
+                state['maximum'] = max(state['maximum'], state['active'])
+            try:
+                if 'Page 1/2.' in prompt:
+                    self.assertTrue(second_started.wait(3))
+                    time.sleep(.03)
+                    text = 'First page'
+                else:
+                    second_started.set()
+                    text = 'Second page'
+                self.assertEqual(kwargs['reasoning'], 'low')
+                self.assertEqual(kwargs['detail'], 'original')
+                return {'text': text, 'usage': {'prompt_tokens': 5, 'completion_tokens': 3, 'total_tokens': 8},
+                        'token_details': {'reasoning_tokens': 1, 'cached_tokens': 0}}
+            finally:
+                with lock: state['active'] -= 1
+        request = self.run_job(job['id'], response)
+        self.assertEqual(request.call_count, 2)  # formatted mode never runs cleanup
+        self.assertEqual(state['maximum'], 2)
+        row = self.row(job['id'])
+        self.assertEqual(row['status'], 'ready_to_review')
+        self.assertEqual(row['active_pages_json'], '[]')
+        self.assertEqual([p['reviewed_text'] for p in json.loads(row['checkpoint_json'])], ['First page', 'Second page'])
+        diagnostics = self.owner.get(f"/api/admin/ai/chatgpt/jobs/{job['id']}/diagnostics").json()
+        self.assertEqual(diagnostics['usage']['total_tokens'], 16)
+        self.assertEqual(diagnostics['usage']['reasoning_tokens'], 2)
+        self.assertEqual(len(diagnostics['requests']), 2)
+        self.assertNotIn('First page', json.dumps(diagnostics))
+        self.assertEqual(self.other.get(f"/api/admin/ai/chatgpt/jobs/{job['id']}/diagnostics").status_code, 403)
+        session = self.owner.get(f'/api/recipes/{self.recipe_id}/review-session').json()
+        self.assertEqual(session['format_version'], 'gfm-v1')
+        for page in session['pages']:
+            self.owner.put(f"/api/review-sessions/{session['id']}/pages/{page['id']}",json={'reviewed_text':page['reviewed_text'],'status':'accepted'}).raise_for_status()
+        self.owner.post(f"/api/review-sessions/{session['id']}/complete").raise_for_status()
+        published = self.owner.get(f'/api/recipes/{self.recipe_id}/text-version').json()
+        self.assertEqual(published['content_markdown'], 'First page\n\nSecond page')
+        self.assertEqual(published['format_version'], 'gfm-v1')
+        self.assertEqual(self.row(job['id'])['status'],'finished')
+
+    def test_parallel_failure_settles_inflight_and_does_not_dispatch_next_page(self):
+        Image.new('RGB', (60,90), 'white').save(self.root / 'recipes' / self.recipe_id / 'third.png')
+        self.save_settings(ai_chatgpt_mode='formatted', ai_chatgpt_concurrency='2')
+        job = self.enqueue(self.owner)
+        second_failed = threading.Event()
+        def response(model, prompt, *args, **kwargs):
+            if 'Page 1/3.' in prompt:
+                self.assertTrue(second_failed.wait(3))
+                time.sleep(.05)
+                return {'text':'Preserved first page','usage':{'total_tokens':8}}
+            second_failed.set()
+            raise protocol.ChatGPTError('usage_limited')
+        request = self.run_job(job['id'], response)
+        self.assertEqual(request.call_count, 2)
+        row = self.row(job['id'])
+        self.assertEqual(row['status'], 'blocked_usage')
+        self.assertEqual(len(json.loads(row['checkpoint_json'])), 1)
+        self.assertEqual(row['active_pages_json'], '[]')
+
+    def test_processing_changes_require_fresh_owner_approval(self):
+        job = self.enqueue()
+        for key,value in [('ai_chatgpt_mode','formatted'), ('ai_chatgpt_reasoning','medium'),
+                          ('ai_chatgpt_detail','high'), ('ai_chatgpt_concurrency','2')]:
+            self.save_settings(ai_chatgpt_mode='legacy', ai_chatgpt_reasoning='low', ai_chatgpt_detail='original', ai_chatgpt_concurrency='1')
+            context = self.context(job['id'])
+            self.save_settings(**{key:value})
+            response = self.owner.post(f"/api/work-queue/ai/{job['id']}/approve", json={'approval_token':context['approval_token']})
+            self.assertEqual(response.status_code,409)
+
+    def test_unverified_no_reasoning_model_is_rejected_without_inference(self):
+        response = self.owner.put('/api/admin/ai',json={'ai_chatgpt_reasoning':'none'})
+        self.assertEqual(response.status_code,400)
+        self.assertEqual(response.json()['detail'],'unsupported_reasoning')
+
+    def test_inference_error_is_not_automatically_retried(self):
+        with patch.object(connection, 'access_token', return_value='secret'), \
+             patch.object(protocol, 'infer', side_effect=protocol.ChatGPTError('subscription_sharing_usage_unavailable')) as infer:
+            with self.assertRaises(protocol.ChatGPTError):
+                connection.request('test-model','text',connection_id='connection-one')
+        self.assertEqual(infer.call_count,1)
+
+    def test_cancellation_during_parallel_work_stops_new_dispatch(self):
+        Image.new('RGB',(60,90),'white').save(self.root / 'recipes' / self.recipe_id / 'third.png')
+        self.save_settings(ai_chatgpt_mode='formatted',ai_chatgpt_concurrency='2')
+        job = self.enqueue(self.owner)
+        both_started = threading.Barrier(2)
+        def response(*args,**kwargs):
+            both_started.wait(timeout=3)
+            conn = foundation.get_db()
+            conn.execute("UPDATE ai_text_jobs SET status='cancelled' WHERE id=?",(job['id'],))
+            conn.commit(); conn.close()
+            return {'text':'Completed in flight','usage':{'total_tokens':8}}
+        request = self.run_job(job['id'],response)
+        self.assertEqual(request.call_count,2)
+        row = self.row(job['id'])
+        self.assertEqual(row['status'],'cancelled')
+        self.assertEqual(row['active_pages_json'],'[]')
+        self.assertEqual(len(json.loads(row['checkpoint_json'])),2)
 
 
 if __name__ == '__main__':

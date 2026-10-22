@@ -448,6 +448,13 @@ def save_ai_settings(data: dict, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail="Unsupported AI provider")
     conn = get_db()
     existing = _ai_settings(conn, reveal_secret=True)
+    if data.get("ai_provider", existing.get("ai_provider")) == "chatgpt_subscription":
+        try:
+            from app.ai.transcription import options
+            options({**existing, **data})
+        except ValueError as exc:
+            conn.close()
+            raise HTTPException(status_code=400, detail=str(exc)) from None
     for key in AI_SETTING_KEYS:
         if key not in data:
             continue

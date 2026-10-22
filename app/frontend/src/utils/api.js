@@ -382,15 +382,27 @@ export async function saveUserKnittingTools(data, { keepalive = false } = {}) {
   return response;
 }
 
-export async function saveTextVersion(recipeId, contentMarkdown, language) {
+export async function saveTextVersion(recipeId, contentMarkdown, language, formatVersion) {
   const res = await fetch(`${API_BASE}/recipes/${recipeId}/text-version`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ content_markdown: contentMarkdown, language }),
+    body: JSON.stringify({ content_markdown: contentMarkdown, language, format_version: formatVersion }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || 'Failed to save text version');
   return data;
+}
+
+export async function fetchFormattedPrompt(language) {
+  const res = await fetch(`${API_BASE}/admin/ai/chatgpt/prompt?language=${encodeURIComponent(language)}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Prompt preview unavailable');
+  return (await res.json()).prompt;
+}
+
+export async function fetchAIJobDiagnostics(jobId) {
+  const res = await fetch(`${API_BASE}/admin/ai/chatgpt/jobs/${encodeURIComponent(jobId)}/diagnostics`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Diagnostics unavailable');
+  return res.json();
 }
 
 export async function generateTextVersion(recipeId, language) {

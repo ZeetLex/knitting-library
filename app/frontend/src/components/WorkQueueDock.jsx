@@ -3,6 +3,7 @@ import { Bot, CheckCircle2, Clock3, FileText, Loader2, PauseCircle, PlayCircle, 
 import { useApp } from '../utils/AppContext';
 import './WorkQueueDock.css';
 import { approveSubscriptionJob } from '../utils/api';
+import AIJobDiagnostics from './AIJobDiagnostics';
 
 function statusIcon(status) {
   if (status === 'ready_to_review') return <CheckCircle2 size={16} />;
@@ -57,13 +58,20 @@ export default function WorkQueueDock({
   onCancelAI,
   onDismissAI,
 }) {
-  const { t } = useApp();
+  const { t, user } = useApp();
   const [approving, setApproving] = useState(null);
   const [approvalError, setApprovalError] = useState('');
   const approve = async (job) => {
-    const message = t('chatgptApproveConfirm').replace('{REQUESTER}', job.generated_by || '')
+    let message = t('chatgptApproveConfirm').replace('{REQUESTER}', job.generated_by || '')
       .replace('{PAGES}', String(job.requested_pages || 0)).replace('{MODEL}', job.model || '')
       .replace('{CLEANUP}', job.cleanup_enabled ? t('chatgptCleanupYes') : t('chatgptCleanupNo'));
+    if (job.transcription_options) {
+      const cfg = job.transcription_options;
+      message += `\n\n${t('transcriptionMode')}: ${t(cfg.ai_chatgpt_mode === 'formatted' ? 'transcriptionFormatted' : 'transcriptionLegacy')}`
+        + `\n${t('transcriptionReasoning')}: ${t(cfg.ai_chatgpt_reasoning === 'medium' ? 'transcriptionMedium' : cfg.ai_chatgpt_reasoning === 'none' ? 'transcriptionNone' : 'transcriptionLow')}`
+        + `\n${t('transcriptionImageDetail')}: ${t(cfg.ai_chatgpt_detail === 'high' ? 'transcriptionHigh' : 'transcriptionOriginal')}`
+        + `\n${t('transcriptionConcurrency')}: ${cfg.ai_chatgpt_concurrency}`;
+    }
     if (!window.confirm(message)) return;
     setApproving(job.id); setApprovalError('');
     try { await approveSubscriptionJob(job); }
@@ -122,6 +130,8 @@ export default function WorkQueueDock({
                 {job.pages_sent ? <> · {job.pages_sent} {t('aiPagesShort') || 'pages'}</> : null}
               </span>
               {job.provider === 'chatgpt_subscription' && <span className="wq-meta">{t('chatgptUsingPlan')}</span>}
+              {job.provider === 'chatgpt_subscription' && job.total_pages > 0 && <span className="wq-meta">{t('transcriptionProgress').replace('{DONE}', job.completed_pages).replace('{TOTAL}', job.total_pages)}{job.active_pages?.length > 0 ? ` · ${t('transcriptionActive')}: ${job.active_pages.join(', ')}` : ''}</span>}
+              {job.provider === 'chatgpt_subscription' && complete && user?.is_admin && <AIJobDiagnostics jobId={job.id} />}
               {job.status === 'blocked_usage' && <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{t('chatgptManageUsage')}</a>}
               {job.error && <span className="wq-error">{job.provider === 'chatgpt_subscription'
                 ? (t(`chatgptError_${job.error}`) === `chatgptError_${job.error}` ? t('chatgptConnectionFailed') : t(`chatgptError_${job.error}`)) : job.error}</span>}

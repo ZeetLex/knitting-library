@@ -10,6 +10,7 @@ import CropModal from '../components/CropModal';
 import ReorderModal from '../components/ReorderModal';
 import ImageAdjustPanel from '../components/ImageAdjustPanel';
 import RepairPdfModal from '../components/RepairPdfModal';
+import RecipeReader, { RecipeTextEditor } from '../components/RecipeReader';
 import TaxonomyField from '../components/TaxonomyManager';
 import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
@@ -1795,13 +1796,13 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
           >
             <span />
           </div>
-          <div className="review-text-side">
+          <div className="review-text-side" data-recipe-editor-scope>
             <div className="review-page-nav">
-              <button className="btn-secondary" onClick={goPreviousPage} disabled={pageIndex === 0 || saving}>
+              <button className="btn-secondary" data-recipe-leave onClick={goPreviousPage} disabled={pageIndex === 0 || saving}>
                 <ChevronLeft size={15} />{t('previous') || 'Previous'}
               </button>
               <span>{page.page_key}</span>
-              <button className="btn-secondary" onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving}>
+              <button className="btn-secondary" data-recipe-leave onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving}>
                 {t('next') || 'Next'}<ChevronRight size={15} />
               </button>
             </div>
@@ -1823,7 +1824,10 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
                 </button>
               </div>
             </div>
-            <textarea className="review-textarea" value={draft} onChange={e => setDraft(e.target.value)} />
+            <div data-recipe-editor-scope>
+              <RecipeTextEditor className="review-textarea" value={draft} onChange={setDraft}
+                navigationKey={page?.id} dirty={draft !== cleanReviewDraftText(page?.reviewed_text || page?.source_text || page?.ocr_text || '')} />
+            </div>
             {(page.diagrams?.length > 0 || page.legends?.length > 0) && (
               <div className="review-assets">
                 {page.diagrams?.map(item => <img key={item.id} src={reviewAssetUrl(recipeId, item.image_path)} alt={item.title} />)}
@@ -1844,14 +1848,14 @@ function ReviewSessionPanel({ t, recipe, recipeId, language, session, setSession
       )}
       {page && (
         <div className="review-mobile-page-nav" aria-label={t('pageNavigation') || 'Page navigation'}>
-          <button onClick={goPreviousPage} disabled={pageIndex === 0 || saving} aria-label={t('previous') || 'Previous'}>
+          <button data-recipe-leave onClick={goPreviousPage} disabled={pageIndex === 0 || saving} aria-label={t('previous') || 'Previous'}>
             <ChevronLeft size={18} />
           </button>
           <span>
             {pages.length ? `${t('pdfPage') || 'Page'} ${pageIndex + 1} / ${pages.length}` : t('pdfPage') || 'Page'}
             {page.page_key ? ` · ${page.page_key}` : ''}
           </span>
-          <button onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving} aria-label={t('next') || 'Next'}>
+          <button data-recipe-leave onClick={goNextPage} disabled={pageIndex >= pages.length - 1 || saving} aria-label={t('next') || 'Next'}>
             <ChevronRight size={18} />
           </button>
         </div>
@@ -2194,7 +2198,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
   const save = async () => {
     setSaving(true); setError('');
     try {
-      const result = await saveTextVersion(recipeId, draft, language);
+      const result = await saveTextVersion(recipeId, draft, language, textVersion?.format_version || 'gfm-v1');
       setTextVersion(result);
       setEditing(false);
     } catch (e) {
@@ -2216,7 +2220,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
   }
 
   return (
-    <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}>
+    <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll} data-recipe-editor-scope>
       <div className="text-version-header">
         <div>
           <h2>{t('textVersion')}</h2>
@@ -2225,6 +2229,7 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
         <div className="text-version-actions">
           {hasText && !editing && <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>}
           {editing && <button className="btn-primary btn-icon-label" onClick={save} disabled={saving}><Save size={15} />{saving ? t('saving') : t('saveChanges')}</button>}
+          {editing && <button className="btn-secondary" onClick={() => { setDraft(textVersion?.content_markdown || ''); setEditing(false); }}>{t('cancel')}</button>}
           {aiEnabled && <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
             <Sparkles size={15} />{textVersion?.requires_owner_approval ? t('chatgptRequestOcr') : hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
           </button>}
@@ -2251,15 +2256,12 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
       ) : null}
       {editing || !hasText ? (
         (isGenerating || isReviewReady || isWaitingForOwner) ? null : (
-          <textarea
-            className="text-version-editor"
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            placeholder={t('textVersionEditorPlaceholder')}
-          />
+          <RecipeTextEditor className="text-version-editor" value={draft} onChange={setDraft}
+            initialPreview={false} navigationKey={recipeId} dirty={draft !== (textVersion?.content_markdown || '')} />
         )
       ) : (
-        <MarkdownView content={textVersion.content_markdown} />
+        <RecipeReader content={textVersion.content_markdown} formatVersion={textVersion.format_version}
+          legacyView={<MarkdownView content={textVersion.content_markdown} />} />
       )}
       {hasText && !editing && <GenerationAuditBar audit={textVersion?.generation_audit} t={t} />}
     </div>

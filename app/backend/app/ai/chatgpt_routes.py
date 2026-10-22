@@ -63,6 +63,29 @@ async def models(admin: dict = Depends(require_admin)):
     return await _call(connection.refresh_models)
 
 
+@router.get("/prompt")
+async def prompt_preview(language: str = "en", admin: dict = Depends(require_admin)):
+    from app.ai.transcription import formatted_prompt
+    return {"prompt": formatted_prompt(language)}
+
+
 @router.delete("")
 async def disconnect(admin: dict = Depends(require_admin)):
     return await _call(connection.disconnect)
+
+
+@router.get("/jobs/{job_id}/diagnostics")
+async def diagnostics(job_id: str, admin: dict = Depends(require_admin)):
+    from app.core.foundation import get_db
+    conn = get_db()
+    try:
+        job = conn.execute("SELECT id,provider,duration_seconds,provider_usage_json FROM ai_text_jobs WHERE id=?", (job_id,)).fetchone()
+        if not job or job["provider"] != "chatgpt_subscription":
+            raise HTTPException(status_code=404, detail="Job not found")
+        requests = [dict(row) for row in conn.execute("SELECT * FROM ai_request_metrics WHERE job_id=? ORDER BY created_at,id", (job_id,))]
+        for item in requests:
+            item["settings"] = json.loads(item.pop("settings_json"))
+        return {"job_id": job_id, "duration_seconds": job["duration_seconds"],
+                "usage": json.loads(job["provider_usage_json"] or "{}"), "requests": requests}
+    finally:
+        conn.close()
