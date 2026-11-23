@@ -9,6 +9,7 @@ export const language = {
 };
 
 const no = {
+    readingTextView: "Tekst",
     // App
     appName: "Strikkebibliotek",
     appLogoMain: "Strikke",

@@ -9,6 +9,7 @@ export const language = {
 };
 
 const hu = {
+    readingTextView: "Szöveg",
     // App
     appName: "Knitting Library",
     appLogoMain: "Knitting",

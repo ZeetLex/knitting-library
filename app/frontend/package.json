@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.7.0",
+    "playwright": "^1.65.1",
     "vite": "6.4.5"
   },
   "resolutions": {
@@ -26,6 +27,8 @@
     "start": "vite",
     "validate:locales": "node scripts/validate-locales.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:viewer": "node --test src/utils/recipeToolbar.test.mjs src/utils/viewerResume.test.mjs src/utils/readerPolicy.test.mjs",
+    "test:viewer:browser": "node scripts/test-recipe-toolbar-browser.cjs"
   }
 }

@@ -5,6 +5,8 @@ import { fetchRecipe, deleteRecipe, updateRecipe, pdfUrl, imageUrl, fetchPdfPage
 import { clampIndex, createLatestPayloadThrottle, mergeLocalViewerPresentation, normalizeViewerResume, pdfPagesReadyForAnchor, pdfScrollTopForAnchor, readViewerResume, recipeViewAvailability, resolveRecipeSourceMode, resolveViewerResume, viewerResumeKey } from '../utils/viewerResume.mjs';
 import { ImageAnnotationCanvas } from '../components/AnnotationCanvas';
 import ProjectStatus from '../components/ProjectStatus';
+import RecipeToolbar from '../components/RecipeToolbar';
+import { readingViewSelection } from '../utils/recipeToolbar.mjs';
 import KnittingToolbar from '../components/KnittingToolbar';
 import CropModal from '../components/CropModal';
 import ReorderModal from '../components/ReorderModal';
@@ -796,19 +798,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
     });
   };
 
-  const formatStartedShortDate = (iso) => {
-    if (!iso) return '';
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString(getLanguageLocale(language), {
-      day: 'numeric',
-      month: 'short',
-    });
-  };
-
   const isRecipeStarted = recipe?.project_status === 'active';
   const startedAtLabel = formatStartedDate(recipe?.active_started_at);
-  const startedAtShortLabel = formatStartedShortDate(recipe?.active_started_at);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('knitting-recipe-mobile-state', {
@@ -843,6 +834,19 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
       <button className="btn-back" onClick={onBack}>← {t('backToLibrary')}</button>
     </div>
   );
+
+  const readingToolbar = !fullscreen && viewMode !== 'review' ? (
+    <RecipeToolbar recipe={recipe} showText={showTextView}
+      activeView={viewMode === 'text' ? 'text' : sourceMode || 'original'}
+      onSelect={view => {
+        const selection = readingViewSelection(view);
+        updateViewMode(selection.viewMode);
+        if (selection.sourceMode) setSourceMode(selection.sourceMode);
+      }}
+      onFullscreen={() => updateFullscreen(true)} t={t}
+      suspended={!!mobilePanel || toolOpen || mobileImageEditing || editing || repairOpen || cropOpen || adjustOpen || reordering || deleteConfirm}
+    />
+  ) : null;
 
   return (
     <div className={`viewer ${viewMode === 'review' ? 'viewer--review-mode' : ''} ${viewMode === 'review' && reviewSession?.exists ? 'viewer--review-active' : ''} ${mobileImageEditing ? 'viewer--mobile-editing' : ''} ${mobileImagesVisible ? 'viewer--mobile-images-visible' : ''} ${mobilePanel ? 'viewer--mobile-panel-open' : ''} ${toolOpen ? 'viewer--tool-open' : ''} ${desktopInfoOpen ? '' : 'viewer--info-collapsed'}`}>
@@ -960,6 +964,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 setReviewSession(session);
                 updateViewMode('review');
               }}
+              readingToolbar={readingToolbar}
               panelRef={textPanelRef}
               onPanelScroll={handleTextPanelScroll}
             />
@@ -1004,7 +1009,8 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 )}
               </div>
 
-              <div className="pdf-pages-wrap" ref={pdfPagesRef} onScroll={handlePdfPanelScroll}>
+              <div className="pdf-pages-wrap" data-recipe-scroll ref={pdfPagesRef} onScroll={handlePdfPanelScroll}>
+                {readingToolbar}
                 {pdfPages.length > 0 ? (
                   // Render each page as an annotatable image
                   pdfPages.map((page, i) => (
@@ -1068,6 +1074,7 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                   <span>{t('exitFullscreen')}</span>
                 </button>
               )}
+              {readingToolbar}
               <div className="image-viewer-main">
                 {recipe.images.length > 0 ? (
                   <ImageAnnotationCanvas
@@ -1312,12 +1319,6 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
 
       <KnittingToolbar scope="recipe" recipeId={recipeId} t={t} open={toolOpen} onClose={() => setToolOpen(false)} />
 
-      {isRecipeStarted && (
-        <div className="recipe-started-badge recipe-started-badge--mobile" title={`${t('recipeStarted')}: ${startedAtLabel || t('projectActive')}`}>
-          <CheckCircle2 size={14} />
-          {startedAtShortLabel && <span className="recipe-started-badge-date">{startedAtShortLabel}</span>}
-        </div>
-      )}
 
       {!toolOpen && mobilePanel !== 'info' && (
         <ProjectStatus
@@ -1402,6 +1403,11 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
                 <Download size={19} />
                 <span>{recipe?.has_pdf || recipe?.file_type === 'pdf' ? t('downloadPdf') : t('downloadImages')}</span>
               </a>
+              {recipe.file_type === 'images' && recipe.has_pdf && recipe.images?.length > 0 && (
+                <button className="mobile-action-row" onClick={() => { setRepairOpen(true); setMobilePanel(null); }}>
+                  <Wrench size={19} /><span>{t('repairPdf')}</span>
+                </button>
+              )}
               <button className="mobile-action-row" onClick={() => { setEditing(true); setMobilePanel(null); }}>
                 <Pencil size={19} />
                 <span>{t('editRecipe')}</span>
@@ -2124,7 +2130,7 @@ function ReviewAssetModal({ t, mode, imageSrc, onClose, onSave }) {
   );
 }
 
-function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
+function TextVersionPanel({ readingToolbar, t, recipeId, language, aiEnabled, textVersion, setTextVersion, loading, setLoading, onTextJobQueued, onReviewReady, panelRef, onPanelScroll }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -2216,11 +2222,12 @@ function TextVersionPanel({ t, recipeId, language, aiEnabled, textVersion, setTe
   };
 
   if (loading) {
-    return <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll}><div className="spinner" /><p>{t('loading')}</p></div>;
+    return <div className="text-version-panel" data-recipe-scroll ref={panelRef} onScroll={onPanelScroll}>{readingToolbar}<div className="spinner" /><p>{t('loading')}</p></div>;
   }
 
   return (
-    <div className="text-version-panel" ref={panelRef} onScroll={onPanelScroll} data-recipe-editor-scope>
+    <div className="text-version-panel" data-recipe-scroll ref={panelRef} onScroll={onPanelScroll} data-recipe-editor-scope>
+      {readingToolbar}
       <div className="text-version-header">
         <div>
           <h2>{t('textVersion')}</h2>

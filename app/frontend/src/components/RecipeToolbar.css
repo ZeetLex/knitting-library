@@ -1,0 +1,35 @@
+/* Same floating surface as the collection search and bottom navigation. */
+.recipe-reading-expanded, .recipe-reading-compact { display: none; }
+@media (max-width: 899px) {
+  .recipe-reading-expanded { display: block; flex: 0 0 auto; min-height: 60px; padding: 4px 0; }
+  .recipe-reading-controls {
+    display: flex; align-items: center; gap: 3px; padding: 4px;
+    border: 1px solid var(--border); border-radius: 20px;
+    background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+    box-shadow: 0 10px 30px rgba(26,26,46,.16);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    color: var(--text-secondary);
+  }
+  .recipe-reading-controls button, .recipe-reading-label {
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    flex: 1 1 0; min-width: 44px; min-height: 44px; padding: 0 8px;
+    border: 0; border-radius: 15px; background: transparent; color: inherit;
+    font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
+  }
+  .recipe-reading-controls button { cursor: pointer; }
+  .recipe-reading-controls button[aria-pressed="true"] { background: var(--accent-muted); color: var(--accent); }
+  .recipe-reading-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .recipe-reading-controls .recipe-reading-fullscreen { flex: 0 0 44px; padding: 0; }
+  .recipe-reading-compact {
+    display: block; position: fixed; top: calc(var(--safe-top) + 8px);
+    left: calc(var(--safe-left) + 10px); right: calc(var(--safe-right) + 10px);
+    z-index: 170; pointer-events: none;
+  }
+  .recipe-reading-compact .recipe-reading-controls { width: max-content; max-width: 100%; margin: auto; border-radius: 999px; pointer-events: auto; }
+  .recipe-reading-compact button { flex: 0 1 auto; padding: 0 10px; border-radius: 999px; }
+  .recipe-reading-compact .recipe-reading-controls { animation: recipeToolbarIn .18s ease; }
+  body:has(.recipe-reader--focus) .recipe-reading-compact { display: none; }
+  @keyframes recipeToolbarIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  @media (max-width: 360px) { .recipe-reading-expanded button svg { display: none; } .recipe-reading-controls button { padding-inline: 5px; font-size: 12px; } }
+  @media (prefers-reduced-motion: reduce) { .recipe-reading-compact .recipe-reading-controls { animation: none; } }
+}

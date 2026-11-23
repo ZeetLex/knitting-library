@@ -9,6 +9,7 @@ export const language = {
 };
 
 const fr = {
+    readingTextView: "Texte",
     "appName": "Bibliothèque de tricot",
     "appLogoMain": "Tricot",
     "appLogoSub": "Bibliothèque",

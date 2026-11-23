@@ -1,0 +1,75 @@
+/* Insets come from WebKit, not model-specific notch/Island dimensions.
+   Normal pages own their padding; fixed overlays own theirs independently. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+@media (max-width: 899px) {
+
+  .library { padding-top: calc(12px + var(--safe-top)); padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right)); }
+  .inv-page { padding-top: calc(12px + var(--safe-top)); padding-left: calc(16px + var(--safe-left)); padding-right: calc(16px + var(--safe-right)); }
+  .stats-page { padding-top: calc(18px + var(--safe-top)); padding-left: calc(14px + var(--safe-left)); padding-right: calc(14px + var(--safe-right)); }
+  .settings-page, .help-page, .yv-page { padding-top: var(--safe-top); padding-left: var(--safe-left); padding-right: var(--safe-right); }
+  .home-page { padding-left: calc(14px + var(--safe-left)); padding-right: calc(14px + var(--safe-right)); }
+  .login-page { padding: calc(20px + var(--safe-top)) calc(16px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(16px + var(--safe-left)); }
+  .collection-toolbar:not(.collection-toolbar--compact-source), .inv-toolbar { top: var(--safe-top); }
+  .modal-overlay, .iw-overlay, .iw-help-overlay, .reader-unsaved-backdrop,
+  .review-asset-overlay, .fb-overlay, .ann-overlay, .taxonomy-overlay, .taxonomy-confirm-overlay, .adjust-panel-overlay {
+    padding-top: calc(12px + var(--safe-top)); padding-left: var(--safe-left); padding-right: var(--safe-right); padding-bottom: var(--safe-bottom);
+  }
+  .modal-overlay > *, .iw-modal, .iw-help-modal, .review-asset-modal, .fb-modal, .ann-modal, .taxonomy-modal, .adjust-panel {
+    max-height: min(92dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px));
+  }
+  .kt-panel { top: calc(8px + var(--safe-top)); right: calc(8px + var(--safe-right)); bottom: calc(8px + var(--safe-bottom)); max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 16px); }
+  .kt-panel-header { padding-top: 12px; }
+  .kt-modal-overlay { padding: var(--safe-top) var(--safe-right) 0 var(--safe-left); }
+  .kt-modal { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); }
+  .recipe-reader--focus {
+    padding: calc(12px + var(--safe-top)) calc(18px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(18px + var(--safe-left));
+    scroll-padding-top: calc(100px + var(--safe-top));
+  }
+  .recipe-reader--focus .recipe-reader-controls { top: calc(-12px - var(--safe-top)); padding-top: calc(12px + var(--safe-top)); }
+  .viewer .mobile-panel--info { top: calc(8px + var(--safe-top)); height: auto; }
+  .viewer .mobile-panel { max-height: calc(100dvh - var(--safe-top) - var(--app-mobile-nav-space, 0px) - 16px); }
+
+  .ann-modal { overflow-y: auto; }
+  .viewer .mobile-panel { left: var(--safe-left); right: var(--safe-right); }
+  .viewer--review-active .review-page-side { padding-top: 12px; }
+  .kt-tool { padding-bottom: 22px; }
+  .adjust-panel { padding-bottom: 0; }
+
+  .yv-image-wrap { top: var(--safe-top); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); }
+  .branding-crop-overlay { padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left)); }
+  .branding-crop-modal { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px); overflow-y: auto; }
+}
+
+/* Fixed fullscreen surfaces do not inherit page padding. */
+.pdf-container.pdf-fullscreen, .image-viewer.fullscreen {
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+@media (min-width: 900px) {
+  .app-shell { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+  .app-content { padding-top: var(--safe-top); }
+  .app-content > .viewer { min-height: 0; height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); }
+  .desktop-sidebar { left: var(--safe-left); top: var(--safe-top); bottom: var(--safe-bottom); height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); }
+}
+
+/* Large landscape phones may use the desktop layout and still report cutouts. */
+@media (min-width: 900px) {
+  .modal-overlay, .iw-overlay, .iw-help-overlay, .reader-unsaved-backdrop,
+  .review-asset-overlay, .fb-overlay, .ann-overlay, .taxonomy-overlay, .taxonomy-confirm-overlay, .adjust-panel-overlay, .branding-crop-overlay {
+    padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  }
+  .modal-overlay > *, .iw-modal, .iw-help-modal, .review-asset-modal, .fb-modal, .ann-modal, .taxonomy-modal, .adjust-panel, .branding-crop-modal {
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 32px);
+  }
+  .ann-modal, .branding-crop-modal { overflow-y: auto; }
+  .recipe-reader--focus {
+    padding-top: calc(24px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom));
+    padding-left: max(calc(18px + var(--safe-left)), calc((100vw - 1100px) / 2));
+    padding-right: max(calc(18px + var(--safe-right)), calc((100vw - 1100px) / 2));
+  }
+  .recipe-reader--focus .recipe-reader-controls { top: calc(-24px - var(--safe-top)); padding-top: calc(14px + var(--safe-top)); }
+}

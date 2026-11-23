@@ -12,7 +12,7 @@
   .viewer { min-height: 100dvh; }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer {
     height: 100dvh;
     overflow: hidden;
@@ -102,10 +102,6 @@
 .recipe-started-badge-date {
   color: color-mix(in srgb, #2f6d3c 76%, var(--text-secondary));
   font-weight: 600;
-}
-
-.recipe-started-badge--mobile {
-  display: none;
 }
 
 .viewer-action-btn {
@@ -946,7 +942,7 @@ a.viewer-action-btn { text-decoration: none; }
 }
 
 /* Desktop: two columns */
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer-body {
     display: grid;
     grid-template-columns: 1fr 280px;
@@ -1033,7 +1029,7 @@ a.viewer-action-btn { text-decoration: none; }
 }
 
 /* Desktop: revert to side column — hide the toggle */
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer-sidebar {
     position: static;
     max-height: none;
@@ -1061,7 +1057,7 @@ a.viewer-action-btn { text-decoration: none; }
   }
 }
 
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 641px) and (max-width: 899px) {
   .sidebar-content { padding: 18px 20px 80px; }
 }
 .viewer-title {
@@ -1073,7 +1069,7 @@ a.viewer-action-btn { text-decoration: none; }
   word-break: break-word;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer-title { font-size: 22px; }
 }
 
@@ -1134,7 +1130,7 @@ a.viewer-action-btn { text-decoration: none; }
   overflow: visible;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer-content {
     min-height: 0;
     order: 0;
@@ -1302,7 +1298,7 @@ a.viewer-action-btn { text-decoration: none; }
   overflow: visible;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .image-viewer {
     min-height: 0;
     overflow: hidden;
@@ -1328,7 +1324,7 @@ a.viewer-action-btn { text-decoration: none; }
   overflow: visible;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .image-viewer-main {
     min-height: 0;
     align-items: center;
@@ -1514,7 +1510,7 @@ a.viewer-action-btn { text-decoration: none; }
   scrollbar-width: thin;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .image-strip {
     overflow-y: hidden;
   }
@@ -1572,7 +1568,7 @@ a.viewer-action-btn { text-decoration: none; }
   display: none;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .viewer-info-toggle {
     display: flex;
   }
@@ -1720,7 +1716,7 @@ a.viewer-action-btn { text-decoration: none; }
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .adjust-panel {
     max-width: 860px;
     margin: 0 auto 18px;
@@ -2458,12 +2454,12 @@ a.viewer-action-btn { text-decoration: none; }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    Mobile Bottom Tab Bar & Slide-up Panels
-   Replaces the old fixed sidebar + image chrome on mobile (< 769px).
-   Desktop layout (≥ 769px) is completely unchanged.
+   Replaces the old fixed sidebar + image chrome on mobile (< 900px).
+   Desktop layout (≥ 900px) is completely unchanged.
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /* ── Suppress old mobile chrome on mobile ─────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 899px) {
   .viewer {
     --mobile-recipe-viewer-height: calc(100dvh - var(--app-mobile-nav-space, 0px));
     --review-mobile-page-nav-height: 44px;
@@ -2509,28 +2505,7 @@ a.viewer-action-btn { text-decoration: none; }
     display: none;
   }
 
-  .recipe-started-badge--mobile {
-    position: fixed;
-    top: calc(58px + env(safe-area-inset-top, 0px));
-    right: max(12px, env(safe-area-inset-right, 12px));
-    z-index: 137;
-    display: inline-flex;
-    max-width: min(34vw, 112px);
-    min-height: 30px;
-    padding: 6px 9px;
-    gap: 5px;
-    font-size: 11px;
-    box-shadow: 0 10px 28px rgba(47, 109, 60, 0.16);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-
-  .recipe-started-badge--mobile .recipe-started-badge-date {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .viewer-body {
+.viewer-body {
     height: var(--mobile-recipe-viewer-height);
     min-height: 0;
     overflow: hidden;
@@ -2864,7 +2839,7 @@ a.viewer-action-btn { text-decoration: none; }
 /* ── Mobile slide-up panels ─────────────────────────────────────────────────── */
 .mobile-panel { display: none; } /* desktop: hidden */
 
-@media (max-width: 768px) {
+@media (max-width: 899px) {
   .mobile-panel {
     display: flex;
     flex-direction: column;
@@ -3290,4 +3265,28 @@ a.viewer-action-btn { text-decoration: none; }
     color: #d94c4c !important;
     border-color: rgba(217, 76, 76, 0.28) !important;
   }
+}
+
+/* Mobile reading chrome has one viewport budget; nested readers fill it. */
+@media (max-width: 899px) {
+  .viewer { padding: var(--safe-top) var(--safe-right) 0 var(--safe-left); }
+  .viewer .viewer-mode-tabs, .viewer .viewer-source-tabs,
+  .viewer .pdf-container:not(.pdf-fullscreen) > .pdf-controls { display: none; }
+  .viewer-body { height: auto; flex: 1; padding-bottom: var(--app-mobile-nav-space, 0px); }
+  .viewer-content, .image-viewer, .image-viewer-main { height: 100%; flex: 1 1 auto; min-height: 0; }
+  .viewer-content { display: flex; flex-direction: column; }
+  .viewer .pdf-container { min-height: 0; }
+  .viewer .pdf-pages-wrap { min-height: 0; }
+  .viewer .pdf-page-block { flex-shrink: 0; }
+  .viewer .text-version-panel, .viewer .pdf-pages-wrap { scroll-padding-top: 72px; }
+  .image-viewer > .recipe-reading-expanded { margin: 0 10px; }
+  .image-viewer-main { height: auto; flex: 1 1 0; }
+  .viewer--mobile-images-visible .viewer-body { padding-bottom: calc(var(--app-mobile-nav-space, 0px) + 88px); }
+  .viewer--mobile-editing .viewer-body { padding-bottom: calc(var(--app-mobile-nav-space, 0px) + 148px); }
+  .viewer--review-active .viewer-body { height: auto; padding-bottom: var(--review-mobile-footer-space); }
+  .viewer--review-active .viewer-content, .viewer--review-active .review-panel { height: 100%; flex: 1; min-height: 0; }
+  .viewer .pdf-fullscreen { padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
+  .viewer .pdf-fullscreen .pdf-controls { flex-wrap: nowrap; }
+  .viewer .image-viewer.fullscreen { height: 100dvh; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
+  .viewer .image-viewer.fullscreen .image-viewer-main { height: auto; flex: 1; }
 }

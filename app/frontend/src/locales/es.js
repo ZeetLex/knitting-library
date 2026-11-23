@@ -9,6 +9,7 @@ export const language = {
 };
 
 const es = {
+    readingTextView: "Texto",
     "appName": "Biblioteca de tejido",
     "appLogoMain": "Tejido",
     "appLogoSub": "Biblioteca",
