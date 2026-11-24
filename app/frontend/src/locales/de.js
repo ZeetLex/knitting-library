@@ -1072,6 +1072,8 @@ const de = {
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Anleitungsleser",
+  readerSettings: "Leseeinstellungen",
+  readerDocumentActions: "Textaktionen",
   readerTextSize: "Textgröße",
   readerSpacing: "Zeilenabstand",
   readerCompact: "Kompakt",

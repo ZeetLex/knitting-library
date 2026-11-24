@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import { List, Maximize2, Minimize2, MoreHorizontal, AlertTriangle } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import { safeReaderUrl, readerHeadings, preserveInstructionNumbers, formatSelection } from '../utils/readerPolicy.mjs';
 import './RecipeReader.css';
@@ -23,23 +24,24 @@ export function RecipeMarkdown({ content, prefix = 'recipe' }) {
     }}>{content || ''}</ReactMarkdown></div>;
 }
 
-export default function RecipeReader({ content, formatVersion = 'legacy', legacyView }) {
+export default function RecipeReader({ content, formatVersion = 'legacy', legacyView, documentControls, outdated = false }) {
   const { t } = useApp();
   const prefix = useId().replace(/:/g, '');
-  const [enhanced, setEnhanced] = useState(formatVersion === 'gfm-v1');
+  const [enhanced, setEnhanced] = useState(true);
+  const [panel, setPanel] = useState(null);
   const [size, setSize] = useState(18);
   const [spacing, setSpacing] = useState('1.75');
   const [focus, setFocus] = useState(false);
   const container = useRef(null);
   const headings = useMemo(() => readerHeadings(content), [content]);
-  useEffect(() => { setEnhanced(formatVersion === 'gfm-v1'); }, [formatVersion]);
+  useEffect(() => { setEnhanced(true); setPanel(null); }, [content, formatVersion]);
   useEffect(() => {
     if (!focus) return undefined;
     const previousFocus = document.activeElement;
     const escape = e => {
       if (e.key === 'Escape') setFocus(false);
       if (e.key === 'Tab') {
-        const items = [...container.current.querySelectorAll('button,a[href],input,select,summary,[tabindex="0"]')];
+        const items = [...container.current.querySelectorAll('button,a[href],input,select,summary,[tabindex="0"]')].filter(item => !item.disabled && item.getClientRects().length);
         const first = items[0], last = items.at(-1);
         if (e.shiftKey && (document.activeElement === first || document.activeElement === container.current)) { e.preventDefault(); last?.focus(); }
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
@@ -51,17 +53,40 @@ export default function RecipeReader({ content, formatVersion = 'legacy', legacy
   }, [focus]);
   return <section ref={container} tabIndex={-1} className={`recipe-reader ${focus ? 'recipe-reader--focus' : ''}`}
     style={{ '--reader-size': `${size}px`, '--reader-spacing': spacing }} aria-label={t('recipeReader')}>
-    <div className="recipe-reader-controls">
-      <label>{t('readerTextSize')} <input aria-label={t('readerTextSize')} type="range" min="14" max="26" value={size} onChange={e => setSize(Number(e.target.value))} /></label>
-      <label>{t('readerSpacing')} <select value={spacing} onChange={e => setSpacing(e.target.value)}>
-        <option value="1.5">{t('readerCompact')}</option><option value="1.75">{t('readerComfortable')}</option><option value="2">{t('readerSpacious')}</option>
-      </select></label>
-      {legacyView && formatVersion !== 'gfm-v1' && <button type="button" className="btn-secondary" aria-pressed={enhanced} onClick={() => setEnhanced(!enhanced)}>{t('readerEnhanced')}</button>}
-      <button type="button" className="btn-secondary" aria-pressed={focus} onClick={() => setFocus(!focus)}>{t(focus ? 'readerExitFocus' : 'readerFocus')}</button>
+    <div className="recipe-reader-controls" onKeyDown={e => {
+      if (e.key === 'Escape' && panel) {
+        e.stopPropagation();
+        container.current?.querySelector(`[data-reader-panel="${panel}"]`)?.focus();
+        setPanel(null);
+      }
+    }}>
+      <div className="recipe-reader-bar">
+        <span className="recipe-reader-title">{t('textVersion')}</span>
+        {outdated && <button type="button" className="recipe-reader-stale" title={t('textVersionOutdated')} aria-label={t('textVersionOutdated')}
+          aria-expanded={panel === 'document'} aria-controls={`${prefix}-document`} onClick={() => setPanel(panel === 'document' ? null : 'document')}><AlertTriangle size={17} /></button>}
+        <div className="recipe-reader-tools">
+          {enhanced && headings.length > 1 && <button type="button" data-reader-panel="contents" aria-label={t('readerContents')} title={t('readerContents')}
+            aria-expanded={panel === 'contents'} aria-controls={`${prefix}-contents`} onClick={() => setPanel(panel === 'contents' ? null : 'contents')}><List size={19} /></button>}
+          <button type="button" data-reader-panel="appearance" aria-label={t('readerSettings')} title={t('readerSettings')}
+            aria-expanded={panel === 'appearance'} aria-controls={`${prefix}-appearance`} onClick={() => setPanel(panel === 'appearance' ? null : 'appearance')}><span className="recipe-reader-aa">Aa</span></button>
+          <button type="button" aria-label={t(focus ? 'readerExitFocus' : 'readerFocus')} title={t(focus ? 'readerExitFocus' : 'readerFocus')}
+            aria-pressed={focus} onClick={() => { setPanel(null); setFocus(!focus); }}>{focus ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+          {documentControls && <button type="button" data-reader-panel="document" aria-label={t('readerDocumentActions')} title={t('readerDocumentActions')}
+            aria-expanded={panel === 'document'} aria-controls={`${prefix}-document`} onClick={() => setPanel(panel === 'document' ? null : 'document')}><MoreHorizontal size={21} /></button>}
+        </div>
+      </div>
+      <div hidden={panel !== 'appearance'} id={`${prefix}-appearance`} className="recipe-reader-settings">
+        <label>{t('readerTextSize')} <input aria-label={t('readerTextSize')} type="range" min="14" max="26" value={size} onChange={e => setSize(Number(e.target.value))} /></label>
+        <label>{t('readerSpacing')} <select value={spacing} onChange={e => setSpacing(e.target.value)}>
+          <option value="1.5">{t('readerCompact')}</option><option value="1.75">{t('readerComfortable')}</option><option value="2">{t('readerSpacious')}</option>
+        </select></label>
+        {legacyView && formatVersion !== 'gfm-v1' && <button type="button" className="btn-secondary" aria-pressed={enhanced} onClick={() => setEnhanced(!enhanced)}>{t('readerEnhanced')}</button>}
+      </div>
+      {enhanced && headings.length > 1 && <nav hidden={panel !== 'contents'} id={`${prefix}-contents`} className="recipe-reader-contents" aria-label={t('readerContents')}>
+        {headings.map(heading => <a key={heading.line} style={{ paddingInlineStart: `${(heading.depth - 1) * 12}px` }} href={`#${prefix}-${heading.line}`} onClick={() => setPanel(null)}>{heading.label}</a>)}
+      </nav>}
+      {documentControls && <div hidden={panel !== 'document'} id={`${prefix}-document`} className="recipe-reader-document">{documentControls}</div>}
     </div>
-    {enhanced && headings.length > 1 && <details className="recipe-reader-contents"><summary>{t('readerContents')}</summary><nav aria-label={t('readerContents')}>
-      {headings.map(heading => <a key={heading.line} style={{ paddingInlineStart: `${(heading.depth - 1) * 12}px` }} href={`#${prefix}-${heading.line}`}>{heading.label}</a>)}
-    </nav></details>}
     {enhanced || !legacyView ? <RecipeMarkdown content={content} prefix={prefix} /> : legacyView}
   </section>;
 }

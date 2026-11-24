@@ -1134,6 +1134,8 @@ Knitting Library`,
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Recipe reader",
+  readerSettings: "Reading settings",
+  readerDocumentActions: "Text actions",
   readerTextSize: "Text size",
   readerSpacing: "Line spacing",
   readerCompact: "Compact",

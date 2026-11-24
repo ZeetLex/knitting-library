@@ -17,11 +17,11 @@
 
 services:
   app:
-    image: zeetlex/knitting-library:latest
+    image: zeetlex/knitting-library:${KNITTING_IMAGE_TAG:-latest}
     container_name: knitting-library
     restart: unless-stopped
     ports:
-      - "3000:8080"
+      - "${KNITTING_PORT:-3000}:8080"
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}

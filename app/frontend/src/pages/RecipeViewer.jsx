@@ -2228,7 +2228,7 @@ function TextVersionPanel({ readingToolbar, t, recipeId, language, aiEnabled, te
   return (
     <div className="text-version-panel" data-recipe-scroll ref={panelRef} onScroll={onPanelScroll} data-recipe-editor-scope>
       {readingToolbar}
-      <div className="text-version-header">
+      {(!hasText || editing) && <div className="text-version-header">
         <div>
           <h2>{t('textVersion')}</h2>
           <p>{hasText ? t('textVersionReadyHint') : t('textVersionEmptyHint')}</p>
@@ -2241,8 +2241,8 @@ function TextVersionPanel({ readingToolbar, t, recipeId, language, aiEnabled, te
             <Sparkles size={15} />{textVersion?.requires_owner_approval ? t('chatgptRequestOcr') : hasText ? t('regenerateTextVersion') : (t('queueTextVersion') || t('createTextVersion'))}
           </button>}
         </div>
-      </div>
-      {textVersion?.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
+      </div>}
+      {textVersion?.is_outdated && editing && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
       {error && <p className="status-error">{error}</p>}
       {!hasText && (isGenerating || isReviewReady || isWaitingForOwner) ? (
         <div className="text-generation-state">
@@ -2267,10 +2267,20 @@ function TextVersionPanel({ readingToolbar, t, recipeId, language, aiEnabled, te
             initialPreview={false} navigationKey={recipeId} dirty={draft !== (textVersion?.content_markdown || '')} />
         )
       ) : (
-        <RecipeReader content={textVersion.content_markdown} formatVersion={textVersion.format_version}
+        <RecipeReader content={textVersion.content_markdown} formatVersion={textVersion.format_version} outdated={textVersion.is_outdated}
+          documentControls={<>
+            <p className="recipe-reader-hint">{t('textVersionReadyHint')}</p>
+            {textVersion.is_outdated && <p className="text-version-warning">{t('textVersionOutdated')}</p>}
+            <div className="recipe-reader-document-actions">
+              <button className="btn-secondary btn-icon-label" onClick={() => setEditing(true)}><Pencil size={15} />{t('edit')}</button>
+              {aiEnabled && <button className="btn-secondary btn-icon-label" onClick={generate} disabled={loading || saving}>
+                <Sparkles size={15} />{textVersion.requires_owner_approval ? t('chatgptRequestOcr') : t('regenerateTextVersion')}
+              </button>}
+            </div>
+            <GenerationAuditBar audit={textVersion.generation_audit} t={t} />
+          </>}
           legacyView={<MarkdownView content={textVersion.content_markdown} />} />
       )}
-      {hasText && !editing && <GenerationAuditBar audit={textVersion?.generation_audit} t={t} />}
     </div>
   );
 }

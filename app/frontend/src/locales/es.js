@@ -1072,6 +1072,8 @@ const es = {
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Lector del patrón",
+  readerSettings: "Ajustes de lectura",
+  readerDocumentActions: "Acciones del texto",
   readerTextSize: "Tamaño del texto",
   readerSpacing: "Interlineado",
   readerCompact: "Compacto",

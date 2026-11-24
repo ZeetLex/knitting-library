@@ -18,6 +18,8 @@ docker compose up -d
 
 Open `http://localhost:3000`.
 
+If that host port is occupied, set `KNITTING_PORT=3001` in a local `.env` file and run `docker compose up -d` again. The app then opens at `http://localhost:3001`; the internal container port stays `8080`. Set `KNITTING_IMAGE_TAG=beta` in the same file to use beta images for local testing. Without these overrides, Compose uses port `3000` and the `latest` tag.
+
 On first launch, Knitting Library shows a setup screen for creating the first admin account. There are no default credentials. The first admin password must be at least 12 characters.
 
 Existing installs are not changed. If your database already contains users, the normal login screen appears.
