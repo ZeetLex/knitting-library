@@ -21,6 +21,7 @@ export default function CollectionToolbar({
   viewValue,
   onViewChange,
   actions = [],
+  primaryAction,
   children,
   compactSearch = false,
 }) {
@@ -69,9 +70,15 @@ export default function CollectionToolbar({
     >
       <div className="collection-toolbar-inner">
         {title && (
-          <div className="collection-toolbar-heading">
-            <h1>{title}</h1>
-            {subtitle && <p>{subtitle}</p>}
+          <div className={`collection-toolbar-heading ${primaryAction ? 'collection-toolbar-heading--action' : ''}`}>
+            <div className="collection-toolbar-heading-copy">
+              <h1>{title}</h1>
+              {subtitle && <p>{subtitle}</p>}
+            </div>
+            {primaryAction && <button type="button" className="collection-primary-action" onClick={primaryAction.onClick}
+              aria-label={primaryAction.label} title={primaryAction.label}>
+              {primaryAction.icon}<span>{primaryAction.label}</span>
+            </button>}
           </div>
         )}
 
@@ -178,7 +185,7 @@ export default function CollectionToolbar({
       {children}
       {compactSearch && (
         <div className={`collection-compact-search ${compactVisible ? 'visible' : ''}`} aria-hidden={!compactVisible}>
-          <div className="collection-compact-search-inner">
+          <div className={`collection-compact-search-inner ${primaryAction ? 'collection-compact-search-inner--action' : ''}`}>
             <Search size={17} className="collection-compact-search-icon" />
             <input
               type={searchType}
@@ -200,6 +207,10 @@ export default function CollectionToolbar({
                 <X size={15} />
               </button>
             )}
+            {primaryAction && <button type="button" className="collection-primary-action collection-primary-action--compact"
+              onClick={primaryAction.onClick} aria-label={primaryAction.label} title={primaryAction.label} tabIndex={compactVisible ? 0 : -1}>
+              {primaryAction.icon}
+            </button>}
             <button
               type="button"
               className="collection-compact-top"

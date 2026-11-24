@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   SlidersHorizontal, X, Grid2X2, LayoutGrid, Square, List,
   Play, CheckCircle, Trash2, CheckSquare, Square as SquareIcon, Settings2,
-  MousePointer2, Tag, ArrowUpDown, ChevronDown,
+  MousePointer2, Tag, ArrowUpDown, ChevronDown, Plus,
 } from 'lucide-react';
 import RecipeCard from '../components/RecipeCard';
 import CollectionToolbar from '../components/CollectionToolbar';
@@ -409,6 +409,7 @@ export default function Library({ refreshKey, onRecipeClick, onUploadClick }) {
       <CollectionToolbar
         title={t('recipeLibraryTitle')}
         subtitle={t('recipeLibrarySubtitle')}
+        primaryAction={{ label: t('addRecipe'), icon: <Plus size={20} />, onClick: onUploadClick }}
         searchType="text"
         searchValue={search}
         onSearchChange={setSearch}

@@ -56,7 +56,7 @@ function AddActionMenu({ open, variant, onClose, onImportRecipe, onAddYarn, onAd
   );
 }
 
-function AppMenu({ open, onClose, onNavigate }) {
+function AppMenu({ open, onClose, onNavigate, onAdd }) {
   const { t, logout } = useApp();
 
   if (!open) return null;
@@ -77,6 +77,9 @@ function AppMenu({ open, onClose, onNavigate }) {
           </button>
         </div>
         <div className="app-menu-items">
+          <button className="app-menu-create" onClick={() => { onClose(); onAdd(); }}>
+            <Plus size={18} /><span>{t('navAddSomething')}</span>
+          </button>
           {items.map(item => (
             <button
               key={item.key}
@@ -139,12 +142,10 @@ function MobileNav({
   recipeReviewSaving,
   recipeToolOpen,
   toolsOpen,
-  addOpen,
   menuOpen,
   onOpenTools,
   onToggleCollapsed,
   onNavigate,
-  onAddClick,
   onInventoryClick,
   onMenuClick,
   onRecipeBack,
@@ -327,15 +328,6 @@ function MobileNav({
         <span>{t('navLibraryShort')}</span>
       </button>
       <div className="mobile-nav-main-split">
-        <button
-          className="mobile-nav-main-split-btn mobile-nav-main-split-btn--add"
-          onClick={onAddClick}
-          aria-label={t('navAddSomething')}
-          aria-expanded={addOpen}
-        >
-          <Plus size={19} />
-          <span>{t('navAddShort')}</span>
-        </button>
         <button
           className="mobile-nav-main-split-btn mobile-nav-main-split-btn--tools"
           onClick={onOpenTools}
@@ -580,12 +572,10 @@ export default function AppShell({
         recipeReviewSaving={recipeMobileState.reviewSaving}
         recipeToolOpen={recipeMobileState.toolOpen}
         toolsOpen={toolsOpen}
-        addOpen={addOpen}
         menuOpen={menuOpen}
         onOpenTools={onOpenTools}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}
-        onAddClick={() => setAddOpen(o => !o)}
         onInventoryClick={() => onNavigate('inventory')}
         onMenuClick={() => setMenuOpen(true)}
         onRecipeBack={onRecipeBack}
@@ -605,7 +595,7 @@ export default function AppShell({
         onAddYarn={onAddYarn}
         onAddTool={onAddTool}
       />
-      <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} onNavigate={onNavigate} />
+      <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} onNavigate={onNavigate} onAdd={() => setAddOpen(true)} />
     </div>
   );
 }
