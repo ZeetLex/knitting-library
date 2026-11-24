@@ -1,0 +1,76 @@
+/* One quiet canvas from the status area to the home indicator. Wallpaper is
+   restored automatically when RecipeViewer removes its root attribute. */
+html[data-background][data-recipe-surface] {
+  --recipe-surface-color: #242426;
+  --recipe-chrome-bg: #343437;
+  --recipe-chrome-text: #f4f1ed;
+  --recipe-chrome-muted: #c4c2c8;
+  --recipe-chrome-border: rgba(255, 255, 255, .14);
+  --app-background-color: var(--recipe-surface-color);
+  --app-background-image: none;
+  background-color: var(--recipe-surface-color);
+}
+
+html[data-background][data-recipe-surface="text"] {
+  --recipe-surface-color: var(--bg-primary);
+  --recipe-chrome-bg: var(--card-bg);
+  --recipe-chrome-text: var(--text-primary);
+  --recipe-chrome-muted: var(--text-secondary);
+  --recipe-chrome-border: var(--border);
+}
+
+/* Switch the page and the reader together; the normal body color animation
+   otherwise briefly exposes a different shade around the reading pane. */
+[data-recipe-surface] body {
+  transition-property: color;
+}
+
+[data-recipe-surface] .app-shell--recipe,
+[data-recipe-surface] .app-shell--recipe::before,
+[data-recipe-surface] .app-shell--recipe .viewer,
+[data-recipe-surface] .app-shell--recipe .viewer-content,
+[data-recipe-surface] .viewer .pdf-pages-wrap,
+[data-recipe-surface] .viewer .pdf-fullscreen,
+[data-recipe-surface] .viewer .image-viewer,
+[data-recipe-surface] .viewer .image-viewer-main {
+  background: var(--recipe-surface-color);
+}
+
+/* Keep the floating controls legible and tinted to their reading surface.
+   The compact toolbar is portalled to body, so it shares the same scope. */
+[data-recipe-surface] :is(.mobile-nav--recipe, .mobile-nav-collapse, .recipe-reading-controls) {
+  --card-bg: var(--recipe-chrome-bg);
+  --text-primary: var(--recipe-chrome-text);
+  --text-secondary: var(--recipe-chrome-muted);
+  --border: var(--recipe-chrome-border);
+  border-color: var(--recipe-chrome-border);
+}
+
+[data-recipe-surface="document"] .pdf-page-number {
+  color: var(--recipe-chrome-muted);
+}
+
+[data-recipe-surface="document"] .pdf-page-number .set-cover-btn {
+  color: var(--recipe-chrome-muted);
+  border-color: var(--recipe-chrome-border);
+}
+
+@media (max-width: 899px) {
+  /* A light scroll-edge treatment joins the content to the navigation space.
+     Editing trays and review controls keep their own independent surfaces. */
+  [data-recipe-surface] .viewer:not(.viewer--mobile-editing):not(.viewer--mobile-images-visible):not(.viewer--review-mode) .viewer-content::after {
+    content: "";
+    position: fixed;
+    left: var(--safe-left);
+    right: var(--safe-right);
+    bottom: var(--app-mobile-nav-space);
+    height: 16px;
+    background: linear-gradient(to bottom, transparent, var(--recipe-surface-color));
+    pointer-events: none;
+    z-index: 140;
+  }
+
+  [data-recipe-surface] .viewer :is(.pdf-pages-wrap, .text-version-panel) {
+    padding-bottom: 24px;
+  }
+}

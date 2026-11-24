@@ -4,6 +4,7 @@ import App from './App';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import './index.css';
 import './safeAreas.css';
+import './recipeSurface.css';
 // Self-hosted fonts via @fontsource — no Google CDN requests at runtime
 import '@fontsource/playfair-display/400.css';
 import '@fontsource/playfair-display/600.css';

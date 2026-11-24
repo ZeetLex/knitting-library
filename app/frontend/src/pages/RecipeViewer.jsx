@@ -18,7 +18,7 @@ import { getLanguageLocale } from '../utils/translations';
 import './RecipeViewer.css';
 
 export default function RecipeViewer({ recipeId, initialViewMode = 'original', onBack, onDeleted, onTextJobQueued }) {
-  const { t, language, user } = useApp();
+  const { t, language, user, theme } = useApp();
   const initialResume = readViewerResume(user, recipeId);
   const initialState = normalizeViewerResume(initialResume, initialViewMode);
   const [recipe, setRecipe]         = useState(null);
@@ -44,6 +44,31 @@ export default function RecipeViewer({ recipeId, initialViewMode = 'original', o
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
   const [viewMode, setViewMode] = useState(initialState.viewMode);
+  // The page canvas owns the safe areas too, so Safari never samples wallpaper
+  // above or below a document. Restore the chosen wallpaper when leaving it.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const previous = root.getAttribute('data-recipe-surface');
+    root.setAttribute('data-recipe-surface', viewMode === 'original' ? 'document' : 'text');
+    return () => {
+      if (previous == null) root.removeAttribute('data-recipe-surface');
+      else root.setAttribute('data-recipe-surface', previous);
+    };
+  }, [viewMode]);
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return undefined;
+    const previous = meta.getAttribute('content');
+    // Read after the app's theme effect has updated the root CSS variables.
+    const frame = requestAnimationFrame(() => {
+      meta.setAttribute('content', getComputedStyle(document.documentElement).backgroundColor);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (previous == null) meta.removeAttribute('content');
+      else meta.setAttribute('content', previous);
+    };
+  }, [viewMode, theme]);
   const [textVersion, setTextVersion] = useState(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const { showText: showTextView } = recipeViewAvailability(viewMode, aiEnabled, !!textVersion?.exists);
