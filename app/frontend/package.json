@@ -29,6 +29,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:viewer": "node --test src/utils/recipeToolbar.test.mjs src/utils/viewerResume.test.mjs src/utils/readerPolicy.test.mjs",
-    "test:viewer:browser": "node scripts/test-recipe-toolbar-browser.cjs"
+    "test:viewer:browser": "node scripts/test-recipe-toolbar-browser.cjs",
+    "test:navigation:browser": "node scripts/test-mobile-navigation-browser.cjs"
   }
 }

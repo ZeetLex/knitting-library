@@ -1072,6 +1072,11 @@ const de = {
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Anleitungsleser",
+  navHomeShort: "Start",
+  navLibraryShort: "Muster",
+  navInventoryShort: "Vorrat",
+  navAddShort: "Neu",
+  navToolsShort: "Tools",
   navBack: "Zurück",
   readerSettings: "Leseeinstellungen",
   readerDocumentActions: "Textaktionen",

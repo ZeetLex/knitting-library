@@ -139,6 +139,8 @@ function MobileNav({
   recipeReviewSaving,
   recipeToolOpen,
   toolsOpen,
+  addOpen,
+  menuOpen,
   onOpenTools,
   onToggleCollapsed,
   onNavigate,
@@ -310,26 +312,29 @@ function MobileNav({
         className={`mobile-nav-item-main ${activeView === 'home' ? 'active' : ''}`}
         onClick={() => onNavigate('home')}
         aria-label={t('navHome')}
+        aria-current={activeView === 'home' ? 'page' : undefined}
       >
         <Home size={21} />
-        <span>{t('navHome')}</span>
+        <span>{t('navHomeShort')}</span>
       </button>
       <button
         className={`mobile-nav-item-main ${activeView === 'recipes' ? 'active' : ''}`}
         onClick={() => onNavigate('recipes')}
         aria-label={t('tabRecipes')}
+        aria-current={activeView === 'recipes' ? 'page' : undefined}
       >
         <BookOpen size={21} />
-        <span>{t('tabRecipes')}</span>
+        <span>{t('navLibraryShort')}</span>
       </button>
       <div className="mobile-nav-main-split">
         <button
           className="mobile-nav-main-split-btn mobile-nav-main-split-btn--add"
           onClick={onAddClick}
           aria-label={t('navAddSomething')}
+          aria-expanded={addOpen}
         >
           <Plus size={19} />
-          <span>{t('navAdd')}</span>
+          <span>{t('navAddShort')}</span>
         </button>
         <button
           className="mobile-nav-main-split-btn mobile-nav-main-split-btn--tools"
@@ -337,18 +342,19 @@ function MobileNav({
           aria-label={t('toolbarTitleGlobal')}
         >
           <Wrench size={19} />
-          <span>{t('toolNavLabel')}</span>
+          <span>{t('navToolsShort')}</span>
         </button>
       </div>
       <button
         className={`mobile-nav-item-main ${activeView === 'inventory' || activeView === 'yarnDatabase' ? 'active' : ''}`}
         onClick={() => onNavigate('inventory')}
         aria-label={t('tabInventory')}
+        aria-current={activeView === 'inventory' || activeView === 'yarnDatabase' ? 'page' : undefined}
       >
         {items[2].icon}
-        <span>{items[2].label}</span>
+        <span>{t('navInventoryShort')}</span>
       </button>
-      <button className="mobile-nav-item-main" onClick={onMenuClick} aria-label={t('navMenu')}>
+      <button className={`mobile-nav-item-main ${['settings', 'stats', 'help'].includes(activeView) ? 'active' : ''}`} onClick={onMenuClick} aria-label={t('navMenu')} aria-expanded={menuOpen}>
         <Menu size={21} />
         <span>{t('navMenu')}</span>
       </button>
@@ -574,6 +580,8 @@ export default function AppShell({
         recipeReviewSaving={recipeMobileState.reviewSaving}
         recipeToolOpen={recipeMobileState.toolOpen}
         toolsOpen={toolsOpen}
+        addOpen={addOpen}
+        menuOpen={menuOpen}
         onOpenTools={onOpenTools}
         onToggleCollapsed={mobileNavCollapsed ? () => setMobileNavCollapsed(false) : collapseMobileNav}
         onNavigate={onNavigate}

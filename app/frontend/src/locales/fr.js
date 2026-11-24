@@ -1072,6 +1072,11 @@ const fr = {
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Lecture du modèle",
+  navHomeShort: "Accueil",
+  navLibraryShort: "Modèles",
+  navInventoryShort: "Stock",
+  navAddShort: "Ajouter",
+  navToolsShort: "Outils",
   navBack: "Retour",
   readerSettings: "Réglages de lecture",
   readerDocumentActions: "Actions du texte",
