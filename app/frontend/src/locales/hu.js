@@ -1133,6 +1133,7 @@ Knitting Library`,
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Mintaleolvasó",
+  navBack: "Vissza",
   readerSettings: "Olvasási beállítások",
   readerDocumentActions: "Szövegműveletek",
   readerTextSize: "Betűméret",

@@ -32,6 +32,22 @@ const assert = require('node:assert/strict');
  await page.goto('http://127.0.0.1:5179');
  await page.locator('.pdf-page-block canvas').first().waitFor().catch(async e=>{console.log('errors',errors);console.log(await page.locator('body').innerText());throw e;});
  await page.waitForTimeout(800);
+ const assertRecipeNav = async () => {
+  const result=await page.locator('.mobile-nav--recipe').evaluate(nav=>{
+   const back=nav.querySelector('.mobile-nav-back'), style=getComputedStyle(back), bounds=nav.getBoundingClientRect();
+   const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+   const a=luminance(style.color), b=luminance(style.backgroundColor);
+   return {contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),label:back.textContent,buttons:[...nav.querySelectorAll('.mobile-nav-item-main,.mobile-nav-recipe-split-btn')].map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top};}),left:bounds.left,right:bounds.right};
+  });
+  assert(result.contrast>=4.5,'Back contrast '+result.contrast);
+  assert(result.label.trim(),'Back has a visible label');
+  assert.equal(result.buttons.length,5,'five balanced reader actions');
+  for(const [i,button] of result.buttons.entries()) {
+   assert(button.width>=44 && button.height>=44,'touch target '+JSON.stringify(button));
+   assert(button.left>=result.left && button.right<=result.right,'action stays inside bar');
+   if(i) assert(button.left>=result.buttons[i-1].right && Math.abs(button.top-result.buttons[0].top)<1,'actions form one aligned row');
+  }
+ };
  const assertSurface = async (type, selector) => {
   await page.waitForFunction(()=>document.querySelector('meta[name="theme-color"]').content===getComputedStyle(document.documentElement).backgroundColor);
   const surface=await page.evaluate(selector=>{
@@ -45,6 +61,7 @@ const assert = require('node:assert/strict');
   assert.equal(surface.root,surface.reader,'reader matches the surrounding canvas');
   assert.equal(surface.wallpaper,'none','wallpaper hidden while reading');
   assert.equal(surface.backdrop,'none','fixed shell backdrop has no wallpaper');
+  await assertRecipeNav();
  };
  await assertSurface('document','.pdf-pages-wrap');
  console.log('errors',errors);
@@ -55,9 +72,19 @@ const assert = require('node:assert/strict');
   assert(geometry.documentWidth<=width,'horizontal overflow '+width);
   assert(geometry.reader.y>=59,'top safe area '+width);
   assert(geometry.reader.bottom<= (width>768?430:844),'bottom clipping '+width);
+  if(width<900) await assertRecipeNav();
   console.log('geometry',JSON.stringify(geometry));
  }
  await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.locator('.mobile-nav-back').innerText(),'Tilbake');
+ await page.locator('.mobile-nav--recipe .mobile-nav-collapse').click();
+ await page.locator('.mobile-nav-peek').waitFor();
+ await page.locator('.mobile-nav-peek').click();
+ await page.locator('.mobile-nav-back').waitFor();
+ await page.locator('.mobile-nav--recipe .mobile-nav-item-main').last().click();
+ await page.locator('.mobile-panel--actions.mobile-panel--open').waitFor();
+ await page.locator('.mobile-panel--actions .mobile-panel-handle').click();
+ await page.locator('.mobile-panel--actions.mobile-panel--open').waitFor({state:'detached'});
  await page.locator('.pdf-pages-wrap').evaluate(el=>{el.dispatchEvent(new WheelEvent('wheel'));el.scrollTop=400;});
  await page.locator('.recipe-reading-compact').waitFor({state:'visible'});
  assert.equal(await page.locator('.recipe-reading-compact button[aria-pressed]').count(),3);
@@ -156,10 +183,10 @@ const assert = require('node:assert/strict');
   assert.equal(await page.locator('.recipe-reading-expanded button[aria-pressed]').count(),count,'availability '+[source,saved,ai]);
  }
  assert.deepEqual(errors,[]);
- await page.locator('.mobile-nav--recipe .mobile-nav-item-main').first().click();
+ await page.locator('.mobile-nav-back').click();
  await page.locator('.surface-home').waitFor();
  assert(await page.evaluate(()=>!document.documentElement.hasAttribute('data-recipe-surface') && getComputedStyle(document.body).backgroundImage!=='none'),'wallpaper restored after leaving the recipe');
  assert.equal(await page.locator('meta[name="theme-color"]').getAttribute('content'),'#1a1a2e','browser tint restored');
- console.log('PASS continuous PDF/Images/Text surfaces, wallpaper restoration, responsive geometry, compact reader, disclosures, keyboard focus, all locales/themes and fullscreen');
+ console.log('PASS balanced reader navigation, Back contrast and navigation, 44px targets, collapse/actions, continuous PDF/Images/Text surfaces, wallpaper restoration, all locales/themes and fullscreen');
  await browser.close();
 })().catch(async e=>{console.error(e); await browser?.close(); process.exitCode=1;}).finally(()=>server.kill());

@@ -410,10 +410,14 @@
 }
 
 .mobile-nav--recipe {
-  grid-template-columns: 52px 62px minmax(134px, 1fr) 58px 66px;
-  height: 56px;
-  padding: 5px 7px;
-  border-radius: 20px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  max-width: 560px;
+  margin-inline: auto;
+  height: 64px;
+  gap: 3px;
+  padding: 7px;
+  border-radius: 24px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 8px 28px rgba(0,0,0,.18);
   animation: recipeNavIn 0.22s ease both;
 }
 
@@ -424,6 +428,28 @@
 .mobile-nav--review .mobile-nav-collapse {
   display: none;
 }
+
+.mobile-nav--recipe .mobile-nav-collapse {
+  top: -44px;
+  width: 48px;
+  height: 44px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.mobile-nav--recipe .mobile-nav-collapse::before {
+  content: "";
+  position: absolute;
+  inset: 12px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg) 96%, transparent);
+}
+
+.mobile-nav--recipe .mobile-nav-collapse svg { position: relative; width: 16px; }
 
 @keyframes recipeNavIn {
   from { opacity: 0; transform: translateY(10px); }
@@ -493,6 +519,7 @@
 
 .mobile-nav-item-main:focus-visible,
 .mobile-nav-main-split-btn:focus-visible,
+.mobile-nav-recipe-split-btn:focus-visible,
 .mobile-nav-review-approve:focus-visible,
 .mobile-nav-recipe-project:focus-visible,
 .mobile-nav-collapse:focus-visible,
@@ -537,24 +564,42 @@
   align-self: center;
   justify-self: center;
   width: 100%;
-  max-width: 62px;
-  height: 36px;
-  border-radius: 13px;
-  gap: 2px;
+  max-width: none;
+  min-width: 44px;
+  height: 48px;
+  padding: 0 2px;
+  border-radius: 16px;
+  gap: 4px;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .mobile-nav--recipe .mobile-nav-item-main svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .mobile-nav--recipe .mobile-nav-item-main span {
-  font-size: 9px;
-  line-height: 1.05;
+  font-size: 10.5px;
+  line-height: 1.15;
 }
 
 .mobile-nav--recipe .mobile-nav-item-main.active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.mobile-nav--recipe .mobile-nav-back {
+  background: var(--text-primary);
+  color: var(--card-bg);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  transition: transform .16s ease, opacity .16s ease;
+}
+
+.mobile-nav--recipe :is(.mobile-nav-item-main, .mobile-nav-recipe-split-btn):not(:disabled):active {
+  opacity: .8;
+  transform: scale(.96);
 }
 
 .mobile-nav-item-main.active {
@@ -590,55 +635,36 @@
 }
 
 .mobile-nav-recipe-split {
-  align-self: center;
-  justify-self: center;
-  width: min(146px, 100%);
-  height: 56px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
-  border-radius: 18px;
-  background: var(--card-bg);
-  box-shadow: 0 10px 26px rgba(196, 113, 74, 0.23);
-  transform: translateY(-7px);
+  display: contents;
 }
 
 .mobile-nav-recipe-split-btn {
-  min-width: 0;
+  min-width: 44px;
+  height: 48px;
+  padding: 0 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   border: 0;
+  border-radius: 16px;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 900;
+  color: var(--text-primary);
+  font-size: 10.5px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.mobile-nav-recipe-split-btn + .mobile-nav-recipe-split-btn {
-  border-left: 1px solid var(--border);
-}
+.mobile-nav-recipe-split-btn svg { width: 20px; height: 20px; }
 
 .mobile-nav-recipe-split-btn span {
-  max-width: 62px;
+  max-width: 100%;
   overflow: hidden;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.mobile-nav-recipe-split-btn--status,
-.mobile-nav-recipe-split-btn--tools {
-  color: white;
-  background: var(--accent);
-}
-
-.mobile-nav-recipe-split-btn--status {
-  background: #3f9a57;
+  line-height: 1.15;
 }
 
 .mobile-nav-recipe-split-btn:active {

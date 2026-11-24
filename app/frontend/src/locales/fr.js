@@ -1072,6 +1072,7 @@ const fr = {
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Lecture du modèle",
+  navBack: "Retour",
   readerSettings: "Réglages de lecture",
   readerDocumentActions: "Actions du texte",
   readerTextSize: "Taille du texte",

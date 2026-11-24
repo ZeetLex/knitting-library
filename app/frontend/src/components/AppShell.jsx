@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  CheckCircle2, CircleHelp, Github, Home, Images, Import, Menu, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
+  BarChart2, BookOpen, Boxes, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  CheckCircle2, CircleHelp, Github, Home, Images, Import, Menu, MoreHorizontal, PackagePlus, PauseCircle, Play, Plus, Settings, Wrench, X,
 } from 'lucide-react';
 import { useApp } from '../utils/AppContext';
 import WorkQueueDock from './WorkQueueDock';
@@ -197,12 +197,12 @@ function MobileNav({
           <span>{t('navHome')}</span>
         </button>
         <button
-          className="mobile-nav-item-main active"
+          className="mobile-nav-item-main mobile-nav-back"
           onClick={onRecipeBack}
-          aria-label={t('backToLibrary')}
+          aria-label={`${t('navBack')} · ${t('backToLibrary')}`}
         >
-          <ArrowLeft size={21} />
-          <span>{t('backToLibrary')}</span>
+          <ChevronLeft size={21} />
+          <span>{t('navBack')}</span>
         </button>
         <button
           className="mobile-nav-review-approve"
@@ -250,20 +250,12 @@ function MobileNav({
           <ChevronDown size={18} />
         </button>
         <button
-          className="mobile-nav-item-main"
-          onClick={() => onNavigate('home')}
-          aria-label={t('navHome')}
-        >
-          <Home size={21} />
-          <span>{t('navHome')}</span>
-        </button>
-        <button
-          className="mobile-nav-item-main active"
+          className="mobile-nav-item-main mobile-nav-back"
           onClick={onRecipeBack}
-          aria-label={t('backToLibrary')}
+          aria-label={`${t('navBack')} · ${t('backToLibrary')}`}
         >
-          <ArrowLeft size={21} />
-          <span>{t('backToLibrary')}</span>
+          <ChevronLeft size={21} />
+          <span>{t('navBack')}</span>
         </button>
         <div className="mobile-nav-recipe-split" aria-label={t('toolbarTitle') || 'Recipe tools'}>
           <button
@@ -298,7 +290,7 @@ function MobileNav({
           onClick={onRecipeActions}
           aria-label={t('recipeActions') || 'Actions'}
         >
-          <Wrench size={21} />
+          <MoreHorizontal size={21} />
           <span>{t('recipeActions') || 'Actions'}</span>
         </button>
       </nav>

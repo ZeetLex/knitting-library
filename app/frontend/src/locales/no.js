@@ -1133,6 +1133,7 @@ Knitting Library`,
 
   // Recipe reader and measured subscription transcription
   recipeReader: "Oppskriftsleser",
+  navBack: "Tilbake",
   readerSettings: "Leseinnstillinger",
   readerDocumentActions: "Teksthandlinger",
   readerTextSize: "Tekststørrelse",
